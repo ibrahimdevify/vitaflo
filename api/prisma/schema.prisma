@@ -1,0 +1,575 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model dc_users {
+  user_id                     Int      @id @default(autoincrement())
+  f_name                      String   @db.VarChar(255)
+  l_name                      String   @db.VarChar(255)
+  email                       String   @unique @db.VarChar(255)
+  phone                       String   @unique @db.VarChar(255)
+  password                    String   @db.VarChar(255)
+  profile_pic                 String   @default("profile_pics/default.jpeg") @db.VarChar(255)
+  us_id_fk                    Int
+  ut_id_fk                    Int
+  is_guardian                 Boolean  @default(false) @db.TinyInt
+  is_availible                Boolean  @default(false) @db.TinyInt
+  is_profile_completed        Boolean  @default(false) @db.TinyInt
+  reg_date                    DateTime @default(now())
+  profile_update_date         DateTime @default(now())
+  is_monthly_plan_reactivated Boolean  @default(false) @db.TinyInt
+  is_rpm_allow                Boolean  @default(false) @db.TinyInt
+
+  user_status           dc_user_status            @relation(fields: [us_id_fk], references: [us_id])
+  user_type             dc_user_type              @relation(fields: [ut_id_fk], references: [ut_id])
+  user_details          dc_user_details?
+  doctor_details        dc_doctor_details?
+  patient_details       dc_patient_details?
+  sessions              vf_session[]              @relation("UserSessions")
+  clinician_sessions    vf_session[]              @relation("ClinicianSessions")
+  fcm_tokens            dc_fcm_token[]
+  assigned_patients     dc_patient_details[]      @relation("AssignedClinician")
+  prescriptions_doctor  dc_ehr_prescriptions[]    @relation("DoctorPrescription")
+  prescriptions_patient dc_ehr_prescriptions[]    @relation("PatientPrescription")
+  reset_tokens          vf_reset_password_token[]
+  observations         portal_observation[]
+  heart_rates          portal_heart_rate_observations[]
+  steps_data           portal_steps_observations[]
+  portal_notes         portal_notes[]
+  air_quality_data     portal_indoor_air_quality[]
+  alerts               portal_alert[]
+  predicted_values     portal_predicted_value[]
+
+  @@map("dc_users")
+}
+
+model dc_user_type {
+  ut_id Int        @id @default(autoincrement())
+  name  String     @db.VarChar(100)
+  users dc_users[]
+
+  @@map("dc_user_type")
+}
+
+model dc_user_status {
+  us_id Int        @id @default(autoincrement())
+  name  String     @db.VarChar(100)
+  users dc_users[]
+
+  @@map("dc_user_status")
+}
+
+model dc_gender {
+  gender_id    Int               @id @default(autoincrement())
+  name         String            @db.VarChar(50)
+  user_details dc_user_details[]
+
+  @@map("dc_gender")
+}
+
+model dc_martial_status {
+  ms_id        Int               @id @default(autoincrement())
+  name         String            @db.VarChar(50)
+  user_details dc_user_details[]
+
+  @@map("dc_martial_status")
+}
+
+model dc_city {
+  city_id      Int               @id @default(autoincrement())
+  name         String            @db.VarChar(255)
+  state        String?           @db.VarChar(255)
+  user_details dc_user_details[]
+
+  @@map("dc_city")
+}
+
+model dc_user_details {
+  ud_id             Int      @id @default(autoincrement())
+  dob               DateTime
+  gender_id_fk      Int
+  martial_status_fk Int
+  address           String   @db.VarChar(255)
+  zip_code          String?  @db.VarChar(255)
+  city_id_fk        Int
+  user_id_fk        Int      @unique
+  signup_platform   String   @default("unknown") @db.VarChar(255)
+  signup_timezone   String   @default("Africa/Lagos") @db.VarChar(255)
+
+  user    dc_users          @relation(fields: [user_id_fk], references: [user_id])
+  gender  dc_gender         @relation(fields: [gender_id_fk], references: [gender_id])
+  martial dc_martial_status @relation(fields: [martial_status_fk], references: [ms_id])
+  city    dc_city           @relation(fields: [city_id_fk], references: [city_id])
+
+  @@map("dc_user_details")
+}
+
+model dc_doctor_details {
+  dd_id         Int     @id @default(autoincrement())
+  about_doctor  String  @db.VarChar(255)
+  education     String? @db.VarChar(255)
+  license_no    String  @unique @db.VarChar(255)
+  is_specialist Boolean @default(false) @db.TinyInt
+  experience    String  @default("2 yrs") @db.VarChar(255)
+  is_writer     Boolean @default(false) @db.TinyInt
+  h_id_fk       Int
+  ps_id_fk      Int
+  user_id_fk    Int     @unique
+
+  user     dc_users   @relation(fields: [user_id_fk], references: [user_id])
+  hospital vf_account @relation(fields: [h_id_fk], references: [id])
+
+  @@map("dc_doctor_details")
+}
+
+model dc_patient_details {
+  pd_id                    Int       @id @default(autoincrement())
+  chart_no                 String    @db.VarChar(255)
+  height                   Float?
+  blood_group              String?   @db.VarChar(255)
+  geno_type                String?   @db.VarChar(255)
+  invite_code              String    @db.VarChar(255)
+  is_web_allowed           Boolean   @default(false) @db.TinyInt
+  user_id_fk               Int       @unique
+  weight                   Float?
+  patient_group_id         Int?
+  assigned_clinician_id    Int?
+  graph_view               Boolean   @default(true) @db.TinyInt
+  access_code              String?   @db.VarChar(200)
+  awair_refresh_token      String?   @db.VarChar(200)
+  date_spirometer_received DateTime?
+  rpm_consent              Boolean   @default(false) @db.TinyInt
+  status                   String    @default("unverified") @db.VarChar(50)
+
+  user               dc_users          @relation(fields: [user_id_fk], references: [user_id])
+  patient_group      vf_patient_group? @relation(fields: [patient_group_id], references: [id])
+  assigned_clinician dc_users?         @relation("AssignedClinician", fields: [assigned_clinician_id], references: [user_id])
+  attributes         vf_attributes?
+
+  @@map("dc_patient_details")
+}
+
+model dc_fcm_token {
+  ft_id        Int      @id @default(autoincrement())
+  fcm_token    String   @db.VarChar(255)
+  device       String   @default("android") @db.VarChar(255)
+  is_enabled   Boolean  @default(true) @db.TinyInt
+  user_id_fk   Int
+  date_time    DateTime @default(now())
+  updated_date DateTime @default(now())
+
+  user dc_users @relation(fields: [user_id_fk], references: [user_id])
+
+  @@map("dc_fcm_token")
+}
+
+model dc_devices {
+  dev_id        Int      @id @default(autoincrement())
+  dev_name      String   @db.VarChar(255)
+  is_active     Boolean  @default(true) @db.TinyInt
+  dev_date_time DateTime @default(now())
+  dev_detail    String?  @db.Text
+  dev_image     String?  @db.Text
+
+  air_monitors vf_air_monitor[]
+
+  @@map("dc_devices")
+}
+
+model vf_account {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(50)
+  creation_date DateTime @default(now())
+
+  account_attributes vf_account_attributes?
+  patient_groups     vf_patient_group[]
+  doctor_details     dc_doctor_details[]
+
+  @@map("vf_account")
+}
+
+model vf_account_attributes {
+  id                                    Int     @id @default(autoincrement())
+  account_id                            Int     @unique
+  breezometer                           Boolean @default(true) @db.TinyInt
+  awair                                 Boolean @default(true) @db.TinyInt
+  bronchodilator_responsiveness_testing Boolean @default(true) @db.TinyInt
+  clinical_decision_support_flowchart   Boolean @default(false) @db.TinyInt
+  extra                                 Json?
+
+  account vf_account @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
+  @@map("vf_account_attributes")
+}
+
+model vf_patient_group {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(100)
+  account_id    Int
+  creation_date DateTime @default(now())
+
+  account          vf_account                   @relation(fields: [account_id], references: [id])
+  group_attributes vf_patient_group_attributes?
+  patients         dc_patient_details[]
+
+  @@map("vf_patient_group")
+}
+
+model vf_patient_group_attributes {
+  id       Int   @id @default(autoincrement())
+  group_id Int   @unique
+  extra    Json?
+
+  group vf_patient_group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@map("vf_patient_group_attributes")
+}
+
+model vf_attributes {
+  id              Int      @id @default(autoincrement())
+  first_name      String   @default("") @db.VarChar(100)
+  last_name       String   @default("") @db.VarChar(100)
+  phone           String?  @db.VarChar(20)
+  dob             String   @db.VarChar(20)
+  height          Float    @default(0)
+  weight          Float?
+  gender          String   @default("") @db.VarChar(20)
+  identify        String?  @db.VarChar(255)
+  ethnic_group    String?  @db.VarChar(100)
+  lookup_table    String   @default("") @db.VarChar(100)
+  smoking         Boolean  @default(false) @db.TinyInt
+  start_date      DateTime @default(now())
+  pd_id           Int      @unique
+  mobile_app_save Json?
+  extra           Json?
+  chart_number    String?  @db.VarChar(100)
+  account_type    String   @default("test") @db.VarChar(10)
+  welcome_method  String   @default("text") @db.VarChar(10)
+
+  patient      dc_patient_details @relation(fields: [pd_id], references: [pd_id], onDelete: Cascade)
+  addresses    vf_address[]
+  air_monitors vf_air_monitor[]
+
+  @@map("vf_attributes")
+}
+
+model vf_address {
+  id            Int     @id @default(autoincrement())
+  street        String? @db.VarChar(255)
+  city          String? @db.VarChar(100)
+  state         String? @db.VarChar(100)
+  zip           String? @db.VarChar(100)
+  attributes_id Int
+
+  attributes vf_attributes @relation(fields: [attributes_id], references: [id], onDelete: Cascade)
+
+  @@map("vf_address")
+}
+
+model vf_air_monitor {
+  id            Int     @id @default(autoincrement())
+  monitor_id    String? @db.VarChar(255)
+  label         String? @db.VarChar(255)
+  dev_id        Int?
+  attributes_id Int
+
+  attributes vf_attributes @relation(fields: [attributes_id], references: [id], onDelete: Cascade)
+  device     dc_devices?   @relation(fields: [dev_id], references: [dev_id], onDelete: SetNull)
+
+  @@map("vf_air_monitor")
+}
+
+model vf_session {
+  access_token String   @id @db.VarChar(100)
+  user_id      Int
+  created      DateTime @default(now())
+  last_action  DateTime @default(now())
+  clinician_id Int?
+
+  user      dc_users  @relation("UserSessions", fields: [user_id], references: [user_id], onDelete: Cascade)
+  clinician dc_users? @relation("ClinicianSessions", fields: [clinician_id], references: [user_id], onDelete: SetNull)
+
+  @@map("vf_session")
+}
+
+model vf_reset_password_token {
+  id             Int      @id @default(autoincrement())
+  user_id        Int
+  ip_address     String?  @db.VarChar(39)
+  user_agent     String?  @db.VarChar(256)
+  contact_method String   @db.VarChar(100)
+  contact        String   @db.VarChar(100)
+  created        DateTime @default(now())
+  used           Boolean  @default(false) @db.TinyInt
+
+  user dc_users @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("vf_reset_password_token")
+}
+
+model dc_ehr_prescriptions {
+  pr_id                Int      @id @default(autoincrement())
+  pharmacy_instruction String   @db.VarChar(255)
+  diagnosis            String   @db.VarChar(255)
+  pr_date              DateTime @default(now())
+  doctor_id_fk         Int
+  patient_id_fk        Int
+  is_deleted           Boolean  @default(false) @db.TinyInt
+
+  doctor    dc_users                        @relation("DoctorPrescription", fields: [doctor_id_fk], references: [user_id])
+  patient   dc_users                        @relation("PatientPrescription", fields: [patient_id_fk], references: [user_id])
+  medicines dc_ehr_prescription_medicines[]
+
+  @@map("dc_ehr_prescriptions")
+}
+
+model dc_ehr_prescription_medicines {
+  pm_id      Int     @id @default(autoincrement())
+  type       String? @db.VarChar(255)
+  drug       String  @db.VarChar(255)
+  dosage     String  @db.VarChar(255)
+  frequency  String  @db.VarChar(255)
+  quantity   String  @db.VarChar(255)
+  days       String  @db.VarChar(255)
+  units      String? @db.VarChar(255)
+  direction  String  @db.VarChar(255)
+  pr_id_fk   Int
+  is_deleted Boolean @default(false) @db.TinyInt
+
+  prescription dc_ehr_prescriptions @relation(fields: [pr_id_fk], references: [pr_id])
+
+  @@map("dc_ehr_prescription_medicines")
+}
+
+model dc_modules {
+  m_id         Int               @id @default(autoincrement())
+  m_name       String            @db.VarChar(100)
+  module_roles dc_module_roles[]
+
+  @@map("dc_modules")
+}
+
+model dc_module_roles {
+  mr_id        Int     @id @default(autoincrement())
+  ut_id_fk     Int
+  is_view      Boolean @default(true) @db.TinyInt
+  is_writeable Boolean @default(true) @db.TinyInt
+  m_id_fk      Int
+
+  module dc_modules @relation(fields: [m_id_fk], references: [m_id])
+
+  @@map("dc_module_roles")
+}
+
+model portal_observation {
+  id                       Int       @id @default(autoincrement())
+  dbdate                   DateTime  @default(now())
+  user_id                  Int
+  fev1_grade               Int?
+  fvc_grade                Int?
+  is_post_bronchodilator   Boolean   @default(false) @db.TinyInt
+  height                   Float?
+  linked_pre_post_observation_id Int?
+
+  user                     dc_users             @relation(fields: [user_id], references: [user_id])
+  spirometries             portal_spirometry[]
+  linked_observation       portal_observation?  @relation("LinkedObs", fields: [linked_pre_post_observation_id], references: [id])
+  related_observations     portal_observation[] @relation("LinkedObs")
+
+  @@map("portal_observation")
+}
+
+model portal_spirometry {
+  id                 Int       @id @default(autoincrement())
+  dbdate             DateTime  @default(now())
+  observation_id     Int?
+  btps               Float?
+  temp_celsius       Float?
+  quality_message    Float?
+  symptom            String?   @db.VarChar(255)
+  fev1_acceptability Int?
+  fvc_acceptability  Int?
+  fvc                Float?
+  fev1               Float?
+  pefr               Float?
+  fef2575            Float?
+  fev6               Float?
+  fev1_perc          Float?
+
+  observation        portal_observation? @relation(fields: [observation_id], references: [id], onDelete: SetNull)
+  flows              portal_flow[]
+  volumes            portal_volume[]
+
+  @@map("portal_spirometry")
+}
+
+model portal_flow {
+  id            Int      @id @default(autoincrement())
+  time          Float
+  value         Float
+  volume        Float
+  dbdate        DateTime @default(now())
+  spirometry_id Int
+
+  spirometry    portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
+
+  @@map("portal_flow")
+}
+
+model portal_volume {
+  id            Int    @id @default(autoincrement())
+  volume        Float
+  time          Float
+  spirometry_id Int
+
+  spirometry    portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
+
+  @@map("portal_volume")
+}
+
+model portal_heart_rate_observations {
+  id      Int      @id @default(autoincrement())
+  dbdate  DateTime @default(now())
+  user_id Int
+
+  user    dc_users                    @relation(fields: [user_id], references: [user_id])
+  points  portal_heart_rate_point[]
+
+  @@map("portal_heart_rate_observations")
+}
+
+model portal_heart_rate_point {
+  id             Int   @id @default(autoincrement())
+  value          Float
+  time           Float
+  observation_id Int
+
+  observation    portal_heart_rate_observations @relation(fields: [observation_id], references: [id], onDelete: Cascade)
+
+  @@map("portal_heart_rate_point")
+}
+
+model portal_steps_observations {
+  id      Int      @id @default(autoincrement())
+  dbdate  DateTime @default(now())
+  steps   Int
+  user_id Int
+
+  user    dc_users @relation(fields: [user_id], references: [user_id])
+
+  @@map("portal_steps_observations")
+}
+
+model portal_notes {
+  id            Int      @id @default(autoincrement())
+  user_id       Int
+  text          String   @db.Text
+  dbdate        DateTime @default(now())
+  recorded_date DateTime @default(now())
+  page          String?  @db.VarChar(100)
+
+  user          dc_users @relation(fields: [user_id], references: [user_id])
+
+  @@map("portal_notes")
+}
+
+model portal_indoor_air_quality {
+  id          Int      @id @default(autoincrement())
+  dbdate      DateTime @default(now())
+  user_id     Int
+  pm25        Float?
+  pm10        Float?
+  temperature Float?
+  humidity    Float?
+
+  user        dc_users @relation(fields: [user_id], references: [user_id])
+
+  @@map("portal_indoor_air_quality")
+}
+
+model portal_status {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(50)
+
+  @@map("portal_status")
+}
+
+model portal_login {
+  id       Int      @id @default(autoincrement())
+  username String   @db.VarChar(255)
+  valid    Boolean  @default(false) @db.TinyInt
+  locked   Boolean  @default(false) @db.TinyInt
+  dbdate   DateTime @default(now())
+
+  @@map("portal_login")
+}
+
+// ══════════════════════════════════════
+// 🚨 ALERTS
+// ══════════════════════════════════════
+
+model portal_alert {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  message     String   @db.Text
+  created     DateTime @default(now())
+  is_read     Boolean  @default(false) @db.TinyInt
+
+  user        dc_users                 @relation(fields: [user_id], references: [user_id])
+  notifications portal_alert_notification[]
+
+  @@map("portal_alert")
+}
+
+model portal_alert_notification {
+  id          Int      @id @default(autoincrement())
+  alert_id    Int
+  sent_at     DateTime @default(now())
+  channel     String   @db.VarChar(50)
+
+  alert       portal_alert @relation(fields: [alert_id], references: [id], onDelete: Cascade)
+
+  @@map("portal_alert_notification")
+}
+
+// ══════════════════════════════════════
+// 📈 TRENDS
+// ══════════════════════════════════════
+
+model portal_spirometry_trends {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  dbdate      DateTime
+  fev1        Float?
+  fvc         Float?
+  pefr        Float?
+  fef2575     Float?
+  fev1_perc   Float?
+
+  @@map("portal_spirometry_trends")
+}
+
+// ══════════════════════════════════════
+// 🔮 PREDICTED VALUES (GLI)
+// ══════════════════════════════════════
+
+model portal_predicted_value {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  variable    String   @db.VarChar(50)
+  predicted   Float?
+  lln         Float?
+  uln         Float?
+  z_score     Float?
+  percent_predicted Float?
+  created     DateTime @default(now())
+
+  user        dc_users @relation(fields: [user_id], references: [user_id])
+
+  @@map("portal_predicted_value")
+}
