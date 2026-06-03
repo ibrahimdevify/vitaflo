@@ -4,6 +4,11 @@ import ClinicianLayout from './components/layout/ClinicianLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
+import Spirometry from './pages/Spirometry';
+import Prescriptions from './pages/Prescriptions';
+import Notes from './pages/Notes';
+import Alerts from './pages/Alerts';
+import Profile from './pages/Profile';
 import { Toaster } from 'sonner';
 
 function ProtectedRoute({ children }) {
@@ -12,10 +17,6 @@ function ProtectedRoute({ children }) {
   if (!user) return <Navigate to="/login" />;
   return children;
 }
-
-const Placeholder = ({ title }) => (
-  <div className="p-4"><h1 className="text-2xl font-bold">{title}</h1><p className="text-slate-500 mt-2">Coming soon...</p></div>
-);
 
 export default function App() {
   return (
@@ -26,12 +27,12 @@ export default function App() {
           <Route element={<ProtectedRoute><ClinicianLayout /></ProtectedRoute>}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/patients" element={<Patients />} />
-            <Route path="/spirometry" element={<Placeholder title="Spirometry" />} />
-            <Route path="/prescriptions" element={<Placeholder title="Prescriptions" />} />
-            <Route path="/trends" element={<Placeholder title="Trends" />} />
-            <Route path="/notes" element={<Placeholder title="Notes" />} />
-            <Route path="/alerts" element={<Placeholder title="Alerts" />} />
-            <Route path="/profile" element={<Placeholder title="Profile" />} />
+            <Route path="/spirometry" element={<Spirometry />} />
+            <Route path="/prescriptions" element={<Prescriptions />} />
+            <Route path="/trends" element={<Spirometry />} />
+            <Route path="/notes" element={<Notes />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
         </Routes>
       </BrowserRouter>
