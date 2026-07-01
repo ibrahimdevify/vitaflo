@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = 'https://api-vitalflow.devifysolutions.net/api';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -36,7 +36,15 @@ export const patientsAPI = {
   getById: (id) => api.get(`/patients/${id}`),
   createAttributes: (id, data) => api.post(`/patients/${id}/attributes`, data),
   updateAttributes: (id, data) => api.put(`/patients/${id}/attributes`, data),
-  getPrescriptions: (id) => api.get(`/patients/${id}/prescriptions`),
+  getPrescriptions: (id, params = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', params.page);
+    if (params.limit) query.append('limit', params.limit);
+    if (params.start_date) query.append('start_date', params.start_date);
+    if (params.end_date) query.append('end_date', params.end_date);
+    const qs = query.toString();
+    return api.get(`/patients/${id}/prescriptions${qs ? '?' + qs : ''}`);
+  },
   createPrescription: (id, data) => api.post(`/patients/${id}/prescriptions`, data),
   getGroups: () => api.get('/patients/groups'),
   createGroup: (data) => api.post('/patients/groups', data),
