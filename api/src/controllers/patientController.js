@@ -30,6 +30,12 @@ const getAllPatients = async (req, res) => {
       where.patient_details = { ...where.patient_details, assigned_clinician_id: parseInt(assigned_clinician_id) };
     }
 
+    // 🔒 Clinicians only see their assigned patients
+    // Admin (ut_id_fk=2) and Technician (ut_id_fk=1) see all
+    if (req.user.ut_id_fk === 3) {
+      where.patient_details = { ...where.patient_details, assigned_clinician_id: req.user.user_id };
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const [patients, total] = await Promise.all([
@@ -225,20 +231,59 @@ const updateAttributes = async (req, res) => {
 const getPrescriptions = async (req, res) => {
   try {
     const { id } = req.params;
+    const { page = 1, limit = 10, start_date, end_date } = req.query;
 
-    const prescriptions = await prisma.dc_ehr_prescriptions.findMany({
-      where: {
-        patient_id_fk: parseInt(id),
-        is_deleted: false,
+    // Resolve patient ID (supports numeric ID, username, email, phone)
+    let patientId;
+    if (/^\d+$/.test(id)) {
+      patientId = parseInt(id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { OR: [{ email: id }, { phone: id }], ut_id_fk: 4 },
+        select: { user_id: true },
+      });
+      if (!user) return res.json({ data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } });
+      patientId = user.user_id;
+    }
+
+    // Build where clause
+    const where = {
+      patient_id_fk: patientId,
+      is_deleted: false,
+    };
+
+    // Date range filter
+    if (start_date || end_date) {
+      where.pr_date = {};
+      if (start_date) where.pr_date.gte = new Date(start_date);
+      if (end_date) where.pr_date.lte = new Date(end_date + 'T23:59:59.999Z');
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [prescriptions, total] = await Promise.all([
+      prisma.dc_ehr_prescriptions.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        include: {
+          doctor: { select: { user_id: true, f_name: true, l_name: true } },
+          medicines: { where: { is_deleted: false } },
+        },
+        orderBy: { pr_date: 'desc' },
+      }),
+      prisma.dc_ehr_prescriptions.count({ where }),
+    ]);
+
+    res.json({
+      data: prescriptions,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
       },
-      include: {
-        doctor: { select: { user_id: true, f_name: true, l_name: true } },
-        medicines: { where: { is_deleted: false } },
-      },
-      orderBy: { pr_date: 'desc' },
     });
-
-    res.json({ data: prescriptions });
   } catch (error) {
     console.error('Get prescriptions error:', error);
     res.status(500).json({ error: 'Failed to fetch prescriptions' });
@@ -260,13 +305,13 @@ const createPrescription = async (req, res) => {
         medicines: medicines ? {
           create: medicines.map(m => ({
             type: m.type || null,
-            drug: m.drug,
-            dosage: m.dosage,
-            frequency: m.frequency,
-            quantity: m.quantity,
-            days: m.days,
+            drug: m.drug || 'N/A',
+            dosage: m.dosage || 'N/A',
+            frequency: m.frequency || 'N/A',
+            quantity: m.quantity || '1',
+            days: m.days || '1',
             units: m.units || null,
-            direction: m.direction,
+            direction: m.direction || 'N/A',
           })),
         } : undefined,
       },

@@ -5,28 +5,35 @@ const prisma = new PrismaClient();
 
 const authenticate = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    let token = req.headers.vitalfloauth;
     
-    if (!authHeader) {
-      return res.status(401).json({ error: 'Authorization header required' });
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization header required' });
+      }
+
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      } else if (authHeader.startsWith('Basic ')) {
+        const base64 = authHeader.split(' ')[1];
+        const decoded = Buffer.from(base64, 'base64').toString('utf-8');
+        token = decoded.split(':')[0];
+      } else {
+        return res.status(401).json({ error: 'Invalid authorization format' });
+      }
     }
 
-    let token;
-    if (authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    } else if (authHeader.startsWith('Basic ')) {
-      const base64 = authHeader.split(' ')[1];
-      const decoded = Buffer.from(base64, 'base64').toString('utf-8');
-      token = decoded.split(':')[0];
-    } else {
-      return res.status(401).json({ error: 'Invalid authorization format' });
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
     }
 
     // Try JWT first
     try {
       const decoded = verifyToken(token);
       req.user = decoded;
-      console.log('JWT Auth - User:', decoded.user_id, 'Type:', decoded.ut_id_fk);
+      req.session = { access_token: token };
       return next();
     } catch (jwtError) {
       // Not JWT, try session token
@@ -42,13 +49,18 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
+    // Update last action
+    await prisma.vf_session.update({
+      where: { access_token: token },
+      data: { last_action: new Date() }
+    }).catch(() => {});
+
     req.user = {
       user_id: session.user.user_id,
       ut_id_fk: session.user.ut_id_fk,
       email: session.user.email,
     };
     req.session = session;
-    console.log('Session Auth - User:', req.user.user_id, 'Type:', req.user.ut_id_fk);
     next();
   } catch (error) {
     console.error('Auth error:', error);
@@ -72,8 +84,6 @@ const authorize = (...roles) => {
     const userRole = Object.keys(userTypeMap).find(
       key => userTypeMap[key] === req.user.ut_id_fk
     );
-
-    console.log('Authorize - User type:', req.user.ut_id_fk, 'Role:', userRole, 'Allowed:', roles);
 
     if (!roles.includes(userRole)) {
       return res.status(403).json({ error: 'Insufficient permissions' });

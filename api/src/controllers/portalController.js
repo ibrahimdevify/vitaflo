@@ -1,4 +1,15 @@
 const { PrismaClient } = require('@prisma/client');
+
+// Helper: resolve user ID from string (id, email, phone)
+const resolveUserId = async (identifier) => {
+  if (!identifier) return null;
+  if (/^\d+$/.test(identifier)) return parseInt(identifier);
+  const user = await prisma.dc_users.findFirst({
+    where: { OR: [{ email: identifier }, { phone: identifier }], ut_id_fk: 4 },
+    select: { user_id: true },
+  });
+  return user?.user_id || null;
+};
 const prisma = new PrismaClient();
 
 // ═══════════════════════
@@ -9,11 +20,25 @@ const getSpirometryByUser = async (req, res) => {
   try {
     const { user_id } = req.params;
     const { start, end } = req.query;
-    const where = { observation: { user_id: parseInt(user_id) } };
+
+    // Resolve user ID (supports username, email, phone, or numeric)
+    let userId;
+    if (/^\d+$/.test(user_id)) {
+      userId = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { OR: [{ email: user_id }, { phone: user_id }], ut_id_fk: 4 },
+        select: { user_id: true },
+      });
+      if (!user) return res.json({ data: [], total: 0 });
+      userId = user.user_id;
+    }
+
+    const where = { observation: { user_id: userId }, fvc: { not: null }, fev1: { not: null } };
     if (start && end) where.dbdate = { gte: new Date(start), lte: new Date(end) };
     const data = await prisma.portal_spirometry.findMany({
-      where, orderBy: { dbdate: 'asc' },
-      include: { observation: true, flows: true, volumes: true },
+      where, orderBy: { dbdate: 'asc' }, take: 100,
+      include: { observation: true },
     });
     res.json({ data, total: data.length });
   } catch (error) {
@@ -40,8 +65,8 @@ const getSpirometryAll = async (req, res) => {
     const { user } = req.query;
     const where = user ? { observation: { user_id: parseInt(user) } } : {};
     const data = await prisma.portal_spirometry.findMany({
-      where, orderBy: { dbdate: 'asc' },
-      include: { observation: true, flows: true, volumes: true },
+      where, orderBy: { dbdate: 'asc' }, take: 100,
+      include: { observation: true },
     });
     res.json({ data, total: data.length });
   } catch (error) {
@@ -188,17 +213,23 @@ const syncSteps = async (req, res) => {
 
 const getNotes = async (req, res) => {
   try {
-    const { user_id } = req.query;
-    const where = user_id ? { user_id: parseInt(user_id) } : {};
-    const data = await prisma.portal_notes.findMany({
-      where, orderBy: { dbdate: 'desc' }, take: 50,
-    });
-    res.json({ data });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    const { user_id, page = 1, limit = 10, start_date, end_date, page_type } = req.query;
+    const userId = user_id ? await resolveUserId(user_id) : null;
+    const where = userId ? { user_id: userId } : {};
+    if (start_date || end_date) {
+      where.recorded_date = {};
+      if (start_date) where.recorded_date.gte = new Date(start_date);
+      if (end_date) where.recorded_date.lte = new Date(end_date + 'T23:59:59.999Z');
+    }
+    if (page_type) where.page = page_type;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [data, total] = await Promise.all([
+      prisma.portal_notes.findMany({ where, skip, take: parseInt(limit), orderBy: { dbdate: 'desc' } }),
+      prisma.portal_notes.count({ where }),
+    ]);
+    res.json({ data, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
+  } catch (error) { res.status(500).json({ error: error.message }); }
 };
-
 const createNote = async (req, res) => {
   try {
     const { user_id, text, page } = req.body;
