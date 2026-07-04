@@ -1,1 +1,511 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+
+/* ============================================================
+   TAILWIND CSS v4.3 — PRODUCTION BASE SETUP
+   Every serious web app starts from this. Change only the
+   token VALUES (colors, fonts, spacing) per project — the
+   STRUCTURE below stays the same everywhere.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   0. DARK MODE VARIANT
+   Default Tailwind v4 `dark:` follows OS preference only.
+   Overriding it here makes `dark:` respond to a `.dark` class
+   on <html>, so you can pair it with a toggle button + JS
+   (and still respect system preference on first load via JS).
+   This is the standard pattern for any app with a theme switch.
+   ------------------------------------------------------------ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------
+   1. @theme — DESIGN TOKENS
+   Raw palette + static tokens only. Semantic colors that need
+   to FLIP between light/dark are declared as plain CSS
+   variables below (step 2) and referenced here with var(),
+   so the utility classes (bg-surface, text-fg, etc.) stay the
+   same in both themes — only the underlying value changes.
+   ------------------------------------------------------------ */
+@theme {
+  /* ——— Raw brand scale (doesn't change with theme) ——— */
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-300: #86efac;
+  --color-brand-400: #4ade80;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
+  --color-brand-950: #052e16;
+
+  /* ——— Raw neutral scale ——— */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+
+  /* ——— Semantic colors — flip automatically with .dark ———
+     Usage: bg-surface, text-fg, border-border, bg-surface-raised */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-border: var(--border);
+  --color-focus-ring: var(--focus-ring);
+
+  /* ——— Status colors (same both themes, kept vivid enough for contrast) ——— */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #3b82f6;
+
+  /* ——— Typography ——— */
+  --font-sans: 'Maven Pro', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --text-display: 3rem;
+  --text-heading: 1.875rem;
+  --text-subheading: 1.25rem;
+  --text-body: 1rem;
+  --text-caption: 0.8125rem;
+
+  /* ——— Spacing ——— */
+  --spacing-sidebar: 16rem;
+  --spacing-sidebar-collapsed: 4.5rem;
+  --spacing-header: 4rem;
+  --spacing-gutter: 1.5rem;
+
+  /* ——— Radius ——— */
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --radius-pill: 9999px;
+
+  /* ——— Shadows (dark mode gets its own set below via var()) ——— */
+  --shadow-card: var(--shadow-card-value);
+  --shadow-card-hover: var(--shadow-card-hover-value);
+  --shadow-dropdown: var(--shadow-dropdown-value);
+  --shadow-modal: var(--shadow-modal-value);
+
+  /* ——— Easing ——— */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ------------------------------------------------------------
+     RESPONSIVE BREAKPOINTS
+     Default Tailwind ships sm/md/lg/xl/2xl. Adding xs and 3xl
+     covers small phones and large desktop/TV monitors — the two
+     gaps most "pro" apps eventually need.
+     ------------------------------------------------------------ */
+  --breakpoint-xs: 30rem; /* 480px  — small phones            */
+  --breakpoint-sm: 40rem; /* 640px  — default                 */
+  --breakpoint-md: 48rem; /* 768px  — default                 */
+  --breakpoint-lg: 64rem; /* 1024px — default                 */
+  --breakpoint-xl: 80rem; /* 1280px — default                 */
+  --breakpoint-2xl: 96rem; /* 1536px — default                 */
+  --breakpoint-3xl: 120rem; /* 1920px — large desktop/TV        */
+
+  /* ------------------------------------------------------------
+     ANIMATIONS — registering here makes them usable as
+     animate-fade-in, animate-slide-up, etc. Keyframes are
+     declared once, outside @theme, in section 4.
+     ------------------------------------------------------------ */
+  --animate-fade-in: fade-in 200ms var(--ease-standard);
+  --animate-slide-up: slide-up 250ms var(--ease-standard);
+  --animate-scale-in: scale-in 150ms var(--ease-standard);
+  --animate-skeleton: skeleton 1.5s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------
+   2. THEME VALUES — light (default) and dark
+   Plain CSS variables, deliberately OUTSIDE @theme, because
+   these are runtime-switchable values, not static design tokens.
+   ------------------------------------------------------------ */
+:root {
+  --surface: #ffffff;
+  --surface-raised: #f8fafc;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --border: #e2e8f0;
+  --focus-ring: #22c55e;
+
+  --shadow-card-value: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-card-hover-value: 0 4px 12px rgb(0 0 0 / 0.1);
+  --shadow-dropdown-value: 0 10px 25px rgb(0 0 0 / 0.12);
+  --shadow-modal-value: 0 25px 50px rgb(0 0 0 / 0.25);
+
+  /* Non-theme tokens: durations + z-index scale */
+  --transition-fast: 150ms var(--ease-standard);
+  --transition-base: 200ms var(--ease-standard);
+  --transition-slow: 300ms var(--ease-standard);
+
+  --z-dropdown: 100;
+  --z-header: 200;
+  --z-modal: 600;
+  --z-toast: 900;
+}
+
+.dark {
+  --surface: #0f172a;
+  --surface-raised: #1e293b;
+  --fg: #f8fafc;
+  --fg-muted: #94a3b8;
+  --border: #334155;
+  --focus-ring: #4ade80;
+
+  --shadow-card-value: 0 1px 3px rgb(0 0 0 / 0.3), 0 1px 2px rgb(0 0 0 / 0.24);
+  --shadow-card-hover-value: 0 4px 16px rgb(0 0 0 / 0.4);
+  --shadow-dropdown-value: 0 10px 25px rgb(0 0 0 / 0.5);
+  --shadow-modal-value: 0 25px 50px rgb(0 0 0 / 0.6);
+}
+
+/* ------------------------------------------------------------
+   3. @utility — CUSTOM FUNCTIONAL UTILITIES
+   Correct v4.3 pattern: --value(--theme-key-*, --default(...))
+   ------------------------------------------------------------ */
+@utility card {
+  background: var(--color-surface);
+  border-radius: --value(--radius-*, --default(--radius-card));
+  padding: --value(--spacing-*, --default(--spacing-gutter));
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  transition: box-shadow var(--transition-base);
+
+  @variant hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+
+@utility badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-block: 0.125rem;
+  padding-inline: 0.625rem;
+  border-radius: var(--radius-pill);
+  font-size: --value(--text-*, --default(--text-caption));
+  font-weight: 500;
+}
+
+@utility input-field {
+  inline-size: 100%;
+  padding-block: 0.625rem;
+  padding-inline: 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: --value(--radius-*, --default(--radius-control));
+  font-size: var(--text-body);
+  color: var(--color-fg);
+  background: var(--color-surface);
+  outline: none;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+
+  &::placeholder {
+    color: var(--color-fg-muted);
+  }
+
+  @variant focus {
+    border-color: var(--color-focus-ring);
+    box-shadow: 0 0 0 3px
+      color-mix(in srgb, var(--color-focus-ring) 20%, transparent);
+  }
+
+  @variant disabled {
+    background: var(--color-surface-raised);
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-block: 0.625rem;
+  padding-inline: 1.25rem;
+  border-radius: --value(--radius-*, --default(--radius-control));
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: white;
+  background: var(--color-brand-600);
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+
+  @variant hover {
+    background: var(--color-brand-700);
+  }
+
+  @variant hover:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  @variant disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-block: 0.625rem;
+  padding-inline: 1.25rem;
+  border-radius: --value(--radius-*, --default(--radius-control));
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  @variant hover {
+    background: var(--color-surface-raised);
+  }
+
+  @variant focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Skip-to-content link — hidden until keyboard-focused.
+   Every accessible app needs this for keyboard/screen-reader users. */
+@utility skip-link {
+  position: absolute;
+  inset-block-start: -100%;
+  inset-inline-start: 1rem;
+  z-index: var(--z-toast);
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+  background: var(--color-brand-600);
+  color: white;
+  border-radius: var(--radius-control);
+  transition: inset-block-start var(--transition-fast);
+
+  @variant focus {
+    inset-block-start: 1rem;
+  }
+}
+
+/* ------------------------------------------------------------
+   4. KEYFRAMES — backing the --animate-* tokens from @theme
+   ------------------------------------------------------------ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes skeleton {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ------------------------------------------------------------
+   5. @layer base — GLOBAL ELEMENT STYLES + ACCESSIBILITY
+   ------------------------------------------------------------ */
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-surface);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Consistent, visible focus ring everywhere — don't rely on
+     browser defaults, and never use outline: none without a
+     replacement. This is the #1 accessibility gap in most apps. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Respect the user's OS-level motion preference. Anyone with
+     vestibular disorders can disable animations at the system
+     level — this makes sure the app actually listens. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Tabular numbers for data-heavy tables */
+  .tabular-nums {
+    font-feature-settings: 'tnum';
+  }
+
+  /* ------------------------------------------------------------
+     TABLES — global defaults so every <table> looks consistent
+     without repeating classes in every page/component.
+     Wrap tables in a `.table-container` for rounded corners +
+     horizontal scroll on small screens.
+     ------------------------------------------------------------ */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    color: var(--color-fg);
+  }
+
+  thead {
+    background: var(--color-surface-raised);
+  }
+
+  th {
+    padding-block: 0.75rem;
+    padding-inline: 1rem;
+    text-align: start;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--color-fg-muted);
+    border-block-end: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding-block: 0.75rem;
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  tbody tr {
+    transition: background var(--transition-fast);
+  }
+
+  tbody tr:hover {
+    background: var(--color-surface-raised);
+  }
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface-400) transparent;
+  }
+
+  /* Chrome, Edge, Safari */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-track-piece,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-400);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-surface-500);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background-color: var(--color-brand-500);
+  }
+
+  /* Dark */
+  .dark * {
+    scrollbar-color: var(--color-surface-600) transparent;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-600);
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-surface-500);
+  }
+
+  .dark ::-webkit-scrollbar-thumb:active {
+    background-color: var(--color-brand-400);
+  }
+}
+
+@utility table-container {
+  overflow-x: auto;
+  border-radius: --value(--radius-*, --default(--radius-card));
+}
+
+/* ------------------------------------------------------------
+   USAGE NOTES
+   ------------------------------------------------------------
+   Dark mode toggle (JS):
+     document.documentElement.classList.toggle('dark')
+   Respect system preference on load:
+     if (matchMedia('(prefers-color-scheme: dark)').matches)
+       document.documentElement.classList.add('dark')
+
+   Native v4.3 utilities (no custom code needed):
+     Scrollbars:      scrollbar-thin scrollbar-thumb-brand-600 scrollbar-track-neutral-100
+     Zoom:            zoom-100 / zoom-[1.1]
+     Tab size:        tab-2 / tab-8
+     Size container:  @container-size + h-[50cqb]
+     Logical spacing: mbs-4 mbe-4 pbs-6 pbe-6 inset-s-0 inset-e-4
+
+   Custom breakpoint usage:
+     <div class="p-4 xs:p-6 3xl:p-12">...</div>
+
+   Animation usage:
+     <div class="animate-fade-in">...</div>
+     <div class="animate-slide-up">...</div>
+   ------------------------------------------------------------ */

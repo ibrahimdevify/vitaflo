@@ -1,65 +1,62 @@
-import { useEffect, useState } from "react";
-import { trendsAPI } from "../services/api";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import {
+  Activity,
+  Filter,
+  Loader2,
+  Search,
+  TrendingUp,
+  Wind,
+} from 'lucide-react';
+import { useState } from 'react';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { toast } from 'sonner';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import {
-  TrendingUp,
-  Activity,
-  Wind,
-  Search,
-  Loader2,
-  Calendar,
-  Filter,
-  UserRound,
-  ChevronDown,
-} from "lucide-react";
-import { toast } from "sonner";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
+} from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { trendsAPI } from '../services/api';
 
 export default function Trends() {
-  const [userId, setUserId] = useState("");
+  const [userId, setUserId] = useState('');
   const [spirometryTrends, setSpirometryTrends] = useState([]);
   const [iaqTrends, setIaqTrends] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("spirometry");
+  const [activeTab, setActiveTab] = useState('spirometry');
   const [stats, setStats] = useState(null);
 
   // Date range
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().getFullYear() - 1, 0, 1)
       .toISOString()
-      .split("T")[0],
-    end: new Date().toISOString().split("T")[0],
+      .split('T')[0],
+    end: new Date().toISOString().split('T')[0],
   });
 
   const loadTrends = async () => {
     if (!userId.trim()) {
-      toast.error("Please enter a Patient ID, Username, or Email");
+      toast.error('Please enter a Patient ID, Username, or Email');
       return;
     }
     try {
       setLoading(true);
-      if (activeTab === "spirometry") {
+      if (activeTab === 'spirometry') {
         const res = await trendsAPI.getSpirometry(
           userId.trim(),
           dateRange.start,
-          dateRange.end,
+          dateRange.end
         );
         const data = (res.data.data || []).filter((d) => d.fev1 || d.fvc);
 
@@ -76,78 +73,78 @@ export default function Trends() {
 
         setSpirometryTrends(
           data.map((d) => ({
-            date: new Date(d.dbdate).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "2-digit",
+            date: new Date(d.dbdate).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: '2-digit',
             }),
             fev1: d.fev1 ? parseFloat(d.fev1.toFixed(2)) : null,
             fvc: d.fvc ? parseFloat(d.fvc.toFixed(2)) : null,
             pefr: d.pefr ? parseFloat(d.pefr.toFixed(0)) : null,
             fef2575: d.fef2575 ? parseFloat(d.fef2575.toFixed(2)) : null,
             fev1_perc: d.fev1_perc ? parseFloat(d.fev1_perc.toFixed(1)) : null,
-          })),
+          }))
         );
-        if (data.length === 0) toast.info("No spirometry data found");
-      } else if (activeTab === "iaq") {
+        if (data.length === 0) toast.info('No spirometry data found');
+      } else if (activeTab === 'iaq') {
         const res = await trendsAPI.getIAQ(
           userId.trim(),
           dateRange.start,
-          dateRange.end,
+          dateRange.end
         );
         const data = res.data.data || [];
         setIaqTrends(
           data.map((d) => ({
-            date: new Date(d.dbdate).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
+            date: new Date(d.dbdate).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
             }),
             pm25: d.pm25,
             pm10: d.pm10,
             temperature: d.temperature,
             humidity: d.humidity,
-          })),
+          }))
         );
-        if (data.length === 0) toast.info("No air quality data found");
+        if (data.length === 0) toast.info('No air quality data found');
       }
     } catch (err) {
-      toast.error("Failed to load trends");
+      toast.error('Failed to load trends');
     } finally {
       setLoading(false);
     }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") loadTrends();
+    if (e.key === 'Enter') loadTrends();
   };
 
   // Quick select presets
   const presets = [
     {
-      label: "1M",
+      label: '1M',
       start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
         .toISOString()
-        .split("T")[0],
+        .split('T')[0],
     },
     {
-      label: "3M",
+      label: '3M',
       start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
         .toISOString()
-        .split("T")[0],
+        .split('T')[0],
     },
     {
-      label: "6M",
+      label: '6M',
       start: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
         .toISOString()
-        .split("T")[0],
+        .split('T')[0],
     },
     {
-      label: "1Y",
+      label: '1Y',
       start: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
         .toISOString()
-        .split("T")[0],
+        .split('T')[0],
     },
-    { label: "All", start: "2020-01-01" },
+    { label: 'All', start: '2020-01-01' },
   ];
 
   return (
@@ -186,7 +183,7 @@ export default function Trends() {
                 ) : (
                   <TrendingUp className="h-4 w-4 mr-2" />
                 )}
-                {loading ? "Loading..." : "Load Trends"}
+                {loading ? 'Loading...' : 'Load Trends'}
               </Button>
             </div>
 
@@ -235,50 +232,50 @@ export default function Trends() {
       </Card>
 
       {/* Stats Cards */}
-      {stats && activeTab === "spirometry" && (
+      {stats && activeTab === 'spirometry' && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
             {
-              label: "Latest FEV1",
+              label: 'Latest FEV1',
               value: stats.latest?.fev1?.toFixed(2),
-              unit: "L",
-              color: "text-blue-600",
-              bg: "bg-blue-50",
+              unit: 'L',
+              color: 'text-blue-600',
+              bg: 'bg-blue-50',
             },
             {
-              label: "Latest FVC",
+              label: 'Latest FVC',
               value: stats.latest?.fvc?.toFixed(2),
-              unit: "L",
-              color: "text-green-600",
-              bg: "bg-green-50",
+              unit: 'L',
+              color: 'text-green-600',
+              bg: 'bg-green-50',
             },
             {
-              label: "Best FEV1",
+              label: 'Best FEV1',
               value: stats.bestFev1?.toFixed(2),
-              unit: "L",
-              color: "text-purple-600",
-              bg: "bg-purple-50",
+              unit: 'L',
+              color: 'text-purple-600',
+              bg: 'bg-purple-50',
             },
             {
-              label: "Best FVC",
+              label: 'Best FVC',
               value: stats.bestFvc?.toFixed(2),
-              unit: "L",
-              color: "text-teal-600",
-              bg: "bg-teal-50",
+              unit: 'L',
+              color: 'text-teal-600',
+              bg: 'bg-teal-50',
             },
             {
-              label: "Best PEFR",
+              label: 'Best PEFR',
               value: stats.bestPefr?.toFixed(0),
-              unit: "L/s",
-              color: "text-amber-600",
-              bg: "bg-amber-50",
+              unit: 'L/s',
+              color: 'text-amber-600',
+              bg: 'bg-amber-50',
             },
           ].map((s, i) => (
             <Card key={i} className={`${s.bg} border-0`}>
               <CardContent className="pt-3 pb-3 text-center">
                 <p className="text-xs text-slate-500">{s.label}</p>
                 <p className={`text-xl font-bold ${s.color}`}>
-                  {s.value || "-"}{" "}
+                  {s.value || '-'}{' '}
                   <span className="text-xs font-normal">{s.unit}</span>
                 </p>
               </CardContent>
@@ -291,23 +288,23 @@ export default function Trends() {
       <div className="flex gap-2 border-b pb-3">
         {[
           {
-            key: "spirometry",
-            label: "Spirometry",
+            key: 'spirometry',
+            label: 'Spirometry',
             icon: Activity,
-            desc: "Lung function trends",
+            desc: 'Lung function trends',
           },
           {
-            key: "iaq",
-            label: "Air Quality",
+            key: 'iaq',
+            label: 'Air Quality',
             icon: Wind,
-            desc: "IAQ sensor data",
+            desc: 'IAQ sensor data',
           },
         ].map((tab) => (
           <Button
             key={tab.key}
-            variant={activeTab === tab.key ? "default" : "ghost"}
+            variant={activeTab === tab.key ? 'default' : 'ghost'}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-col h-auto py-3 px-5 ${activeTab === tab.key ? "bg-green-600 text-white" : "text-slate-500 hover:text-slate-700"}`}
+            className={`flex-col h-auto py-3 px-5 ${activeTab === tab.key ? 'bg-green-600 text-white' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <div className="flex items-center gap-2">
               <tab.icon className="h-4 w-4" />
@@ -325,7 +322,7 @@ export default function Trends() {
         </div>
       ) : (
         <>
-          {activeTab === "spirometry" && (
+          {activeTab === 'spirometry' && (
             <div className="space-y-6">
               {spirometryTrends.length > 0 ? (
                 <>
@@ -359,8 +356,8 @@ export default function Trends() {
                             <YAxis tick={{ fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{
-                                borderRadius: "8px",
-                                border: "1px solid #e2e8f0",
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
                               }}
                             />
                             <Legend />
@@ -429,8 +426,8 @@ export default function Trends() {
                             <YAxis tick={{ fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{
-                                borderRadius: "8px",
-                                border: "1px solid #e2e8f0",
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
                               }}
                             />
                             <Legend />
@@ -482,7 +479,7 @@ export default function Trends() {
             </div>
           )}
 
-          {activeTab === "iaq" && (
+          {activeTab === 'iaq' && (
             <div className="space-y-6">
               {iaqTrends.length > 0 ? (
                 <>
@@ -516,8 +513,8 @@ export default function Trends() {
                             <YAxis tick={{ fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{
-                                borderRadius: "8px",
-                                border: "1px solid #e2e8f0",
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
                               }}
                             />
                             <Legend />
@@ -574,8 +571,8 @@ export default function Trends() {
                             />
                             <Tooltip
                               contentStyle={{
-                                borderRadius: "8px",
-                                border: "1px solid #e2e8f0",
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
                               }}
                             />
                             <Legend />

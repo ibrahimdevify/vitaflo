@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import axios from 'axios';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { authAPI } from '../services/api';
 
 const AuthContext = createContext(null);
@@ -6,13 +7,36 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false); // 🔧 New state
+
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem('token');
+          setUser(null);
+          setUnauthorized(true); // 🔧 Trigger redirect via state
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      authAPI.me()
-        .then(res => setUser(res.data.user || res.data))
-        .catch(() => localStorage.removeItem('token'))
+      authAPI
+        .me()
+        .then((res) => setUser(res.data.user || res.data))
+        .catch(() => {
+          localStorage.removeItem('token');
+          setUnauthorized(true); // 🔧 401 on initial load
+        })
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
@@ -24,6 +48,7 @@ export const AuthProvider = ({ children }) => {
     const { access_token, user: userData } = res.data;
     localStorage.setItem('token', access_token);
     setUser(userData);
+    setUnauthorized(false);
     return userData;
   };
 
@@ -33,7 +58,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider
+      value={{ user, login, logout, loading, unauthorized }}
+    >
       {children}
     </AuthContext.Provider>
   );
