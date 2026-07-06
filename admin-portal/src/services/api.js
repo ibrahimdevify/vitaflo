@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = 'https://api-vitalflow.devifysolutions.net/api';
+const API_BASE =
+  import.meta.env.VITE_API_URL || 'https://vitalflow-api-6ile.onrender.com';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -37,7 +38,8 @@ export const patientsAPI = {
   createAttributes: (id, data) => api.post(`/patients/${id}/attributes`, data),
   updateAttributes: (id, data) => api.put(`/patients/${id}/attributes`, data),
   getPrescriptions: (id) => api.get(`/patients/${id}/prescriptions`),
-  createPrescription: (id, data) => api.post(`/patients/${id}/prescriptions`, data),
+  createPrescription: (id, data) =>
+    api.post(`/patients/${id}/prescriptions`, data),
   getGroups: () => api.get('/patients/groups'),
   createGroup: (data) => api.post('/patients/groups', data),
   exists: (params) => api.get('/patients/exists', { params }),
@@ -51,7 +53,8 @@ export const cliniciansAPI = {
   getOverview: () => api.get('/clinicians/overview'),
   getPatients: (id) => api.get(`/clinicians/${id}/patients`),
   assignPatient: (id, data) => api.post(`/clinicians/${id}/patients`, data),
-  unassignPatient: (id, patientId) => api.delete(`/clinicians/${id}/patients/${patientId}`),
+  unassignPatient: (id, patientId) =>
+    api.delete(`/clinicians/${id}/patients/${patientId}`),
   resetPassword: (data) => api.post('/clinicians/reset-password', data),
 };
 
@@ -88,7 +91,8 @@ export const accountsAPI = {
 };
 
 export const spirometryAPI = {
-  getByUser: (userId, params) => api.get(`/spirometry/user/${userId}`, { params }),
+  getByUser: (userId, params) =>
+    api.get(`/spirometry/user/${userId}`, { params }),
   getLatest: () => api.get('/spirometry/latest'),
   getAll: (params) => api.get('/spirometry/all', { params }),
   sync: (data) => api.post('/user_observations/sync_plus', data),
@@ -112,9 +116,12 @@ export const alertsAPI = {
 };
 
 export const trendsAPI = {
-  getSpirometry: (userId, start, end) => api.get(`/trends/spirometry/${userId}/${start}/${end}`),
-  getIAQ: (userId, start, end) => api.get(`/trends/iaq/${userId}/${start}/${end}`),
-  getAQI: (userId, start, end) => api.get(`/trends/aqi/${userId}/${start}/${end}`),
+  getSpirometry: (userId, start, end) =>
+    api.get(`/trends/spirometry/${userId}/${start}/${end}`),
+  getIAQ: (userId, start, end) =>
+    api.get(`/trends/iaq/${userId}/${start}/${end}`),
+  getAQI: (userId, start, end) =>
+    api.get(`/trends/aqi/${userId}/${start}/${end}`),
 };
 
 export const predictedAPI = {

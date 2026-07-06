@@ -105,7 +105,7 @@ export default function PatientsTable({ patients, loading, onViewPatient }) {
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <div className="inline-flex items-center justify-center h-8 w-8 rounded-[var(--radius-control)] cursor-pointer hover:bg-surface-raised transition-colors">
+                    <div className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors">
                       <MoreHorizontal className="h-4 w-4" />
                     </div>
                   </DropdownMenuTrigger>

@@ -1,8 +1,7 @@
 import axios from 'axios';
 
 const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  'https://api-vitalflow.devifysolutions.net/api';
+  import.meta.env.VITE_API_URL || 'https://vitalflow-api-6ile.onrender.com';
 
 const api = axios.create({
   baseURL: API_BASE,

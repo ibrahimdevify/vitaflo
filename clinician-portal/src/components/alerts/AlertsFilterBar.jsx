@@ -82,7 +82,7 @@ export default function AlertsFilterBar({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 {/* 🔧 Div instead of Button — no nested <button> */}
-                <div className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-[var(--radius-control)] border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
+                <div className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
                   <Filter className="h-3.5 w-3.5" />
                   {filterOptions[filterRead]}
                   <ChevronDown className="h-3 w-3 ml-1" />
