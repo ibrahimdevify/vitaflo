@@ -417,7 +417,7 @@ async function migrateAttributes(attrsCsv) {
 
             await prisma.vf_attributes.create({
                 data: {
-                    pd_id: pdId,
+                    patient: { connect: { pd_id: pdId } },
                     first_name: truncate(a.first_name, 100) || '',
                     last_name: truncate(a.last_name, 100) || '',
                     phone: a.phone ? truncate(a.phone, 30) : null,
