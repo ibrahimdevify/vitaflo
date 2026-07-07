@@ -1,80 +1,112 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/clinic.webp" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<head>
-  <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/clinic.webp" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ─── Primary Meta ─────────────────────────────── -->
+    <title>VitalFlow — Admin Portal</title>
+    <meta
+      name="description"
+      content="VitalFlow Admin Portal — Manage clinicians, patients, devices, and system settings. Secure administration dashboard for healthcare management."
+    />
+    <meta
+      name="keywords"
+      content="admin portal, clinic management, healthcare admin, patient management, clinician management"
+    />
+    <meta name="author" content="VitalFlow" />
+    <meta name="robots" content="noindex, nofollow" />
 
-  <!-- ─── Primary Meta ─────────────────────────────── -->
-  <title>VitalFlow — Admin Portal</title>
-  <meta name="description"
-    content="VitalFlow Admin Portal — Manage clinicians, patients, devices, and system settings. Secure administration dashboard for healthcare management." />
-  <meta name="keywords"
-    content="admin portal, clinic management, healthcare admin, patient management, clinician management" />
-  <meta name="author" content="VitalFlow" />
-  <meta name="robots" content="noindex, nofollow" />
+    <!-- ─── Open Graph (Social Sharing) ──────────────── -->
+    <meta property="og:title" content="VitalFlow — Admin Portal" />
+    <meta
+      property="og:description"
+      content="Secure administration dashboard for healthcare management. Manage clinicians, patients, and system settings."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/clinic.webp" />
+    <meta property="og:site_name" content="VitalFlow Admin Portal" />
 
-  <!-- ─── Open Graph (Social Sharing) ──────────────── -->
-  <meta property="og:title" content="VitalFlow — Admin Portal" />
-  <meta property="og:description"
-    content="Secure administration dashboard for healthcare management. Manage clinicians, patients, and system settings." />
-  <meta property="og:type" content="website" />
-  <meta property="og:image" content="/clinic.webp" />
-  <meta property="og:site_name" content="VitalFlow Admin Portal" />
+    <!-- ─── Twitter Card ─────────────────────────────── -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="VitalFlow — Admin Portal" />
+    <meta
+      name="twitter:description"
+      content="Secure administration dashboard for healthcare management."
+    />
+    <meta name="twitter:image" content="/clinic.webp" />
 
-  <!-- ─── Twitter Card ─────────────────────────────── -->
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="VitalFlow — Admin Portal" />
-  <meta name="twitter:description" content="Secure administration dashboard for healthcare management." />
-  <meta name="twitter:image" content="/clinic.webp" />
+    <!-- ─── Theme Color ──────────────────────────────── -->
+    <meta name="theme-color" content="#16a34a" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#16a34a"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#0f172a"
+    />
 
-  <!-- ─── Theme Color ──────────────────────────────── -->
-  <meta name="theme-color" content="#16a34a" />
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#16a34a" />
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a" />
+    <!-- ─── PWA / Web App ────────────────────────────── -->
+    <meta name="application-name" content="VitalFlow Admin" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="VitalFlow Admin" />
+    <link rel="apple-touch-icon" href="/clinic.webp" />
 
-  <!-- ─── PWA / Web App ────────────────────────────── -->
-  <meta name="application-name" content="VitalFlow Admin" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="VitalFlow Admin" />
-  <link rel="apple-touch-icon" href="/clinic.webp" />
-
-  <!-- ─── Security ─────────────────────────────────── -->
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta http-equiv="Content-Security-Policy" content="
+    <!-- ─── Security ─────────────────────────────────── -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
     default-src 'self';
     script-src 'self' 'unsafe-inline' 'unsafe-eval';
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' data: blob: https:;
     font-src 'self' data: https://fonts.gstatic.com;
-    connect-src 'self' https://api-vitalflow.devifysolutions.net;
-  " />
+    connect-src 'self' https://vitalflow-api-6ile.onrender.com;
+  "
+    />
 
-  <!-- ─── DNS Prefetch (Performance) ──────────────── -->
-  <link rel="dns-prefetch" href="https://api-vitalflow.devifysolutions.net" />
-  <link rel="preconnect" href="https://api-vitalflow.devifysolutions.net" crossorigin />
+    <!-- ─── DNS Prefetch (Performance) ──────────────── -->
+    <link rel="dns-prefetch" href="https://vitalflow-api-6ile.onrender.com" />
+    <link
+      rel="preconnect"
+      href="https://vitalflow-api-6ile.onrender.com"
+      crossorigin
+    />
 
-  <!-- ─── Fonts Preload ────────────────────────────── -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Maven+Pro:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet" />
-</head>
+    <!-- ─── Fonts Preload ────────────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Maven+Pro:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
 
-<body>
-  <noscript>
-    <div style="text-align:center;padding:2rem;font-family:system-ui,sans-serif;">
-      <h1>JavaScript Required</h1>
-      <p>Please enable JavaScript to access the VitalFlow Admin Portal.</p>
-    </div>
-  </noscript>
+  <body>
+    <noscript>
+      <div
+        style="
+          text-align: center;
+          padding: 2rem;
+          font-family: system-ui, sans-serif;
+        "
+      >
+        <h1>JavaScript Required</h1>
+        <p>Please enable JavaScript to access the VitalFlow Admin Portal.</p>
+      </div>
+    </noscript>
 
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
-</body>
-
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
