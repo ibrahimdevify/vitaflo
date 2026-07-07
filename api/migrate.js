@@ -1,23 +1,41 @@
+#!/usr/bin/env node
 /**
  * VitalFlow PostgreSQL -> MySQL (Prisma) migration script
+ * ========================================================
  *
- * Run with:  node migrate.js
+ * USAGE
+ *   node migrate.js               Run the full migration
+ *   node migrate.js --validate    Preflight only: parse & sanity-check every
+ *                                 CSV and report problems. No DB writes.
+ *   node migrate.js --concurrency=20   Override the default batch concurrency
  *
- * Reads CSV exports from ./migration and loads them into the MySQL schema
- * via Prisma. Safe to re-run: it rebuilds its UUID -> INT id maps from a
- * local idmaps.json cache (fast path) and falls back to reconciling against
- * existing DB rows via unique fields (email, etc.) if the cache is missing,
- * so a second run will skip records that already exist instead of erroring
- * or duplicating them.
+ * WHAT THIS DOES
+ *   Reads CSV exports from ./migration and loads them into the MySQL schema
+ *   via Prisma, in this order (per spec):
+ *     Accounts -> Groups -> Users (+ users created for orphan patient/
+ *     clinician rows) -> Patients -> Attributes -> Clinicians -> Admins
  *
- * Migration order (per spec):
- *   Accounts -> Groups -> Users (+ users created for orphan patient/clinician
- *   rows) -> Patients -> Attributes -> Clinicians -> Admins
+ * SAFE TO RE-RUN
+ *   - Users are reconciled by their unique `email`.
+ *   - Accounts/Groups have no natural unique column, so this script stashes
+ *     the source UUID inside their existing *_attributes side tables
+ *     (`vf_account_attributes.extra` / `vf_patient_group_attributes.extra`)
+ *     the first time each row is created. This survives an ephemeral
+ *     filesystem (e.g. Render without a persistent disk wiping local
+ *     idmaps.json on every restart) because the UUID lives in MySQL, not
+ *     on disk.
+ *   - idmaps.json is still used as a fast-path cache; it's optional.
+ *   - Every create is preceded by an existence check on the relevant unique
+ *     field, so a second run skips what's already there instead of erroring
+ *     or duplicating it.
  *
- * Notes / things NOT migrated because no Prisma model was provided for them:
- *   - address.csv   (no `address` model in the target schema given)
- *   - fcm_tokens.csv (no `fcm_tokens` model in the target schema given)
- *   These are easy to add later once the corresponding Prisma models exist.
+ * NOT MIGRATED (no corresponding Prisma model was provided)
+ *   - address.csv, fcm_tokens.csv
+ *
+ * KNOWN ASSUMPTION TO VERIFY
+ *   - dc_doctor_details.ps_id_fk is a required column with no source data
+ *     and no specialization table in the schema. It's defaulted to
+ *     DEFAULT_SPECIALIZATION_ID below. Confirm that's valid for your DB.
  */
 
 const { PrismaClient } = require('@prisma/client');
@@ -25,27 +43,42 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const prisma = new PrismaClient();
+// ---------------------------------------------------------------------------
+// CLI flags
+// ---------------------------------------------------------------------------
+const args = process.argv.slice(2);
+const VALIDATE_ONLY = args.includes('--validate') || args.includes('--validate-only');
+const concurrencyArg = args.find(a => a.startsWith('--concurrency='));
+const CONCURRENCY = concurrencyArg ? parseInt(concurrencyArg.split('=')[1], 10) : 10;
 
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
 const MIGRATION_DIR = path.join(__dirname, 'migration');
 const IDMAP_FILE = path.join(__dirname, 'idmaps.json');
+const REPORT_FILE = path.join(__dirname, 'migration-report.json');
 const DEFAULT_PASSWORD = 'Welcome2026!';
 const BATCH_LOG_EVERY = 500;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// dc_doctor_details.ps_id_fk is required in the schema but there is no
+// specialization data anywhere in the source CSVs and no `ps` table in the
+// provided Prisma schema to look one up in. Defaulting to 1 so the row can
+// be created at all - if your DB has a real specializations table with no
+// row at id=1, change this (or set MIGRATION_DEFAULT_PS_ID env var) or the
+// insert will fail with a foreign key constraint error.
+const DEFAULT_SPECIALIZATION_ID = parseInt(process.env.MIGRATION_DEFAULT_PS_ID || '1', 10);
+
+const prisma = VALIDATE_ONLY ? null : new PrismaClient();
 
 // ---------------------------------------------------------------------------
-// idMaps: uuid (or other source key) -> new INT id, one map per entity type.
-// Persisted to disk so re-runs don't have to rediscover everything by
-// querying the DB row-by-row, but we also reconcile against the DB (see
-// rebuildFromDb()) so the script is correct even if idmaps.json is deleted.
+// idMaps: uuid -> new INT id, one map per entity type. Persisted to disk as
+// a fast-path cache; rebuildFromDb() reconciles against MySQL directly so
+// correctness never depends on this file surviving a restart.
 // ---------------------------------------------------------------------------
-const maps = {
-    account: {},   // account.csv id (UUID)          -> vf_account.id
-    group: {},     // patient_group.csv id (UUID)    -> vf_patient_group.id
-    user: {},      // users.csv id / any andeuser_ptr_id (UUID) -> dc_users.user_id
-};
-
-// pd cache: dc_users.user_id -> dc_patient_details.pd_id (avoids refetching)
-const pdByUserId = {};
+const maps = { account: {}, group: {}, user: {} };
+const pdByUserId = {}; // dc_users.user_id -> dc_patient_details.pd_id
 
 let phoneCounter = 0;
 function uniquePhone() {
@@ -69,16 +102,31 @@ function loadIdMaps() {
         }
     }
 }
-
 function saveIdMaps() {
-    fs.writeFileSync(IDMAP_FILE, JSON.stringify(maps, null, 2));
+    try {
+        fs.writeFileSync(IDMAP_FILE, JSON.stringify(maps, null, 2));
+    } catch (e) {
+        console.warn('Could not write idmaps.json (non-fatal):', e.message);
+    }
+}
+
+// Save on any interruption so progress isn't lost mid-run.
+let shuttingDown = false;
+function registerGracefulShutdown() {
+    const handler = (signal) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(`\nReceived ${signal}, saving idmaps.json before exit...`);
+        saveIdMaps();
+        prisma?.$disconnect().finally(() => process.exit(1));
+    };
+    process.on('SIGINT', handler);
+    process.on('SIGTERM', handler);
 }
 
 // ---------------------------------------------------------------------------
-// Proper CSV parser: handles quoted fields, embedded commas, embedded
-// newlines inside quotes, and escaped "" quotes. The naive split('\n') /
-// split(',') approach breaks on any multi-line quoted field, which is a
-// likely cause of the "missing records" problem described in the brief.
+// CSV parser: RFC4180-style, handles quoted fields, embedded commas,
+// embedded newlines inside quotes, and escaped "" quotes.
 // ---------------------------------------------------------------------------
 function parseCSV(filename) {
     const filepath = path.join(MIGRATION_DIR, filename);
@@ -96,51 +144,20 @@ function parseCSV(filename) {
 
     while (i < len) {
         const char = content[i];
-
         if (inQuotes) {
             if (char === '"') {
-                if (content[i + 1] === '"') { // escaped quote
-                    field += '"';
-                    i += 2;
-                    continue;
-                }
-                inQuotes = false;
-                i++;
-                continue;
+                if (content[i + 1] === '"') { field += '"'; i += 2; continue; }
+                inQuotes = false; i++; continue;
             }
-            field += char;
-            i++;
-            continue;
+            field += char; i++; continue;
         }
-
-        if (char === '"') {
-            inQuotes = true;
-            i++;
-            continue;
-        }
-        if (char === ',') {
-            row.push(field);
-            field = '';
-            i++;
-            continue;
-        }
+        if (char === '"') { inQuotes = true; i++; continue; }
+        if (char === ',') { row.push(field); field = ''; i++; continue; }
         if (char === '\r') { i++; continue; }
-        if (char === '\n') {
-            row.push(field);
-            field = '';
-            rows.push(row);
-            row = [];
-            i++;
-            continue;
-        }
-        field += char;
-        i++;
+        if (char === '\n') { row.push(field); field = ''; rows.push(row); row = []; i++; continue; }
+        field += char; i++;
     }
-    // flush last field/row (files may or may not end with a trailing newline)
-    if (field.length > 0 || row.length > 0) {
-        row.push(field);
-        rows.push(row);
-    }
+    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
     if (rows.length === 0) return [];
 
     const headers = rows[0].map(h => h.trim());
@@ -155,9 +172,10 @@ function parseCSV(filename) {
     return out;
 }
 
-function toBool(v) {
-    return String(v).trim().toLowerCase() === 'true';
-}
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+function toBool(v) { return String(v).trim().toLowerCase() === 'true'; }
 function toFloatOrNull(v) {
     if (v === undefined || v === null || String(v).trim() === '') return null;
     const n = parseFloat(v);
@@ -172,30 +190,178 @@ function truncate(v, len) {
     if (v === undefined || v === null) return null;
     return String(v).substring(0, len);
 }
+function isUuid(v) { return typeof v === 'string' && UUID_RE.test(v.trim()); }
+
+/**
+ * Run `workerFn` over `items` with bounded concurrency, instead of either
+ * fully sequential (slow for 10k rows) or a single unbounded Promise.all
+ * (can exhaust the DB connection pool). Each item's errors are caught and
+ * logged individually so one bad row never aborts the batch.
+ */
+async function runConcurrent(items, concurrency, label, workerFn) {
+    let processed = 0;
+    let cursor = 0;
+    const total = items.length;
+
+    async function worker() {
+        while (true) {
+            const idx = cursor++;
+            if (idx >= total) return;
+            try {
+                await workerFn(items[idx], idx);
+            } catch (e) {
+                console.error(`  ${label} error: ${e.message}`);
+            }
+            processed++;
+            if (processed % BATCH_LOG_EVERY === 0 || processed === total) {
+                console.log(`  ${label}: processed ${processed}/${total}`);
+            }
+        }
+    }
+    const workers = Array.from({ length: Math.min(concurrency, Math.max(total, 1)) }, worker);
+    await Promise.all(workers);
+}
 
 // ---------------------------------------------------------------------------
-// Rebuild maps from existing DB rows for anything the idmaps.json cache
-// didn't already cover. Uses fields that are stable/derivable from the
-// source UUID (email for users, name for accounts/groups) so re-running
-// the script after losing the cache still converges correctly.
+// VALIDATION MODE - no DB writes, just sanity-checks the CSV export itself.
 // ---------------------------------------------------------------------------
+const REQUIRED_COLUMNS = {
+    'users.csv': ['id', 'username', 'email', 'password', 'date_joined', 'is_active'],
+    'patient.csv': ['andeuser_ptr_id', 'access_code', 'graph_view', 'status', 'rpm_consent', 'assigned_clinician_id', 'patient_group_id'],
+    'attribute.csv': ['id', 'first_name', 'last_name', 'dob', 'height', 'weight', 'gender', 'patient_id', 'account_type'],
+    'clinic.csv': ['andeuser_ptr_id', 'title', 'account_id'],
+    'account_admin.csv': ['andeuser_ptr_id', 'is_staff'],
+    'account.csv': ['id', 'name', 'creation_date'],
+    'patient_group.csv': ['id', 'name', 'creation_date', 'account_id'],
+};
+
+function validateCsvs() {
+    console.log('=== VALIDATE MODE: no database writes will be made ===\n');
+    const data = {};
+    const problems = [];
+    const info = [];
+
+    for (const [filename, requiredCols] of Object.entries(REQUIRED_COLUMNS)) {
+        const rows = parseCSV(filename);
+        data[filename] = rows;
+        if (rows.length === 0) {
+            problems.push(`${filename}: 0 rows parsed (missing file, or empty after header)`);
+            continue;
+        }
+        const actualCols = new Set(Object.keys(rows[0]));
+        const missingCols = requiredCols.filter(c => !actualCols.has(c));
+        if (missingCols.length) {
+            problems.push(`${filename}: missing expected column(s): ${missingCols.join(', ')}`);
+        }
+        info.push(`${filename}: ${rows.length} rows, columns: ${Object.keys(rows[0]).join(', ')}`);
+    }
+
+    console.log(info.join('\n'));
+
+    if (data['users.csv']?.length) {
+        const ids = data['users.csv'].map(u => u.id);
+        const badUuids = ids.filter(id => id && !isUuid(id));
+        const dupes = ids.length - new Set(ids).size;
+        const badEmails = data['users.csv'].filter(u => u.email && !EMAIL_RE.test(u.email)).length;
+        if (badUuids.length) problems.push(`users.csv: ${badUuids.length} row(s) with malformed id (not a UUID)`);
+        if (dupes) problems.push(`users.csv: ${dupes} duplicate id value(s)`);
+        if (badEmails) problems.push(`users.csv: ${badEmails} row(s) with malformed email (will fall back to username-based email)`);
+    }
+
+    if (data['patient.csv']?.length && data['users.csv']?.length) {
+        const userIds = new Set(data['users.csv'].map(u => u.id));
+        const orphanPatients = data['patient.csv'].filter(p => p.andeuser_ptr_id && !userIds.has(p.andeuser_ptr_id)).length;
+        console.log(`\npatient.csv rows with no matching users.csv row (will get an auto-created user): ${orphanPatients}`);
+    }
+
+    if (data['clinic.csv']?.length && data['users.csv']?.length) {
+        const userIds = new Set(data['users.csv'].map(u => u.id));
+        const orphanClinicians = data['clinic.csv'].filter(c => c.andeuser_ptr_id && !userIds.has(c.andeuser_ptr_id)).length;
+        console.log(`clinic.csv rows with no matching users.csv row (will get an auto-created user): ${orphanClinicians}`);
+    }
+
+    if (data['clinic.csv']?.length && data['account.csv']?.length) {
+        const accountIds = new Set(data['account.csv'].map(a => a.id));
+        const missingHospital = data['clinic.csv'].filter(c => c.account_id && !accountIds.has(c.account_id)).length;
+        if (missingHospital) problems.push(`clinic.csv: ${missingHospital} row(s) reference an account_id not found in account.csv (dc_doctor_details requires a hospital - these rows will be skipped for that table)`);
+    }
+
+    if (data['patient_group.csv']?.length && data['account.csv']?.length) {
+        const accountIds = new Set(data['account.csv'].map(a => a.id));
+        const missingAccount = data['patient_group.csv'].filter(g => g.account_id && !accountIds.has(g.account_id)).length;
+        if (missingAccount) problems.push(`patient_group.csv: ${missingAccount} row(s) reference an account_id not found in account.csv (account_id is required on vf_patient_group - these rows will be skipped)`);
+    }
+
+    if (data['attribute.csv']?.length) {
+        const dupPatientIds = data['attribute.csv'].map(a => a.patient_id);
+        const dupes = dupPatientIds.length - new Set(dupPatientIds.filter(Boolean)).size;
+        if (dupes) problems.push(`attribute.csv: ${dupes} duplicate patient_id value(s) (vf_attributes.pd_id is unique - only the first per patient will be kept)`);
+    }
+
+    console.log('\n=== VALIDATION RESULT ===');
+    if (problems.length === 0) {
+        console.log('No problems found. Safe to run the full migration: node migrate.js');
+    } else {
+        console.log(`${problems.length} issue(s) found:`);
+        problems.forEach(p => console.log('  - ' + p));
+        console.log('\nThese are warnings, not hard blockers - the migration will skip/log affected rows individually rather than fail outright. Review before running the full migration.');
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Durable UUID stash for accounts/groups (see file header for why).
+// ---------------------------------------------------------------------------
+async function stashAccountUuid(accountId, uuid) {
+    await prisma.vf_account_attributes.upsert({
+        where: { account_id: accountId },
+        create: { account_id: accountId, extra: { source_uuid: uuid } },
+        update: { extra: { source_uuid: uuid } },
+    }).catch(e => console.error(`  could not stash uuid for account ${accountId}: ${e.message}`));
+}
+async function stashGroupUuid(groupId, uuid) {
+    await prisma.vf_patient_group_attributes.upsert({
+        where: { group_id: groupId },
+        create: { group_id: groupId, extra: { source_uuid: uuid } },
+        update: { extra: { source_uuid: uuid } },
+    }).catch(e => console.error(`  could not stash uuid for group ${groupId}: ${e.message}`));
+}
+async function findAccountIdByUuid(uuid) {
+    const attr = await prisma.vf_account_attributes
+        .findFirst({ where: { extra: { path: ['source_uuid'], equals: uuid } } })
+        .catch(() => null);
+    return attr ? attr.account_id : null;
+}
+async function findGroupIdByUuid(uuid) {
+    const attr = await prisma.vf_patient_group_attributes
+        .findFirst({ where: { extra: { path: ['source_uuid'], equals: uuid } } })
+        .catch(() => null);
+    return attr ? attr.group_id : null;
+}
+
 async function rebuildFromDb(accountsCsv, groupsCsv, usersCsv) {
-    // Accounts: match by name (no other unique identifier exists on the row)
     for (const a of accountsCsv) {
         if (!a.id || maps.account[a.id]) continue;
+        const byUuid = await findAccountIdByUuid(a.id);
+        if (byUuid) { maps.account[a.id] = byUuid; continue; }
         const existing = await prisma.vf_account.findFirst({ where: { name: a.name } }).catch(() => null);
-        if (existing) maps.account[a.id] = existing.id;
+        if (existing) {
+            maps.account[a.id] = existing.id;
+            await stashAccountUuid(existing.id, a.id);
+        }
     }
-    // Groups: match by name + account_id
     for (const g of groupsCsv) {
         if (!g.id || maps.group[g.id]) continue;
+        const byUuid = await findGroupIdByUuid(g.id);
+        if (byUuid) { maps.group[g.id] = byUuid; continue; }
         const accountId = maps.account[g.account_id] || undefined;
         const existing = await prisma.vf_patient_group
             .findFirst({ where: { name: g.name, account_id: accountId } })
             .catch(() => null);
-        if (existing) maps.group[g.id] = existing.id;
+        if (existing) {
+            maps.group[g.id] = existing.id;
+            await stashGroupUuid(existing.id, g.id);
+        }
     }
-    // Users: match by email
     for (const u of usersCsv) {
         if (!u.id || maps.user[u.id]) continue;
         const email = u.email || u.username;
@@ -211,25 +377,22 @@ async function rebuildFromDb(accountsCsv, groupsCsv, usersCsv) {
 async function migrateAccounts() {
     const rows = parseCSV('account.csv');
     console.log(`\n--- Accounts (${rows.length} rows) ---`);
-    let created = 0, skipped = 0;
-    for (const [idx, a] of rows.entries()) {
-        if (!a.id) continue;
-        if (maps.account[a.id]) { skipped++; continue; }
-        try {
-            const rec = await prisma.vf_account.create({
-                data: {
-                    name: truncate(a.name, 255) || 'Unnamed Account',
-                    creation_date: toDateOrNull(a.creation_date) || new Date(),
-                },
-            });
-            maps.account[a.id] = rec.id;
-            created++;
-        } catch (e) {
-            console.error(`  account error [${a.id}]: ${e.message}`);
-        }
-        if ((idx + 1) % BATCH_LOG_EVERY === 0) console.log(`  processed ${idx + 1}/${rows.length}`);
-    }
-    console.log(`Accounts: created=${created}, alreadyMapped=${skipped}`);
+    let created = 0, skipped = 0, invalid = 0;
+
+    await runConcurrent(rows, CONCURRENCY, 'accounts', async (a) => {
+        if (!a.id) { invalid++; return; }
+        if (maps.account[a.id]) { skipped++; return; }
+        const rec = await prisma.vf_account.create({
+            data: {
+                name: truncate(a.name, 50) || 'Unnamed Account', // schema caps this at VarChar(50)
+                creation_date: toDateOrNull(a.creation_date) || new Date(),
+            },
+        });
+        maps.account[a.id] = rec.id;
+        await stashAccountUuid(rec.id, a.id);
+        created++;
+    });
+    console.log(`Accounts: created=${created}, alreadyMapped=${skipped}, invalidRows=${invalid}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -238,26 +401,29 @@ async function migrateAccounts() {
 async function migrateGroups() {
     const rows = parseCSV('patient_group.csv');
     console.log(`\n--- Patient Groups (${rows.length} rows) ---`);
-    let created = 0, skipped = 0;
-    for (const [idx, g] of rows.entries()) {
-        if (!g.id) continue;
-        if (maps.group[g.id]) { skipped++; continue; }
-        try {
-            const rec = await prisma.vf_patient_group.create({
-                data: {
-                    name: truncate(g.name, 255) || 'Unnamed Group',
-                    creation_date: toDateOrNull(g.creation_date) || new Date(),
-                    account_id: maps.account[g.account_id] || null,
-                },
-            });
-            maps.group[g.id] = rec.id;
-            created++;
-        } catch (e) {
-            console.error(`  group error [${g.id}]: ${e.message}`);
+    let created = 0, skipped = 0, noAccount = 0;
+
+    await runConcurrent(rows, CONCURRENCY, 'groups', async (g) => {
+        if (!g.id) return;
+        if (maps.group[g.id]) { skipped++; return; }
+        const accountId = maps.account[g.account_id];
+        if (!accountId) {
+            noAccount++;
+            console.error(`  group error [${g.id}]: no matching account for account_id=${g.account_id} (account_id is required, skipping)`);
+            return;
         }
-        if ((idx + 1) % BATCH_LOG_EVERY === 0) console.log(`  processed ${idx + 1}/${rows.length}`);
-    }
-    console.log(`Groups: created=${created}, alreadyMapped=${skipped}`);
+        const rec = await prisma.vf_patient_group.create({
+            data: {
+                name: truncate(g.name, 100) || 'Unnamed Group',
+                creation_date: toDateOrNull(g.creation_date) || new Date(),
+                account_id: accountId,
+            },
+        });
+        maps.group[g.id] = rec.id;
+        await stashGroupUuid(rec.id, g.id);
+        created++;
+    });
+    console.log(`Groups: created=${created}, alreadyMapped=${skipped}, noMatchingAccount=${noAccount}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,71 +432,66 @@ async function migrateGroups() {
 async function migrateUsers(usersCsv, hashedDefaultPassword) {
     console.log(`\n--- Users (${usersCsv.length} rows) ---`);
     let created = 0, skipped = 0;
-    for (const [idx, u] of usersCsv.entries()) {
-        if (!u.id) continue;
-        if (maps.user[u.id]) { skipped++; continue; }
 
-        const email = u.email || u.username || ('user_' + u.id.substring(0, 8) + '@migrated.com');
-        try {
-            let dbUser = await prisma.dc_users.findUnique({ where: { email } }).catch(() => null);
-            if (!dbUser) {
-                dbUser = await prisma.dc_users.create({
-                    data: {
-                        email,
-                        phone: uniquePhone(),
-                        password: hashedDefaultPassword,
-                        f_name: truncate(u.username, 100) || 'Unknown',
-                        l_name: '',
-                        us_id_fk: toBool(u.is_active) ? 1 : 2,
-                        ut_id_fk: 4, // default patient; upgraded to clinician/admin later
-                        is_availible: toBool(u.is_active),
-                        reg_date: toDateOrNull(u.date_joined) || new Date(),
-                    },
-                });
-                created++;
-            }
-            maps.user[u.id] = dbUser.user_id;
-        } catch (e) {
-            console.error(`  user error [${u.id}] (${email}): ${e.message}`);
+    await runConcurrent(usersCsv, CONCURRENCY, 'users', async (u) => {
+        if (!u.id) return;
+        if (maps.user[u.id]) { skipped++; return; }
+
+        const rawEmail = u.email && EMAIL_RE.test(u.email) ? u.email : null;
+        const email = rawEmail || u.username || ('user_' + u.id.substring(0, 8) + '@migrated.com');
+
+        let dbUser = await prisma.dc_users.findUnique({ where: { email } }).catch(() => null);
+        if (!dbUser) {
+            dbUser = await prisma.dc_users.create({
+                data: {
+                    email,
+                    phone: uniquePhone(),
+                    password: hashedDefaultPassword,
+                    f_name: truncate(u.username, 255) || 'Unknown',
+                    l_name: '',
+                    us_id_fk: toBool(u.is_active) ? 1 : 2,
+                    ut_id_fk: 4, // default patient; upgraded to clinician/admin later
+                    is_availible: toBool(u.is_active),
+                    reg_date: toDateOrNull(u.date_joined) || new Date(),
+                },
+            });
+            created++;
         }
-        if ((idx + 1) % BATCH_LOG_EVERY === 0) console.log(`  processed ${idx + 1}/${usersCsv.length}`);
-    }
+        maps.user[u.id] = dbUser.user_id;
+    });
     console.log(`Users (from users.csv): created=${created}, alreadyMapped=${skipped}`);
 }
 
 // ---------------------------------------------------------------------------
 // Step 3b: Fill in users for any UUID referenced by patient/clinic rows that
-// wasn't present in users.csv at all. MUST run before patients/clinicians
-// are migrated so every foreign key resolves.
+// wasn't present in users.csv at all. MUST run before patients/clinicians.
 // ---------------------------------------------------------------------------
-async function fillMissingUsers(uuids, hashedDefaultPassword, emailPrefix, defaultUtId) {
+async function fillMissingUsers(uuidSet, hashedDefaultPassword, emailPrefix, defaultUtId) {
+    const uuids = Array.from(uuidSet);
     let created = 0, alreadyMapped = 0;
-    for (const uuid of uuids) {
-        if (maps.user[uuid]) { alreadyMapped++; continue; }
+
+    await runConcurrent(uuids, CONCURRENCY, `missing-users(${emailPrefix})`, async (uuid) => {
+        if (maps.user[uuid]) { alreadyMapped++; return; }
         const email = `${emailPrefix}_${uuid.substring(0, 8)}@migrated.com`;
-        try {
-            let dbUser = await prisma.dc_users.findUnique({ where: { email } }).catch(() => null);
-            if (!dbUser) {
-                dbUser = await prisma.dc_users.create({
-                    data: {
-                        email,
-                        phone: uniquePhone(),
-                        password: hashedDefaultPassword,
-                        f_name: 'Migrated',
-                        l_name: uuid.substring(0, 8),
-                        us_id_fk: 1,
-                        ut_id_fk: defaultUtId,
-                        is_availible: true,
-                        reg_date: new Date(),
-                    },
-                });
-                created++;
-            }
-            maps.user[uuid] = dbUser.user_id;
-        } catch (e) {
-            console.error(`  missing-user error [${uuid}]: ${e.message}`);
+        let dbUser = await prisma.dc_users.findUnique({ where: { email } }).catch(() => null);
+        if (!dbUser) {
+            dbUser = await prisma.dc_users.create({
+                data: {
+                    email,
+                    phone: uniquePhone(),
+                    password: hashedDefaultPassword,
+                    f_name: 'Migrated',
+                    l_name: uuid.substring(0, 8),
+                    us_id_fk: 1,
+                    ut_id_fk: defaultUtId,
+                    is_availible: true,
+                    reg_date: new Date(),
+                },
+            });
+            created++;
         }
-    }
+        maps.user[uuid] = dbUser.user_id;
+    });
     return { created, alreadyMapped };
 }
 
@@ -340,53 +501,48 @@ async function fillMissingUsers(uuids, hashedDefaultPassword, emailPrefix, defau
 async function migratePatients(patientsCsv) {
     console.log(`\n--- Patients (${patientsCsv.length} rows) ---`);
     let created = 0, skipped = 0, noUser = 0;
-    const pendingClinicianAssignments = []; // { pd_id, clinicianUuid } to fix up after clinicians are migrated
+    const pendingClinicianAssignments = []; // { pd_id, clinicianUuid }
 
-    for (const [idx, p] of patientsCsv.entries()) {
-        if (!p.andeuser_ptr_id) { noUser++; continue; }
+    await runConcurrent(patientsCsv, CONCURRENCY, 'patients', async (p) => {
+        if (!p.andeuser_ptr_id) { noUser++; return; }
         const userId = maps.user[p.andeuser_ptr_id];
-        if (!userId) { noUser++; continue; }
+        if (!userId) { noUser++; return; }
 
-        try {
-            let existing = await prisma.dc_patient_details.findUnique({ where: { user_id_fk: userId } }).catch(() => null);
-            if (existing) {
-                pdByUserId[userId] = existing.pd_id;
-                skipped++;
-                continue;
-            }
-
-            const groupId = maps.group[p.patient_group_id] || null;
-            const clinicianUuid = p.assigned_clinician_id || null;
-            const clinicianId = clinicianUuid ? (maps.user[clinicianUuid] || null) : null;
-
-            const rec = await prisma.dc_patient_details.create({
-                data: {
-                    user_id_fk: userId,
-                    chart_no: truncate(p.access_code || ('CH' + userId), 30),
-                    invite_code: truncate(p.access_code || ('INV' + userId), 30),
-                    access_code: p.access_code ? truncate(p.access_code, 30) : null,
-                    assigned_clinician_id: clinicianId,
-                    patient_group_id: groupId,
-                    graph_view: toBool(p.graph_view),
-                    awair_refresh_token: p.awair_refresh_token || null,
-                    date_spirometer_received: toDateOrNull(p.date_spirometer_received),
-                    rpm_consent: toBool(p.rpm_consent),
-                    status: truncate(p.status || 'unverified', 50),
-                },
-            });
-            pdByUserId[userId] = rec.pd_id;
-            created++;
-
-            // clinician user might not exist yet (Clinicians step runs after
-            // Patients); remember it so we can patch it in once available.
-            if (clinicianUuid && !clinicianId) {
-                pendingClinicianAssignments.push({ pd_id: rec.pd_id, clinicianUuid });
-            }
-        } catch (e) {
-            console.error(`  patient error [${p.andeuser_ptr_id}]: ${e.message}`);
+        const existing = await prisma.dc_patient_details.findUnique({ where: { user_id_fk: userId } }).catch(() => null);
+        if (existing) {
+            pdByUserId[userId] = existing.pd_id;
+            skipped++;
+            return;
         }
-        if ((idx + 1) % BATCH_LOG_EVERY === 0) console.log(`  processed ${idx + 1}/${patientsCsv.length}`);
-    }
+
+        const groupId = maps.group[p.patient_group_id] || null;
+        const clinicianUuid = p.assigned_clinician_id || null;
+        const clinicianId = clinicianUuid ? (maps.user[clinicianUuid] || null) : null;
+
+        const rec = await prisma.dc_patient_details.create({
+            data: {
+                user_id_fk: userId,
+                chart_no: truncate(p.access_code || ('CH' + userId), 255),
+                invite_code: truncate(p.access_code || ('INV' + userId), 255),
+                access_code: p.access_code ? truncate(p.access_code, 200) : null,
+                assigned_clinician_id: clinicianId,
+                patient_group_id: groupId,
+                graph_view: p.graph_view === '' ? true : toBool(p.graph_view),
+                awair_refresh_token: p.awair_refresh_token ? truncate(p.awair_refresh_token, 200) : null,
+                date_spirometer_received: toDateOrNull(p.date_spirometer_received),
+                rpm_consent: toBool(p.rpm_consent),
+                status: truncate(p.status || 'unverified', 50),
+            },
+        });
+        pdByUserId[userId] = rec.pd_id;
+        created++;
+
+        // clinician user might not exist yet (Clinicians step runs after
+        // Patients); remember it so we can patch it in once available.
+        if (clinicianUuid && !clinicianId) {
+            pendingClinicianAssignments.push({ pd_id: rec.pd_id, clinicianUuid });
+        }
+    });
     console.log(`Patients: created=${created}, alreadyExisted=${skipped}, noMatchingUser=${noUser}`);
     return pendingClinicianAssignments;
 }
@@ -397,61 +553,60 @@ async function migratePatients(patientsCsv) {
 async function migrateAttributes(attrsCsv) {
     console.log(`\n--- Attributes (${attrsCsv.length} rows) ---`);
     let created = 0, skipped = 0, noPatient = 0;
+    const seenPdIds = new Set(); // attribute.csv can contain duplicate patient_id rows; pd_id is unique
 
-    for (const [idx, a] of attrsCsv.entries()) {
-        if (!a.patient_id) { noPatient++; continue; }
+    await runConcurrent(attrsCsv, CONCURRENCY, 'attributes', async (a) => {
+        if (!a.patient_id) { noPatient++; return; }
         const userId = maps.user[a.patient_id];
-        if (!userId) { noPatient++; continue; }
+        if (!userId) { noPatient++; return; }
 
         let pdId = pdByUserId[userId];
         if (!pdId) {
             const patient = await prisma.dc_patient_details.findUnique({ where: { user_id_fk: userId } }).catch(() => null);
-            if (!patient) { noPatient++; continue; }
+            if (!patient) { noPatient++; return; }
             pdId = patient.pd_id;
             pdByUserId[userId] = pdId;
         }
 
-        try {
-            const existing = await prisma.vf_attributes.findUnique({ where: { pd_id: pdId } }).catch(() => null);
-            if (existing) { skipped++; continue; }
+        if (seenPdIds.has(pdId)) { skipped++; return; } // duplicate patient_id within this run
+        seenPdIds.add(pdId);
 
-            await prisma.vf_attributes.create({
-                data: {
-                    patient: { connect: { pd_id: pdId } },
-                    first_name: truncate(a.first_name, 100) || '',
-                    last_name: truncate(a.last_name, 100) || '',
-                    phone: a.phone ? truncate(a.phone, 30) : null,
-                    dob: a.dob || '',
-                    height: toFloatOrNull(a.height) || 0,
-                    weight: toFloatOrNull(a.weight),
-                    gender: truncate(a.gender, 20) || '',
-                    ethnic_group: a.ethnic_group ? truncate(a.ethnic_group, 100) : null,
-                    lookup_table: a.lookup_table || '',
-                    smoking: toBool(a.smoking),
-                    start_date: toDateOrNull(a.start_date) || new Date(),
-                    chart_number: a.chart_number ? truncate(a.chart_number, 100) : null,
-                    account_type: truncate(a.account_type || 'test', 10),
-                    welcome_method: truncate(a.welcome_method || 'text', 10),
-                    identify: a.identify ? truncate(a.identify, 100) : null,
-                },
-            });
+        const existing = await prisma.vf_attributes.findUnique({ where: { pd_id: pdId } }).catch(() => null);
+        if (existing) { skipped++; return; }
 
-            // best-effort backfill of the user's name from attribute data
-            await prisma.dc_users.update({
-                where: { user_id: userId },
-                data: {
-                    f_name: truncate(a.first_name, 100) || undefined,
-                    l_name: truncate(a.last_name, 100) || undefined,
-                },
-            }).catch(() => { });
+        await prisma.vf_attributes.create({
+            data: {
+                patient: { connect: { pd_id: pdId } },
+                first_name: truncate(a.first_name, 100) || '',
+                last_name: truncate(a.last_name, 100) || '',
+                phone: a.phone ? truncate(a.phone, 20) : null,
+                dob: truncate(a.dob, 20) || '',
+                height: toFloatOrNull(a.height) || 0,
+                weight: toFloatOrNull(a.weight),
+                gender: truncate(a.gender, 20) || '',
+                ethnic_group: a.ethnic_group ? truncate(a.ethnic_group, 100) : null,
+                lookup_table: truncate(a.lookup_table, 100) || '',
+                smoking: toBool(a.smoking),
+                start_date: toDateOrNull(a.start_date) || new Date(),
+                chart_number: a.chart_number ? truncate(a.chart_number, 100) : null,
+                account_type: truncate(a.account_type || 'test', 10),
+                welcome_method: truncate(a.welcome_method || 'text', 10),
+                identify: a.identify ? truncate(a.identify, 255) : null,
+            },
+        });
 
-            created++;
-        } catch (e) {
-            console.error(`  attribute error [${a.patient_id}]: ${e.message}`);
-        }
-        if ((idx + 1) % BATCH_LOG_EVERY === 0) console.log(`  processed ${idx + 1}/${attrsCsv.length}`);
-    }
-    console.log(`Attributes: created=${created}, alreadyExisted=${skipped}, noMatchingPatient=${noPatient}`);
+        // best-effort backfill of the user's name from attribute data
+        await prisma.dc_users.update({
+            where: { user_id: userId },
+            data: {
+                f_name: truncate(a.first_name, 255) || undefined,
+                l_name: truncate(a.last_name, 255) || undefined,
+            },
+        }).catch(() => { });
+
+        created++;
+    });
+    console.log(`Attributes: created=${created}, alreadyExistedOrDuplicate=${skipped}, noMatchingPatient=${noPatient}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -459,48 +614,51 @@ async function migrateAttributes(attrsCsv) {
 // ---------------------------------------------------------------------------
 async function migrateClinicians(clinicCsv, pendingClinicianAssignments) {
     console.log(`\n--- Clinicians (${clinicCsv.length} rows) ---`);
-    let upgraded = 0, doctorDetailsCreated = 0, skipped = 0;
+    let upgraded = 0, doctorDetailsCreated = 0, skipped = 0, noHospital = 0;
 
-    for (const [idx, c] of clinicCsv.entries()) {
-        if (!c.andeuser_ptr_id) continue;
+    await runConcurrent(clinicCsv, CONCURRENCY, 'clinicians', async (c) => {
+        if (!c.andeuser_ptr_id) return;
         const userId = maps.user[c.andeuser_ptr_id];
-        if (!userId) continue;
+        if (!userId) return;
 
-        try {
-            await prisma.dc_users.update({ where: { user_id: userId }, data: { ut_id_fk: 3 } });
-            upgraded++;
+        await prisma.dc_users.update({ where: { user_id: userId }, data: { ut_id_fk: 3 } });
+        upgraded++;
 
-            const existingDoc = await prisma.dc_doctor_details.findUnique({ where: { user_id_fk: userId } }).catch(() => null);
-            if (existingDoc) { skipped++; }
-            else {
-                await prisma.dc_doctor_details.create({
-                    data: {
-                        user_id_fk: userId,
-                        about_doctor: truncate(c.title, 255) || null,
-                        license_no: `LIC-${userId}`,
-                    },
-                });
-                doctorDetailsCreated++;
-            }
-        } catch (e) {
-            console.error(`  clinician error [${c.andeuser_ptr_id}]: ${e.message}`);
+        const existingDoc = await prisma.dc_doctor_details.findUnique({ where: { user_id_fk: userId } }).catch(() => null);
+        if (existingDoc) { skipped++; return; }
+
+        // h_id_fk ("hospital") is a required FK to vf_account - clinic.csv's
+        // account_id is the natural source for it. ps_id_fk (specialization)
+        // is also required but there is no source data or schema table for
+        // it, so it falls back to DEFAULT_SPECIALIZATION_ID (see file header).
+        const hospitalId = maps.account[c.account_id];
+        if (!hospitalId) {
+            noHospital++;
+            console.error(`  clinician error [${c.andeuser_ptr_id}]: no matching account/hospital for account_id=${c.account_id}, skipping dc_doctor_details`);
+            return;
         }
-        if ((idx + 1) % BATCH_LOG_EVERY === 0) console.log(`  processed ${idx + 1}/${clinicCsv.length}`);
-    }
-    console.log(`Clinicians: upgraded=${upgraded}, doctorDetailsCreated=${doctorDetailsCreated}, alreadyExisted=${skipped}`);
+        await prisma.dc_doctor_details.create({
+            data: {
+                user_id_fk: userId,
+                about_doctor: truncate(c.title, 255) || 'doctor',
+                license_no: `LIC-${userId}`,
+                h_id_fk: hospitalId,
+                ps_id_fk: DEFAULT_SPECIALIZATION_ID,
+            },
+        });
+        doctorDetailsCreated++;
+    });
+
+    console.log(`Clinicians: upgraded=${upgraded}, doctorDetailsCreated=${doctorDetailsCreated}, alreadyExisted=${skipped}, noMatchingHospital=${noHospital}`);
 
     // Patch up patient -> clinician links that couldn't be resolved earlier
     let patched = 0;
-    for (const { pd_id, clinicianUuid } of pendingClinicianAssignments) {
+    await runConcurrent(pendingClinicianAssignments, CONCURRENCY, 'clinician-link-patch', async ({ pd_id, clinicianUuid }) => {
         const clinicianId = maps.user[clinicianUuid];
-        if (!clinicianId) continue;
-        try {
-            await prisma.dc_patient_details.update({ where: { pd_id }, data: { assigned_clinician_id: clinicianId } });
-            patched++;
-        } catch (e) {
-            console.error(`  clinician-link patch error [pd_id=${pd_id}]: ${e.message}`);
-        }
-    }
+        if (!clinicianId) return;
+        await prisma.dc_patient_details.update({ where: { pd_id }, data: { assigned_clinician_id: clinicianId } });
+        patched++;
+    });
     if (pendingClinicianAssignments.length) {
         console.log(`Patched ${patched}/${pendingClinicianAssignments.length} deferred patient->clinician links`);
     }
@@ -512,17 +670,14 @@ async function migrateClinicians(clinicCsv, pendingClinicianAssignments) {
 async function migrateAdmins(adminCsv) {
     console.log(`\n--- Admins (${adminCsv.length} rows) ---`);
     let upgraded = 0, noUser = 0;
-    for (const a of adminCsv) {
-        if (!a.andeuser_ptr_id) continue;
+
+    await runConcurrent(adminCsv, CONCURRENCY, 'admins', async (a) => {
+        if (!a.andeuser_ptr_id) return;
         const userId = maps.user[a.andeuser_ptr_id];
-        if (!userId) { noUser++; continue; }
-        try {
-            await prisma.dc_users.update({ where: { user_id: userId }, data: { ut_id_fk: 2 } });
-            upgraded++;
-        } catch (e) {
-            console.error(`  admin error [${a.andeuser_ptr_id}]: ${e.message}`);
-        }
-    }
+        if (!userId) { noUser++; return; }
+        await prisma.dc_users.update({ where: { user_id: userId }, data: { ut_id_fk: 2 } });
+        upgraded++;
+    });
     console.log(`Admins: upgraded=${upgraded}, noMatchingUser=${noUser}`);
 }
 
@@ -530,9 +685,12 @@ async function migrateAdmins(adminCsv) {
 // Main
 // ---------------------------------------------------------------------------
 async function run() {
+    const startedAt = Date.now();
     console.log('=== VitalFlow PostgreSQL -> MySQL Migration ===');
+    console.log(`Concurrency: ${CONCURRENCY}`);
 
     loadIdMaps();
+    registerGracefulShutdown();
 
     const accountsCsv = parseCSV('account.csv');
     const groupsCsv = parseCSV('patient_group.csv');
@@ -547,64 +705,64 @@ async function run() {
 
     const hashedDefaultPassword = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
-    // 1. Accounts
     await migrateAccounts();
-
-    // 2. Groups
     await migrateGroups();
-
-    // 3. Users
     await migrateUsers(usersCsv, hashedDefaultPassword);
 
-    // 3b. Fill missing users referenced by patient.csv (must happen before Patients)
-    const missingPatientUuids = new Set();
-    for (const p of patientsCsv) {
-        if (p.andeuser_ptr_id && !maps.user[p.andeuser_ptr_id]) missingPatientUuids.add(p.andeuser_ptr_id);
-    }
+    const missingPatientUuids = new Set(
+        patientsCsv.filter(p => p.andeuser_ptr_id && !maps.user[p.andeuser_ptr_id]).map(p => p.andeuser_ptr_id)
+    );
     console.log(`\nMissing users referenced by patient.csv: ${missingPatientUuids.size}`);
     const patientFillResult = await fillMissingUsers(missingPatientUuids, hashedDefaultPassword, 'pt', 4);
     console.log(`Filled missing patient users: created=${patientFillResult.created}, alreadyMapped=${patientFillResult.alreadyMapped}`);
 
-    // Also fill missing users referenced by clinic.csv, so patient->clinician
-    // links and the Clinicians step both have a user to attach to.
-    const missingClinicianUuids = new Set();
-    for (const c of clinicCsv) {
-        if (c.andeuser_ptr_id && !maps.user[c.andeuser_ptr_id]) missingClinicianUuids.add(c.andeuser_ptr_id);
-    }
+    const missingClinicianUuids = new Set(
+        clinicCsv.filter(c => c.andeuser_ptr_id && !maps.user[c.andeuser_ptr_id]).map(c => c.andeuser_ptr_id)
+    );
     console.log(`Missing users referenced by clinic.csv: ${missingClinicianUuids.size}`);
     const clinicianFillResult = await fillMissingUsers(missingClinicianUuids, hashedDefaultPassword, 'dr', 3);
     console.log(`Filled missing clinician users: created=${clinicianFillResult.created}, alreadyMapped=${clinicianFillResult.alreadyMapped}`);
 
     saveIdMaps(); // checkpoint before the heavier patient/attribute loops
 
-    // 4. Patients
     const pendingClinicianAssignments = await migratePatients(patientsCsv);
-
-    // 5. Attributes
     await migrateAttributes(attrsCsv);
-
     saveIdMaps();
 
-    // 6. Clinicians
     await migrateClinicians(clinicCsv, pendingClinicianAssignments);
-
-    // 7. Admins
     await migrateAdmins(adminCsv);
-
     saveIdMaps();
+
+    const finalCounts = {
+        accounts: await prisma.vf_account.count(),
+        groups: await prisma.vf_patient_group.count(),
+        users: await prisma.dc_users.count(),
+        patients: await prisma.dc_patient_details.count(),
+        attributes: await prisma.vf_attributes.count(),
+        clinicians_doctor_details: await prisma.dc_doctor_details.count(),
+        admins_by_type: await prisma.dc_users.count({ where: { ut_id_fk: 2 } }),
+        clinicians_by_type: await prisma.dc_users.count({ where: { ut_id_fk: 3 } }),
+        patients_by_type: await prisma.dc_users.count({ where: { ut_id_fk: 4 } }),
+    };
 
     console.log('\n=== FINAL COUNTS ===');
-    console.log('Accounts: ' + await prisma.vf_account.count());
-    console.log('Groups: ' + await prisma.vf_patient_group.count());
-    console.log('Users: ' + await prisma.dc_users.count());
-    console.log('Patients: ' + await prisma.dc_patient_details.count());
-    console.log('Attributes: ' + await prisma.vf_attributes.count());
-    console.log('Clinicians (dc_doctor_details): ' + await prisma.dc_doctor_details.count());
-    console.log('Admins (ut_id_fk=2): ' + await prisma.dc_users.count({ where: { ut_id_fk: 2 } }));
-    console.log('Clinicians (ut_id_fk=3): ' + await prisma.dc_users.count({ where: { ut_id_fk: 3 } }));
-    console.log('Patients (ut_id_fk=4): ' + await prisma.dc_users.count({ where: { ut_id_fk: 4 } }));
+    Object.entries(finalCounts).forEach(([k, v]) => console.log(`${k}: ${v}`));
+
+    const durationSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(`\nDone in ${durationSec}s.`);
+
+    try {
+        fs.writeFileSync(REPORT_FILE, JSON.stringify({ finishedAt: new Date().toISOString(), durationSec, finalCounts }, null, 2));
+        console.log(`Report written to ${REPORT_FILE}`);
+    } catch (e) {
+        console.warn('Could not write migration-report.json (non-fatal):', e.message);
+    }
 }
 
-run()
-    .catch(e => console.error('FATAL:', e))
-    .finally(() => prisma.$disconnect());
+if (VALIDATE_ONLY) {
+    validateCsvs();
+} else {
+    run()
+        .catch(e => console.error('FATAL:', e))
+        .finally(() => prisma?.$disconnect());
+}
