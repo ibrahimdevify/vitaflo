@@ -1,8 +1,8 @@
 /**
- * VitalFlow Spirometry Migration (PostgreSQL → MySQL)
+ * VitalFlow Spirometry Migration v2 (CORRECTED)
  * 
- * Migrates dashboard_spirometry + dashboard_observation from vitalport DB
- * into portal_observation + portal_spirometry on Render MySQL.
+ * Correct mapping chain:
+ *   dashboard_observation.user_id → dashboard_user.id → dashboard_user.user_id (UUID) → dc_users.user_id
  * 
  * Run: node migrate_spirometry.js
  */
@@ -13,55 +13,54 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
-
 const MIGRATION_DIR = path.join(__dirname, 'migration');
 const IDMAP_FILE = path.join(__dirname, 'idmaps.json');
 const BATCH_LOG_EVERY = 500;
-const CONCURRENCY = 5;
+const DEFAULT_PASSWORD = 'Welcome2026!';
 
-// Load existing user UUID→ID map from first migration
-let idMap = {};
+// Maps
+const idMap = {};          // UUID → dc_users.user_id
+const dashUserMap = {};    // dashboard_user.id → dashboard_user.user_id (UUID)
 let phoneCounter = Date.now();
+function uniquePhone() { phoneCounter++; return 'sp-' + phoneCounter; }
 
-function uniquePhone() { phoneCounter++; return 'spiro-' + phoneCounter; }
-
+// ─── Load existing UUID map from first migration ───
 function loadIdMap() {
     if (fs.existsSync(IDMAP_FILE)) {
         try {
             const saved = JSON.parse(fs.readFileSync(IDMAP_FILE, 'utf8'));
-            idMap = saved.user || {};
-            console.log(`Loaded ${Object.keys(idMap).length} existing user UUID mappings`);
+            Object.assign(idMap, saved.user || {});
+            console.log(`📂 Loaded ${Object.keys(idMap).length} existing user UUIDs from idmaps.json`);
         } catch (e) {
-            console.warn('Could not load idmaps.json:', e.message);
+            console.warn('⚠️  Could not load idmaps.json:', e.message);
         }
     } else {
-        console.warn('idmaps.json not found - will rebuild from DB');
+        console.warn('⚠️  idmaps.json not found - will query DB directly');
     }
 }
 
-// Save updated map
 function saveIdMap() {
     try {
         const existing = fs.existsSync(IDMAP_FILE) ? JSON.parse(fs.readFileSync(IDMAP_FILE, 'utf8')) : {};
         existing.user = { ...existing.user, ...idMap };
         fs.writeFileSync(IDMAP_FILE, JSON.stringify(existing, null, 2));
     } catch (e) {
-        console.warn('Could not save idmaps.json:', e.message);
+        console.warn('⚠️  Could not save idmaps.json:', e.message);
     }
 }
 
-// Parse CSV with quoted fields
+// ─── CSV Parser (handles quoted fields) ───
 function parseCSV(filename) {
     const filepath = path.join(MIGRATION_DIR, filename);
     if (!fs.existsSync(filepath)) {
-        console.warn(`  File not found: ${filename}`);
+        console.warn(`  ❌ File not found: ${filename}`);
         return [];
     }
     const content = fs.readFileSync(filepath, 'utf8');
-    const rows = [];
+    const rows = [], len = content.length;
     let row = [], field = '', inQuotes = false;
 
-    for (let i = 0; i < content.length; i++) {
+    for (let i = 0; i < len; i++) {
         const char = content[i];
         if (inQuotes) {
             if (char === '"') { inQuotes = false; continue; }
@@ -87,13 +86,14 @@ function parseCSV(filename) {
     return out;
 }
 
+// ─── Helper functions ───
 function toFloat(v) {
-    if (!v || v === 'None' || v === 'NULL' || v === 'null') return null;
+    if (!v || v === 'None' || v === 'NULL' || v === 'null' || v === '') return null;
     const n = parseFloat(v);
     return isNaN(n) ? null : n;
 }
 function toInt(v) {
-    if (!v || v === 'None' || v === 'NULL' || v === 'null') return null;
+    if (!v || v === 'None' || v === 'NULL' || v === 'null' || v === '') return null;
     const n = parseInt(v);
     return isNaN(n) ? null : n;
 }
@@ -106,79 +106,87 @@ function toDate(v) {
     return isNaN(d.getTime()) ? new Date() : d;
 }
 
-async function rebuildIdMapFromDB() {
-    console.log('Rebuilding user UUID map from existing DB...');
-    const users = await prisma.dc_users.findMany({ select: { user_id: true, email: true } });
-    // Try to match by various patterns
-    let count = 0;
-    for (const u of users) {
-        // Store by user_id as string too for lookup
-        idMap[String(u.user_id)] = u.user_id;
-        count++;
+// ─── Step 1: Build dashUserMap from vitalport_user.csv ───
+async function buildDashUserMap(userCsv) {
+    console.log(`\n🔍 Step 1: Building dashboard_user mapping (${userCsv.length} rows)...`);
+
+    for (const u of userCsv) {
+        if (!u.id || !u.user_id) continue;
+        // dashboard_user.id → dashboard_user.user_id (UUID)
+        dashUserMap[u.id] = u.user_id;
     }
-    console.log(`Mapped ${count} existing user IDs`);
+    console.log(`   ✅ Mapped ${Object.keys(dashUserMap).length} dashboard users`);
+
+    // Check how many UUIDs are already in idMap
+    let found = 0, missing = 0;
+    for (const uuid of Object.values(dashUserMap)) {
+        if (idMap[uuid]) found++;
+        else missing++;
+    }
+    console.log(`   📊 UUIDs already in dc_users: ${found}, need to create: ${missing}`);
+
+    return { found, missing };
 }
 
-async function ensureUserExists(uuid, hashedPassword) {
-    if (idMap[uuid]) return idMap[uuid];
+// ─── Step 2: Ensure all UUIDs have corresponding dc_users ───
+async function ensureUsersExist(hashedPassword) {
+    console.log(`\n🔧 Step 2: Creating missing users...`);
+    let created = 0, alreadyExist = 0;
 
-    // Try to find by various UUID patterns in email
-    const email = `spiro_${uuid.substring(0, 8)}@migrated.com`;
-    let user = await prisma.dc_users.findUnique({ where: { email } }).catch(() => null);
+    for (const [dashId, uuid] of Object.entries(dashUserMap)) {
+        if (idMap[uuid]) { alreadyExist++; continue; }
 
-    if (!user) {
-        user = await prisma.dc_users.create({
-            data: {
-                email,
-                phone: uniquePhone(),
-                password: hashedPassword,
-                f_name: 'SpiroUser',
-                l_name: uuid.substring(0, 8),
-                us_id_fk: 1,
-                ut_id_fk: 4,
-                is_availible: true,
-                reg_date: new Date(),
-            },
-        }).catch(() => null);
+        // Try to find by UUID in email patterns
+        const email = `sp_${uuid.substring(0, 8)}@migrated.com`;
+        let user = await prisma.dc_users.findUnique({ where: { email } }).catch(() => null);
+
+        if (!user) {
+            user = await prisma.dc_users.create({
+                data: {
+                    email,
+                    phone: uniquePhone(),
+                    password: hashedPassword,
+                    f_name: 'SpiroPatient',
+                    l_name: uuid.substring(0, 8),
+                    us_id_fk: 1,
+                    ut_id_fk: 4,
+                    is_availible: true,
+                    reg_date: new Date(),
+                },
+            }).catch(() => null);
+
+            if (user) created++;
+        }
+
+        if (user) {
+            idMap[uuid] = user.user_id;
+        }
     }
 
-    if (user) {
-        idMap[uuid] = user.user_id;
-        return user.user_id;
-    }
-    return null;
+    console.log(`   ✅ Created: ${created} new users, Already exist: ${alreadyExist}`);
+    return { created, alreadyExist };
 }
 
-async function migrateObservations(obsCsv, hashedPassword) {
-    console.log(`\n--- Observations (${obsCsv.length} rows) ---`);
-    let created = 0, skipped = 0;
+// ─── Step 3: Migrate Observations ───
+async function migrateObservations(obsCsv) {
+    console.log(`\n📋 Step 3: Migrating Observations (${obsCsv.length} rows)...`);
+    let created = 0, skipped = 0, noUser = 0, errors = 0;
 
-    // First pass: ensure all users exist
-    const uniqueUserIds = new Set(obsCsv.map(o => o.user_id).filter(Boolean));
-    console.log(`Unique users in observations: ${uniqueUserIds.size}`);
-
-    for (const uuid of uniqueUserIds) {
-        await ensureUserExists(uuid, hashedPassword);
-    }
-
-    // Second pass: insert observations
     for (const o of obsCsv) {
-        if (!o.id || !o.user_id) continue;
-        const userId = idMap[o.user_id];
-        if (!userId) continue;
+        if (!o.id || !o.user_id) { skipped++; continue; }
 
-        // Check if observation already exists by original ID
-        // We'll store the original ID in a note or skip if exists
-        const existing = await prisma.portal_observation.findFirst({
-            where: { user_id: userId, dbdate: toDate(o.dbdate) }
-        }).catch(() => null);
+        // Get the dashboard_user.user_id (UUID) from dashUserMap
+        const uuid = dashUserMap[o.user_id];
+        if (!uuid) { noUser++; continue; }
 
-        if (existing) { skipped++; continue; }
+        // Get dc_users.user_id from idMap
+        const dcUserId = idMap[uuid];
+        if (!dcUserId) { noUser++; continue; }
 
         try {
             await prisma.portal_observation.create({
                 data: {
-                    user_id: userId,
+                    user_id: dcUserId,
                     dbdate: toDate(o.dbdate),
                     fev1_grade: toInt(o.fev1_grade),
                     fvc_grade: toInt(o.fvc_grade),
@@ -187,50 +195,65 @@ async function migrateObservations(obsCsv, hashedPassword) {
                 },
             });
             created++;
-            if (created % BATCH_LOG_EVERY === 0) console.log(`  Obs: ${created}`);
         } catch (e) {
-            // Skip duplicates silently
+            errors++;
+            if (errors <= 5) console.error(`   ❌ Obs error [id=${o.id}]: ${e.message}`);
+        }
+
+        if (created % BATCH_LOG_EVERY === 0) {
+            console.log(`   📊 Observations: ${created} created, ${skipped} skipped, ${noUser} no-user`);
         }
     }
-    console.log(`Observations: created=${created}, skipped=${skipped}`);
+
+    console.log(`   ✅ Observations: created=${created}, skipped=${skipped}, noUser=${noUser}, errors=${errors}`);
+    return created;
 }
 
-async function migrateSpirometry(spiroCsv) {
-    console.log(`\n--- Spirometry (${spiroCsv.length} rows) ---`);
-    let created = 0, skipped = 0;
+// ─── Step 4: Migrate Spirometry ───
+async function migrateSpirometry(spiroCsv, obsCsv) {
+    console.log(`\n📋 Step 4: Migrating Spirometry (${spiroCsv.length} rows)...`);
 
-    // Build observation lookup: original_obs_id -> new observation
+    // Build a lookup: original_observation_id → dashboard_observation
+    const origObsMap = {};
+    for (const o of obsCsv) {
+        origObsMap[o.id] = o;
+    }
+
+    // Get all existing observations from DB for matching
     const allObs = await prisma.portal_observation.findMany({
         select: { id: true, user_id: true, dbdate: true }
     });
+    console.log(`   📊 Found ${allObs.length} existing observations in DB`);
+
+    let created = 0, skipped = 0, noMatch = 0, errors = 0;
 
     for (const s of spiroCsv) {
-        if (!s.id) continue;
+        if (!s.id || !s.observation_id) { skipped++; continue; }
 
-        // Find the observation by matching user_id and dbdate
-        const userId = idMap[s.observation_id] || null;
+        // Find the original observation to get user info
+        const origObs = origObsMap[s.observation_id];
+        if (!origObs) { noMatch++; continue; }
 
-        // Try to find matching observation
-        let observationId = null;
-        if (userId) {
-            const obs = allObs.find(o => o.user_id === userId &&
-                Math.abs(new Date(o.dbdate).getTime() - toDate(s.dbdate).getTime()) < 60000);
-            if (obs) observationId = obs.id;
-        }
+        // Get UUID from dashUserMap
+        const uuid = dashUserMap[origObs.user_id];
+        if (!uuid) { noMatch++; continue; }
 
-        if (!observationId) { skipped++; continue; }
+        // Get dc_users.user_id
+        const dcUserId = idMap[uuid];
+        if (!dcUserId) { noMatch++; continue; }
 
-        // Check if spirometry already exists
-        const existing = await prisma.portal_spirometry.findFirst({
-            where: { observation_id: observationId, dbdate: toDate(s.dbdate) }
-        }).catch(() => null);
+        // Find matching observation in DB by user_id + date
+        const dbObs = allObs.find(o =>
+            o.user_id === dcUserId &&
+            Math.abs(new Date(o.dbdate).getTime() - toDate(origObs.dbdate).getTime()) < 120000
+        );
 
-        if (existing) { skipped++; continue; }
+        if (!dbObs) { noMatch++; continue; }
 
         try {
             await prisma.portal_spirometry.create({
                 data: {
-                    observation_id: observationId,
+                    observation_id: dbObs.id,
                     dbdate: toDate(s.dbdate),
                     fvc: toFloat(s.fvc),
                     fev1: toFloat(s.fev1),
@@ -247,35 +270,74 @@ async function migrateSpirometry(spiroCsv) {
                 },
             });
             created++;
-            if (created % BATCH_LOG_EVERY === 0) console.log(`  Spiro: ${created}`);
         } catch (e) {
-            // Skip duplicates
+            errors++;
+            if (errors <= 5) console.error(`   ❌ Spiro error [id=${s.id}]: ${e.message}`);
+        }
+
+        if (created % BATCH_LOG_EVERY === 0) {
+            console.log(`   📊 Spirometry: ${created} created, ${skipped} skipped, ${noMatch} no-match`);
         }
     }
-    console.log(`Spirometry: created=${created}, skipped=${skipped}`);
+
+    console.log(`   ✅ Spirometry: created=${created}, skipped=${skipped}, noMatch=${noMatch}, errors=${errors}`);
+    return created;
 }
 
+// ─── Main ───
 async function run() {
-    console.log('=== VitalFlow Spirometry Migration ===\n');
+    const startTime = Date.now();
+    console.log('╔══════════════════════════════════════════╗');
+    console.log('║  VitalFlow Spirometry Migration v2       ║');
+    console.log('║  Correct User Mapping:                   ║');
+    console.log('║  obs.user_id → dash_user.id → UUID → dc_users ║');
+    console.log('╚══════════════════════════════════════════╝\n');
 
     loadIdMap();
-    await rebuildIdMapFromDB();
 
+    // Parse all CSVs
+    console.log('📂 Loading CSV files...');
+    const userCsv = parseCSV('vitalport_user.csv');
     const obsCsv = parseCSV('vitalport_observation.csv');
     const spiroCsv = parseCSV('vitalport_spirometry.csv');
 
-    console.log(`Loaded: ${obsCsv.length} observations, ${spiroCsv.length} spirometry records`);
+    console.log(`   vitalport_user.csv: ${userCsv.length} rows`);
+    console.log(`   vitalport_observation.csv: ${obsCsv.length} rows`);
+    console.log(`   vitalport_spirometry.csv: ${spiroCsv.length} rows`);
 
-    const hashedPassword = await bcrypt.hash('Welcome2026!', 10);
+    // Step 1: Build dashboard_user mapping
+    await buildDashUserMap(userCsv);
 
-    await migrateObservations(obsCsv, hashedPassword);
-    await migrateSpirometry(spiroCsv);
+    // Step 2: Create missing dc_users
+    const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+    await ensureUsersExist(hashedPassword);
 
     saveIdMap();
 
-    console.log('\n=== FINAL COUNTS ===');
-    console.log('Observations: ' + await prisma.portal_observation.count());
-    console.log('Spirometry: ' + await prisma.portal_spirometry.count());
+    // Step 3: Migrate observations
+    const obsCreated = await migrateObservations(obsCsv);
+
+    // Step 4: Migrate spirometry
+    const spiroCreated = await migrateSpirometry(spiroCsv, obsCsv);
+
+    saveIdMap();
+
+    // Final counts
+    const finalObs = await prisma.portal_observation.count();
+    const finalSpiro = await prisma.portal_spirometry.count();
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    console.log('\n╔══════════════════════════════════════════╗');
+    console.log('║  🎉 MIGRATION COMPLETE!                  ║');
+    console.log('╠══════════════════════════════════════════╣');
+    console.log(`║  Observations: ${finalObs} (created: ${obsCreated})`);
+    console.log(`║  Spirometry:   ${finalSpiro} (created: ${spiroCreated})`);
+    console.log(`║  Duration:     ${duration}s`);
+    console.log(`║  Users mapped: ${Object.keys(idMap).length}`);
+    console.log('╚══════════════════════════════════════════╝');
 }
 
-run().catch(e => console.error('FATAL:', e)).finally(() => prisma.$disconnect());
+run()
+    .catch(e => console.error('💥 FATAL:', e))
+    .finally(() => prisma.$disconnect());
