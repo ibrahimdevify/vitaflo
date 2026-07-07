@@ -34,6 +34,9 @@ function parseCSV(filename) {
     return rows;
 }
 
+let phoneCounter = 0;
+function uniquePhone() { phoneCounter++; return 'mig-' + Date.now() + '-' + phoneCounter; }
+
 async function migrate() {
     console.log('=== VitalFlow Migration ===');
 
@@ -63,7 +66,7 @@ async function migrate() {
             const user = await prisma.dc_users.create({
                 data: {
                     email: email,
-                    phone: String(u.username || email).replace(/[^0-9+]/g, '').substring(0, 20) || 'ph_' + u.id.substring(0, 8),
+                    phone: uniquePhone(),
                     password: tempPass,
                     f_name: String(u.username || 'User').split('@')[0].substring(0, 20),
                     l_name: '',
@@ -74,8 +77,8 @@ async function migrate() {
             });
             idMap[u.id] = user.user_id;
             userCount++;
-            if (userCount % 1000 === 0) console.log('Users: ' + userCount);
-        } catch (e) { console.log('Skip user: ' + e.message); }
+            if (userCount % 500 === 0) console.log('Users: ' + userCount);
+        } catch (e) { console.log('Skip: ' + (u.email || u.id) + ' - ' + e.message.split('\n')[0]); }
     }
     console.log('Users: ' + userCount);
 
@@ -134,7 +137,6 @@ async function migrate() {
                     chart_number: a.chart_number ? String(a.chart_number).substring(0, 100) : null,
                     account_type: String(a.account_type || 'test').substring(0, 10),
                     welcome_method: String(a.welcome_method || 'text').substring(0, 10),
-                    identify: a.identify ? String(a.identify).substring(0, 255) : null,
                 }
             });
             attrCount++;
@@ -169,7 +171,9 @@ async function migrate() {
     }
     console.log('Admins: ' + adminCount);
 
-    console.log('=== DONE! Users:' + userCount + ' Patients:' + patCount + ' Attrs:' + attrCount + ' ===');
+    console.log('=== DONE ===');
+    console.log('Users: ' + userCount + ' | Patients: ' + patCount + ' | Attrs: ' + attrCount);
+    console.log('Clinicians: ' + clinCount + ' | Admins: ' + adminCount);
     console.log('ALL PASSWORDS: Welcome2026!');
 }
 
