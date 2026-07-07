@@ -431,7 +431,7 @@ async function migrateAttributes(attrsCsv) {
                     start_date: toDateOrNull(a.start_date) || new Date(),
                     chart_number: a.chart_number ? truncate(a.chart_number, 100) : null,
                     account_type: truncate(a.account_type || 'test', 10),
-                    welcome_method: a.welcome_method ? truncate(a.welcome_method, 50) : null,
+                    welcome_method: truncate(a.welcome_method || 'text', 10),
                     identify: a.identify ? truncate(a.identify, 100) : null,
                 },
             });
@@ -477,6 +477,7 @@ async function migrateClinicians(clinicCsv, pendingClinicianAssignments) {
                     data: {
                         user_id_fk: userId,
                         about_doctor: truncate(c.title, 255) || null,
+                        license_no: `LIC-${userId}`,
                     },
                 });
                 doctorDetailsCreated++;
