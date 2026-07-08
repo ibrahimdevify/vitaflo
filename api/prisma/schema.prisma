@@ -9,6 +9,7 @@ datasource db {
 
 model dc_users {
   user_id                     Int      @id @default(autoincrement())
+  source_uuid                 String?  @unique @db.VarChar(36)
   f_name                      String   @db.VarChar(255)
   l_name                      String   @db.VarChar(255)
   email                       String   @unique @db.VarChar(255)
@@ -25,25 +26,25 @@ model dc_users {
   is_monthly_plan_reactivated Boolean  @default(false) @db.TinyInt
   is_rpm_allow                Boolean  @default(false) @db.TinyInt
 
-  user_status           dc_user_status            @relation(fields: [us_id_fk], references: [us_id])
-  user_type             dc_user_type              @relation(fields: [ut_id_fk], references: [ut_id])
+  user_status           dc_user_status                   @relation(fields: [us_id_fk], references: [us_id])
+  user_type             dc_user_type                     @relation(fields: [ut_id_fk], references: [ut_id])
   user_details          dc_user_details?
   doctor_details        dc_doctor_details?
   patient_details       dc_patient_details?
-  sessions              vf_session[]              @relation("UserSessions")
-  clinician_sessions    vf_session[]              @relation("ClinicianSessions")
+  sessions              vf_session[]                     @relation("UserSessions")
+  clinician_sessions    vf_session[]                     @relation("ClinicianSessions")
   fcm_tokens            dc_fcm_token[]
-  assigned_patients     dc_patient_details[]      @relation("AssignedClinician")
-  prescriptions_doctor  dc_ehr_prescriptions[]    @relation("DoctorPrescription")
-  prescriptions_patient dc_ehr_prescriptions[]    @relation("PatientPrescription")
+  assigned_patients     dc_patient_details[]             @relation("AssignedClinician")
+  prescriptions_doctor  dc_ehr_prescriptions[]           @relation("DoctorPrescription")
+  prescriptions_patient dc_ehr_prescriptions[]           @relation("PatientPrescription")
   reset_tokens          vf_reset_password_token[]
-  observations         portal_observation[]
-  heart_rates          portal_heart_rate_observations[]
-  steps_data           portal_steps_observations[]
-  portal_notes         portal_notes[]
-  air_quality_data     portal_indoor_air_quality[]
-  alerts               portal_alert[]
-  predicted_values     portal_predicted_value[]
+  observations          portal_observation[]
+  heart_rates           portal_heart_rate_observations[]
+  steps_data            portal_steps_observations[]
+  portal_notes          portal_notes[]
+  air_quality_data      portal_indoor_air_quality[]
+  alerts                portal_alert[]
+  predicted_values      portal_predicted_value[]
 
   @@map("dc_users")
 }
@@ -367,31 +368,31 @@ model dc_module_roles {
 }
 
 model portal_observation {
-  id                       Int       @id @default(autoincrement())
-  dbdate                   DateTime  @default(now())
-  user_id                  Int
-  fev1_grade               Int?
-  fvc_grade                Int?
-  is_post_bronchodilator   Boolean   @default(false) @db.TinyInt
-  height                   Float?
+  id                             Int      @id @default(autoincrement())
+  dbdate                         DateTime @default(now())
+  user_id                        Int
+  fev1_grade                     Int?
+  fvc_grade                      Int?
+  is_post_bronchodilator         Boolean  @default(false) @db.TinyInt
+  height                         Float?
   linked_pre_post_observation_id Int?
 
-  user                     dc_users             @relation(fields: [user_id], references: [user_id])
-  spirometries             portal_spirometry[]
-  linked_observation       portal_observation?  @relation("LinkedObs", fields: [linked_pre_post_observation_id], references: [id])
-  related_observations     portal_observation[] @relation("LinkedObs")
+  user                 dc_users             @relation(fields: [user_id], references: [user_id])
+  spirometries         portal_spirometry[]
+  linked_observation   portal_observation?  @relation("LinkedObs", fields: [linked_pre_post_observation_id], references: [id])
+  related_observations portal_observation[] @relation("LinkedObs")
 
   @@map("portal_observation")
 }
 
 model portal_spirometry {
-  id                 Int       @id @default(autoincrement())
-  dbdate             DateTime  @default(now())
+  id                 Int      @id @default(autoincrement())
+  dbdate             DateTime @default(now())
   observation_id     Int?
   btps               Float?
   temp_celsius       Float?
   quality_message    Float?
-  symptom            String?   @db.VarChar(255)
+  symptom            String?  @db.VarChar(255)
   fev1_acceptability Int?
   fvc_acceptability  Int?
   fvc                Float?
@@ -401,9 +402,9 @@ model portal_spirometry {
   fev6               Float?
   fev1_perc          Float?
 
-  observation        portal_observation? @relation(fields: [observation_id], references: [id], onDelete: SetNull)
-  flows              portal_flow[]
-  volumes            portal_volume[]
+  observation portal_observation? @relation(fields: [observation_id], references: [id], onDelete: SetNull)
+  flows       portal_flow[]
+  volumes     portal_volume[]
 
   @@map("portal_spirometry")
 }
@@ -416,18 +417,18 @@ model portal_flow {
   dbdate        DateTime @default(now())
   spirometry_id Int
 
-  spirometry    portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
+  spirometry portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
 
   @@map("portal_flow")
 }
 
 model portal_volume {
-  id            Int    @id @default(autoincrement())
+  id            Int   @id @default(autoincrement())
   volume        Float
   time          Float
   spirometry_id Int
 
-  spirometry    portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
+  spirometry portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
 
   @@map("portal_volume")
 }
@@ -437,8 +438,8 @@ model portal_heart_rate_observations {
   dbdate  DateTime @default(now())
   user_id Int
 
-  user    dc_users                    @relation(fields: [user_id], references: [user_id])
-  points  portal_heart_rate_point[]
+  user   dc_users                  @relation(fields: [user_id], references: [user_id])
+  points portal_heart_rate_point[]
 
   @@map("portal_heart_rate_observations")
 }
@@ -449,7 +450,7 @@ model portal_heart_rate_point {
   time           Float
   observation_id Int
 
-  observation    portal_heart_rate_observations @relation(fields: [observation_id], references: [id], onDelete: Cascade)
+  observation portal_heart_rate_observations @relation(fields: [observation_id], references: [id], onDelete: Cascade)
 
   @@map("portal_heart_rate_point")
 }
@@ -460,7 +461,7 @@ model portal_steps_observations {
   steps   Int
   user_id Int
 
-  user    dc_users @relation(fields: [user_id], references: [user_id])
+  user dc_users @relation(fields: [user_id], references: [user_id])
 
   @@map("portal_steps_observations")
 }
@@ -473,7 +474,7 @@ model portal_notes {
   recorded_date DateTime @default(now())
   page          String?  @db.VarChar(100)
 
-  user          dc_users @relation(fields: [user_id], references: [user_id])
+  user dc_users @relation(fields: [user_id], references: [user_id])
 
   @@map("portal_notes")
 }
@@ -487,7 +488,7 @@ model portal_indoor_air_quality {
   temperature Float?
   humidity    Float?
 
-  user        dc_users @relation(fields: [user_id], references: [user_id])
+  user dc_users @relation(fields: [user_id], references: [user_id])
 
   @@map("portal_indoor_air_quality")
 }
@@ -514,25 +515,25 @@ model portal_login {
 // ══════════════════════════════════════
 
 model portal_alert {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  message     String   @db.Text
-  created     DateTime @default(now())
-  is_read     Boolean  @default(false) @db.TinyInt
+  id      Int      @id @default(autoincrement())
+  user_id Int
+  message String   @db.Text
+  created DateTime @default(now())
+  is_read Boolean  @default(false) @db.TinyInt
 
-  user        dc_users                 @relation(fields: [user_id], references: [user_id])
+  user          dc_users                    @relation(fields: [user_id], references: [user_id])
   notifications portal_alert_notification[]
 
   @@map("portal_alert")
 }
 
 model portal_alert_notification {
-  id          Int      @id @default(autoincrement())
-  alert_id    Int
-  sent_at     DateTime @default(now())
-  channel     String   @db.VarChar(50)
+  id       Int      @id @default(autoincrement())
+  alert_id Int
+  sent_at  DateTime @default(now())
+  channel  String   @db.VarChar(50)
 
-  alert       portal_alert @relation(fields: [alert_id], references: [id], onDelete: Cascade)
+  alert portal_alert @relation(fields: [alert_id], references: [id], onDelete: Cascade)
 
   @@map("portal_alert_notification")
 }
@@ -542,14 +543,14 @@ model portal_alert_notification {
 // ══════════════════════════════════════
 
 model portal_spirometry_trends {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  dbdate      DateTime
-  fev1        Float?
-  fvc         Float?
-  pefr        Float?
-  fef2575     Float?
-  fev1_perc   Float?
+  id        Int      @id @default(autoincrement())
+  user_id   Int
+  dbdate    DateTime
+  fev1      Float?
+  fvc       Float?
+  pefr      Float?
+  fef2575   Float?
+  fev1_perc Float?
 
   @@map("portal_spirometry_trends")
 }
@@ -559,17 +560,17 @@ model portal_spirometry_trends {
 // ══════════════════════════════════════
 
 model portal_predicted_value {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  variable    String   @db.VarChar(50)
-  predicted   Float?
-  lln         Float?
-  uln         Float?
-  z_score     Float?
+  id                Int      @id @default(autoincrement())
+  user_id           Int
+  variable          String   @db.VarChar(50)
+  predicted         Float?
+  lln               Float?
+  uln               Float?
+  z_score           Float?
   percent_predicted Float?
-  created     DateTime @default(now())
+  created           DateTime @default(now())
 
-  user        dc_users @relation(fields: [user_id], references: [user_id])
+  user dc_users @relation(fields: [user_id], references: [user_id])
 
   @@map("portal_predicted_value")
 }
