@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider        = "mysql"
-  url             = env("DATABASE_URL")
-  connectionLimit = 5
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 model dc_users {
