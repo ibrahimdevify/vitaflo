@@ -42,7 +42,7 @@ const patientLogin = async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
     const user = await prisma.dc_users.findFirst({
-      where: { OR: [{ email: username }, { phone: username }], ut_id_fk: 4 },
+      where: { OR: [{ email: username }, { phone: username }, { f_name: username }], ut_id_fk: 4 },
       include: { patient_details: { include: { attributes: true } } },
     });
     if (!user) {
@@ -61,7 +61,7 @@ const patientLogin = async (req, res) => {
         where: { ft_id: user.user_id },
         update: { fcm_token, is_enabled: true, updated_date: new Date() },
         create: { fcm_token, device: 'android', user_id_fk: user.user_id, is_enabled: true },
-      }).catch(() => {});
+      }).catch(() => { });
     }
     // FLAT response - no "user" wrapper
     res.json({
@@ -86,7 +86,7 @@ const clinicianLogin = async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
     const user = await prisma.dc_users.findFirst({
-      where: { OR: [{ email: username }, { phone: username }], ut_id_fk: 3 },
+      where: { OR: [{ email: username }, { phone: username }, { f_name: username }], ut_id_fk: 3 },
       include: { doctor_details: { include: { hospital: true } } },
     });
     if (!user) {
@@ -110,7 +110,7 @@ const clinicianLogin = async (req, res) => {
         try {
           const ed = typeof attrs.extra === 'string' ? JSON.parse(attrs.extra) : attrs.extra;
           if (ed.nextgen) extra.nextgen = ed.nextgen;
-        } catch {}
+        } catch { }
       }
     }
     // FLAT response
@@ -146,7 +146,7 @@ const getMe = async (req, res) => {
         where: { ft_id: userId },
         update: { fcm_token: body.fcm_token, is_enabled: true, updated_date: new Date() },
         create: { fcm_token: body.fcm_token, device: 'android', user_id_fk: userId, is_enabled: true },
-      }).catch(() => {});
+      }).catch(() => { });
     }
     const isPatient = user.ut_id_fk === 4;
     // FLAT response
@@ -269,7 +269,7 @@ const saveOnboarding = async (req, res) => {
       if (addr.street || addr.city) {
         await prisma.vf_address.create({
           data: { street: addr.street || '', city: addr.city || '', state: addr.state || '', zip: addr.zipcode || '', attributes_id: patient.pd_id },
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
     res.json({ success: true, onboarding_complete: true });

@@ -20,6 +20,7 @@ const login = async (req, res) => {
         OR: [
           { email: username },
           { phone: username },
+          { f_name: username },
         ],
       },
       include: {
@@ -246,7 +247,7 @@ const logout = async (req, res) => {
 const refresh = async (req, res) => {
   try {
     const { refresh_token } = req.body;
-    
+
     const decoded = require('../utils/jwt').verifyToken(refresh_token);
     const user = await prisma.dc_users.findUnique({
       where: { user_id: decoded.user_id },
