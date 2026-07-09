@@ -276,13 +276,82 @@ const getDaysOfSpirometry = async (req, res) => {
 
 const getSpirometryReadings = async (req, res) => {
   try {
-    const data = await prisma.portal_spirometry.findMany({
-      orderBy: { dbdate: 'desc' }, take: 500,
-      select: { id: true, dbdate: true, fev1: true, fvc: true, pefr: true, observation: { select: { user_id: true } } },
+    const { page = 1, limit = 20, search, start_date, end_date, user_id } = req.query;
+
+    const where = {};
+
+    // Search by user ID
+    if (search) {
+      where.observation = {
+        user: {
+          OR: [
+            { user_id: isNaN(search) ? undefined : parseInt(search) },
+            { email: { contains: search } },
+            { f_name: { contains: search } },
+            { l_name: { contains: search } },
+          ]
+        }
+      };
+    }
+
+    // Filter by user ID
+    if (user_id) {
+      where.observation = { ...where.observation, user_id: parseInt(user_id) };
+    }
+
+    // Date range
+    if (start_date || end_date) {
+      where.dbdate = {};
+      if (start_date) where.dbdate.gte = new Date(start_date);
+      if (end_date) where.dbdate.lte = new Date(end_date + 'T23:59:59.999Z');
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [data, total] = await Promise.all([
+      prisma.portal_spirometry.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { dbdate: 'desc' },
+        select: {
+          id: true,
+          dbdate: true,
+          fev1: true,
+          fvc: true,
+          pefr: true,
+          fef2575: true,
+          fev6: true,
+          fev1_perc: true,
+          observation: {
+            select: {
+              user_id: true,
+              user: {
+                select: {
+                  f_name: true,
+                  l_name: true,
+                  email: true,
+                }
+              }
+            }
+          }
+        },
+      }),
+      prisma.portal_spirometry.count({ where }),
+    ]);
+
+    res.json({
+      data,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
+      },
     });
-    res.json({ data });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Spirometry readings error:', error);
+    res.status(500).json({ error: 'Failed to fetch readings' });
   }
 };
 
