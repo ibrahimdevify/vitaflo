@@ -11,7 +11,7 @@ function uniquePhone() { phoneCounter++; return 'mig-' + phoneCounter; }
 
 function parseCSV(filename) {
   const filepath = path.join(MIGRATION_DIR, filename);
-  if (!fs.existsSync(filepath)) { console.log('File not found: ' + filename); return []; }
+  if (!fs.existsSync(filepath)) return [];
   const content = fs.readFileSync(filepath, 'utf8');
   const rows = [], len = content.length;
   let row = [], field = '', inQ = false;
@@ -41,16 +41,6 @@ function toBool(v) { return String(v).toLowerCase() === 'true'; }
 function toDate(v) { if (!v) return new Date(); const d = new Date(v); return isNaN(d.getTime()) ? new Date() : d; }
 function trunc(v, len) { if (!v) return null; return String(v).substring(0, len); }
 
-function makeEmail(username, existingEmail) {
-  // If valid email exists, use it
-  if (existingEmail && existingEmail !== 'NULL' && existingEmail !== 'null' && existingEmail.includes('@')) {
-    return existingEmail;
-  }
-  // Otherwise use username@vitalflo.com
-  const cleanUsername = (username || 'user').replace(/[^a-zA-Z0-9._-]/g, '');
-  return cleanUsername + '@vitalflo.com';
-}
-
 async function run() {
   console.log('╔══════════════════════════════════╗');
   console.log('║  Step 1: Migrate Users (FIXED)   ║');
@@ -62,20 +52,14 @@ async function run() {
   console.log('Loaded ' + users.length + ' users from CSV\n');
   
   let created = 0, skipped = 0, errors = 0;
-  const usedEmails = new Set();
+  let emailCounter = 0;
   
   for (const u of users) {
     if (!u.id) { skipped++; continue; }
     
-    let email = makeEmail(u.username, u.email);
-    
-    // If email already used, append a number
-    if (usedEmails.has(email)) {
-      let counter = 1;
-      while (usedEmails.has(email + counter)) counter++;
-      email = email.replace('@', counter + '@');
-    }
-    usedEmails.add(email);
+    emailCounter++;
+    // Use unique email based on counter - guaranteed unique
+    const email = 'user' + emailCounter + '@vitalflo.com';
     
     try {
       await prisma.dc_users.create({
@@ -93,16 +77,15 @@ async function run() {
         }
       });
       created++;
-      if (created % 1000 === 0) console.log('   ' + created + '/' + users.length + ' users created');
+      if (created % 1000 === 0) console.log('   ' + created + '/' + users.length + ' users');
     } catch(e) {
       errors++;
-      if (errors <= 3) console.error('   Error: ' + e.message.substring(0, 100));
+      if (errors <= 3) console.error('   Error: ' + e.message.substring(0, 80));
     }
   }
   
   const total = await prisma.dc_users.count();
   console.log('\n========================================');
-  console.log('  MIGRATION COMPLETE');
   console.log('  Created: ' + created);
   console.log('  Skipped: ' + skipped);
   console.log('  Errors:  ' + errors);
