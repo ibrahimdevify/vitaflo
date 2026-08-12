@@ -60,7 +60,7 @@ export default function ResetPassword() {
     }
 
     try {
-      await api.post("/api/auth/reset-password", {
+      await api.post("/auth/reset-password", {
         token,
         password: data.password,
       });
