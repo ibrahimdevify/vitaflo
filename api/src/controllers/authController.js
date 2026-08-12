@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const { hashPassword, comparePassword } = require('../utils/password');
 const { generateToken, generateRefreshToken } = require('../utils/jwt');
 const { generateAccessToken } = require('../utils/token');
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
 
@@ -312,29 +313,70 @@ const forgotPassword = async (req, res) => {
 };
 
 // Reset password
+
+const RESET_TOKEN_SECRET = process.env.RESET_TOKEN_SECRET;
+
 const resetPassword = async (req, res) => {
   try {
-    const { token, new_password } = req.body;
+    if (!RESET_TOKEN_SECRET) {
+      throw new Error('RESET_TOKEN_SECRET is not set');
+    }
 
-    const resetRecord = await prisma.vf_reset_password_token.findFirst({
-      where: { contact: token, used: false },
-    });
+    const { token, password } = req.body;
 
-    if (!resetRecord) {
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(token, RESET_TOKEN_SECRET);
+    } catch (err) {
+      // Covers both expired (TokenExpiredError) and tampered/invalid
+      // (JsonWebTokenError) tokens with the same generic message, so we
+      // don't leak which case it was.
       return res.status(400).json({ error: 'Invalid or expired reset token' });
     }
 
-    const hashedPassword = await hashPassword(new_password);
+    if (payload.purpose !== 'password_reset' || !payload.user_id) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const user = await prisma.dc_users.findUnique({
+      where: { user_id: payload.user_id },
+      select: { user_id: true },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const hashedPassword = await hashPassword(password);
 
     await prisma.dc_users.update({
-      where: { user_id: resetRecord.user_id },
+      where: { user_id: user.user_id },
       data: { password: hashedPassword },
     });
 
-    await prisma.vf_reset_password_token.update({
-      where: { id: resetRecord.id },
-      data: { used: true },
+    // Mark the most recent unused audit row for this user as used, so it's
+    // visible in vf_reset_password_token that a reset actually completed.
+    // (We don't match by token since we never stored one — the JWT itself
+    // is the source of truth for validity.)
+    const latestRecord = await prisma.vf_reset_password_token.findFirst({
+      where: { user_id: user.user_id, used: false },
+      orderBy: { created: 'desc' },
     });
+
+    if (latestRecord) {
+      await prisma.vf_reset_password_token.update({
+        where: { id: latestRecord.id },
+        data: { used: true },
+      });
+    }
 
     res.json({ message: 'Password reset successful' });
   } catch (error) {
@@ -342,6 +384,7 @@ const resetPassword = async (req, res) => {
     res.status(500).json({ error: 'Password reset failed' });
   }
 };
+
 
 // Change password
 const changePassword = async (req, res) => {

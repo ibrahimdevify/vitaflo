@@ -1,21 +1,22 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { Toaster } from 'sonner';
-import ErrorBoundary from './components/ErrorBoundary';
-import ClinicianLayout from './components/layout/ClinicianLayout';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import Login from './pages/Login';
+import { lazy, Suspense } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
+import ErrorBoundary from "./components/ErrorBoundary";
+import ClinicianLayout from "./components/layout/ClinicianLayout";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 
-const Alerts = lazy(() => import('./pages/Alerts'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Forbidden = lazy(() => import('./pages/Forbidden'));
-const Notes = lazy(() => import('./pages/Notes'));
-const NotFound = lazy(() => import('./pages/NotFound'));
-const Patients = lazy(() => import('./pages/Patients'));
-const Prescriptions = lazy(() => import('./pages/Prescriptions'));
-const Profile = lazy(() => import('./pages/Profile'));
-const Spirometry = lazy(() => import('./pages/Spirometry'));
-const Unauthorized = lazy(() => import('./pages/Unauthorized'));
+const Alerts = lazy(() => import("./pages/Alerts"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Forbidden = lazy(() => import("./pages/Forbidden"));
+const Notes = lazy(() => import("./pages/Notes"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Patients = lazy(() => import("./pages/Patients"));
+const Prescriptions = lazy(() => import("./pages/Prescriptions"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Spirometry = lazy(() => import("./pages/Spirometry"));
+const Unauthorized = lazy(() => import("./pages/Unauthorized"));
 
 function ProtectedRoute({ children }) {
   const { user, loading, unauthorized } = useAuth();
@@ -47,6 +48,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             <Route
               element={

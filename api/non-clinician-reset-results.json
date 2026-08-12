@@ -1,0 +1,25 @@
+{
+  "summary": {
+    "mode": "apply",
+    "total_users": 1,
+    "processed_this_run": 1,
+    "skipped_previously": 0,
+    "passwords_updated": 1,
+    "completely_failed": 0,
+    "total_time_seconds": "0.21",
+    "start_time": "2026-08-12T06:22:01.490Z",
+    "end_time": "2026-08-12T06:22:01.644Z"
+  },
+  "details": [
+    {
+      "user_id": 3,
+      "email": "patient@vitalflow.com",
+      "name": "John Doe",
+      "user_type_id": 4,
+      "status": "completed",
+      "password_updated": true,
+      "new_password": "%!7iSX2GZ%k!",
+      "processing_time_ms": 151
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "summary": {
+    "mode": "apply",
+    "total_clinicians": 2,
+    "processed_this_run": 2,
+    "skipped_previously": 0,
+    "passwords_updated": 2,
+    "emails_sent": 2,
+    "emails_failed": 0,
+    "completely_failed": 0,
+    "total_time_minutes": "0.55",
+    "start_time": "2026-08-12T06:23:21.911Z",
+    "end_time": "2026-08-12T06:23:54.711Z"
+  },
+  "details": [
+    {
+      "user_id": 2,
+      "email": "doctor@vitalflow.com",
+      "name": "Sarah Johnson",
+      "status": "completed",
+      "password_updated": true,
+      "email_sent": true,
+      "new_password": "gK3s94XG%R$Z",
+      "processing_time_ms": 1538
+    },
+    {
+      "user_id": 4,
+      "email": "ibrahim.devify@gmail.com",
+      "name": "Ibrahim Jan",
+      "status": "completed",
+      "password_updated": true,
+      "email_sent": true,
+      "new_password": "!z6P&D7A4Jfi",
+      "processing_time_ms": 1259
+    }
+  ]
+}
