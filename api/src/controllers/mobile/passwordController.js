@@ -43,7 +43,7 @@ const forgotPassword = async (req, res) => {
 
       const users = await prisma.dc_users.findMany({
         where: { ut_id_fk: utIdFk },
-        select: { user_id: true, email: true, phone: true, f_name: true, l_name: true },
+        select: { user_id: true, email: true, phone: true, f_name: true, l_name: true, userName: true },
       });
 
       for (const u of users) {
@@ -78,7 +78,7 @@ const forgotPassword = async (req, res) => {
 
     const fullUser = await prisma.dc_users.findUnique({
       where: { user_id: user.user_id },
-      select: { user_id: true, email: true, f_name: true },
+      select: { user_id: true, email: true, f_name: true, userName: true },
     });
 
     if (!fullUser.email) {
@@ -120,6 +120,8 @@ const forgotPassword = async (req, res) => {
       await sendPasswordResetEmail({
         to: fullUser.email,
         firstName: fullUser.f_name,
+        username: fullUser.userName,
+        email: fullUser.email,
         resetUrl,
       });
     } catch (emailErr) {

@@ -75,21 +75,50 @@ async function sendEmail({ to, subject, html, cc, replyTo }) {
 /**
  * Forgot-password email — sends a reset link/token, not a raw password.
  */
-async function sendPasswordResetEmail({ to, firstName, resetUrl }) {
+async function sendPasswordResetEmail({ to, firstName, resetUrl, userName, email }) {
   const html = wrapTemplate({
     title: 'Reset your password',
     bodyHtml: `
       <p style="font-size: 14px; line-height: 1.6;">Hi ${firstName || 'there'},</p>
+      
+      ${userName ? `
       <p style="font-size: 14px; line-height: 1.6;">
-        We received a request to reset your ${APP_NAME} password. Click the button below to
-        choose a new one. This link will expire shortly for your security.
+        We received a request to reset the password for your account 
+        <strong style="color: #2563eb;">@${userName}</strong>${email ? ` (${email})` : ''}.
       </p>
+      ` : `
+      <p style="font-size: 14px; line-height: 1.6;">
+        We received a request to reset your ${APP_NAME} password.
+      </p>
+      `}
+      
+      <p style="font-size: 14px; line-height: 1.6;">
+        Click the button below to choose a new one. This link will expire shortly for your security.
+      </p>
+      
       <p style="margin: 24px 0;">
         <a href="${resetUrl}" style="background: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; display: inline-block;">
           Reset Password
         </a>
       </p>
-      <p style="font-size: 13px; line-height: 1.6; color: #6b7280;">
+      
+      <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 24px;">
+        <p style="margin: 0 0 8px; font-size: 13px; font-weight: bold; color: #374151;">
+          Account Information
+        </p>
+        ${userName ? `
+        <p style="margin: 0 0 4px; font-size: 13px; color: #6b7280;">
+          <strong>Username:</strong> @${userName}
+        </p>
+        ` : ''}
+        ${email ? `
+        <p style="margin: 0; font-size: 13px; color: #6b7280;">
+          <strong>Email:</strong> ${email}
+        </p>
+        ` : ''}
+      </div>
+      
+      <p style="font-size: 13px; line-height: 1.6; color: #6b7280; margin-top: 24px;">
         If you didn't request this, you can safely ignore this email — your password will stay unchanged.
       </p>
     `,
