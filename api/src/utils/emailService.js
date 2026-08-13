@@ -75,16 +75,16 @@ async function sendEmail({ to, subject, html, cc, replyTo }) {
 /**
  * Forgot-password email — sends a reset link/token, not a raw password.
  */
-async function sendPasswordResetEmail({ to, firstName, resetUrl, userName, email }) {
+async function sendPasswordResetEmail({ to, firstName, resetUrl, username, email }) {
   const html = wrapTemplate({
     title: 'Reset your password',
     bodyHtml: `
       <p style="font-size: 14px; line-height: 1.6;">Hi ${firstName || 'there'},</p>
       
-      ${userName ? `
+      ${username ? `
       <p style="font-size: 14px; line-height: 1.6;">
         We received a request to reset the password for your account 
-        <strong style="color: #2563eb;">@${userName}</strong>${email ? ` (${email})` : ''}.
+        <strong style="color: #2563eb;">@${username}</strong>${email ? ` (${email})` : ''}.
       </p>
       ` : `
       <p style="font-size: 14px; line-height: 1.6;">
@@ -106,9 +106,9 @@ async function sendPasswordResetEmail({ to, firstName, resetUrl, userName, email
         <p style="margin: 0 0 8px; font-size: 13px; font-weight: bold; color: #374151;">
           Account Information
         </p>
-        ${userName ? `
+        ${username ? `
         <p style="margin: 0 0 4px; font-size: 13px; color: #6b7280;">
-          <strong>Username:</strong> @${userName}
+          <strong>Username:</strong> @${username}
         </p>
         ` : ''}
         ${email ? `
