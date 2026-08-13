@@ -419,11 +419,7 @@ const createPatient = async (req, res) => {
       chartNo = String(attrs.chart_number).substring(0, 30);
     }
 
-    const userName = await generateUniqueUsername({
-      first_name,
-      last_name,
-      userEmail
-    });
+    const userName = await generateUniqueUsername(first_name, last_name, userEmail);
 
     const user = await prisma.dc_users.create({
       data: {

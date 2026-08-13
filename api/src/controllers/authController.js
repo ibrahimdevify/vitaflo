@@ -132,11 +132,11 @@ const register = async (req, res) => {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    const userName = await generateUniqueUsername({
+    const userName = await generateUniqueUsername(
       f_name,
       l_name,
       email
-    });
+    );
     // Create user
     const user = await prisma.dc_users.create({
       data: {
