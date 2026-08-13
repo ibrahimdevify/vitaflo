@@ -3,7 +3,7 @@ const { hashPassword, comparePassword } = require('../../utils/password');
 const { generateToken, generateRefreshToken } = require('../../utils/jwt');
 const { generateAccessToken } = require('../../utils/token');
 const crypto = require('crypto');
-const { generateUniqueUsername } = require('../../utils/usernameGenerator');
+const { generateUserName } = require('../../utils/usernameGenerator');
 
 const prisma = new PrismaClient();
 
@@ -419,7 +419,7 @@ const createPatient = async (req, res) => {
       chartNo = String(attrs.chart_number).substring(0, 30);
     }
 
-    const userName = await generateUniqueUsername(first_name, last_name, userEmail);
+    const userName = await generateUserName(userEmail);
 
     const user = await prisma.dc_users.create({
       data: {
