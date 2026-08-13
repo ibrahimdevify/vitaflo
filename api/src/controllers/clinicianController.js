@@ -7,7 +7,7 @@ const getAllClinicians = async (req, res) => {
     const where = { ut_id_fk: 3 };
     if (search) {
       where.OR = [
-        { f_name: { contains: search } }, { l_name: { contains: search } },
+        { f_name: { contains: search } }, { l_name: { contains: search }, userName: { contains: search } },
         { email: { contains: search } }, { doctor_details: { license_no: { contains: search } } },
       ];
     }
@@ -19,7 +19,7 @@ const getAllClinicians = async (req, res) => {
       prisma.dc_users.findMany({
         where, skip, take: parseInt(limit), orderBy: { reg_date: 'desc' },
         select: {
-          user_id: true, f_name: true, l_name: true, email: true, phone: true,
+          user_id: true, f_name: true, l_name: true, email: true, phone: true, userName: true,
           profile_pic: true, is_availible: true, reg_date: true,
           user_status: { select: { name: true } },
           doctor_details: { select: { dd_id: true, about_doctor: true, education: true, license_no: true, is_specialist: true, experience: true, hospital: { select: { id: true, name: true } } } },

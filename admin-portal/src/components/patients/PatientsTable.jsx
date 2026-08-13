@@ -1,12 +1,12 @@
-import { Edit, Eye, MoreHorizontal, UserRound } from 'lucide-react';
-import EmptyState from '../shared/EmptyState';
-import { Badge } from '../ui/badge';
+import { Edit, Eye, MoreHorizontal, UserRound } from "lucide-react";
+import EmptyState from "../shared/EmptyState";
+import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
+} from "../ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -14,16 +14,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table';
-import PatientsTableSkeleton from './PatientsTableSkeleton';
+} from "../ui/table";
+import PatientsTableSkeleton from "./PatientsTableSkeleton";
 
-const avatarTones = ['brand', 'info', 'success', 'warning', 'danger'];
+const avatarTones = ["brand", "info", "success", "warning", "danger"];
 const toneGradients = {
-  brand: 'from-brand-500 to-brand-700',
-  info: 'from-info to-info/70',
-  success: 'from-success to-success/70',
-  warning: 'from-warning to-warning/70',
-  danger: 'from-danger to-danger/70',
+  brand: "from-brand-500 to-brand-700",
+  info: "from-info to-info/70",
+  success: "from-success to-success/70",
+  warning: "from-warning to-warning/70",
+  danger: "from-danger to-danger/70",
 };
 
 export default function PatientsTable({ patients, loading, onView, onEdit }) {
@@ -74,39 +74,44 @@ export default function PatientsTable({ patients, loading, onView, onEdit }) {
                         {patient.f_name} {patient.l_name}
                       </p>
                       <p className="text-caption text-fg-muted truncate">
+                        <span className="font-medium text-fg">
+                          @{patient.userName || "no-username"}
+                        </span>
+                      </p>
+                      <p className="text-caption text-fg-muted truncate">
                         {patient.email}
                       </p>
                     </div>
                   </div>
                 </TableCell>
                 <TableCell className="text-fg tabular-nums">
-                  {patient.patient_details?.chart_no || '—'}
+                  {patient.patient_details?.chart_no || "—"}
                 </TableCell>
                 <TableCell>
                   <Badge
                     variant={
-                      status === 'active'
-                        ? 'success'
-                        : status === 'verified'
-                          ? 'info'
-                          : 'warning'
+                      status === "active"
+                        ? "success"
+                        : status === "verified"
+                          ? "info"
+                          : "warning"
                     }
                     className="capitalize"
                   >
-                    {status || 'unknown'}
+                    {status || "unknown"}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-fg-muted">
-                  {patient.patient_details?.patient_group?.name || '—'}
+                  {patient.patient_details?.patient_group?.name || "—"}
                 </TableCell>
                 <TableCell className="text-fg-muted">
-                  {patient.patient_details?.assigned_clinician?.f_name || '—'}
+                  {patient.patient_details?.assigned_clinician?.f_name || "—"}
                 </TableCell>
                 <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                  {new Date(patient.reg_date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
+                  {new Date(patient.reg_date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
                   })}
                 </TableCell>
                 <TableCell>

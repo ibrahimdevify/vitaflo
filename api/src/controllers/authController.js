@@ -20,8 +20,7 @@ const login = async (req, res) => {
       where: {
         OR: [
           { email: username },
-          { phone: username },
-          { f_name: username },
+          { userName: username },
         ],
       },
       include: {

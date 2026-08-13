@@ -5,15 +5,15 @@ import {
   Phone,
   Trash2,
   UserPlus,
-} from 'lucide-react';
-import EmptyState from '../shared/EmptyState';
-import { Badge } from '../ui/badge';
+} from "lucide-react";
+import EmptyState from "../shared/EmptyState";
+import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
+} from "../ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -21,31 +21,31 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table';
-import UsersTableSkeleton from './UsersTableSkeleton';
+} from "../ui/table";
+import UsersTableSkeleton from "./UsersTableSkeleton";
 
 const typeBadgeVariants = {
-  admin: 'danger',
-  clinician: 'brand',
-  patient: 'info',
-  technician: 'warning',
-  account_admin: 'success',
+  admin: "danger",
+  clinician: "brand",
+  patient: "info",
+  technician: "warning",
+  account_admin: "success",
 };
 
 const statusBadgeVariants = {
-  active: 'success',
-  inactive: 'danger',
-  suspended: 'warning',
-  unverified: 'secondary',
+  active: "success",
+  inactive: "danger",
+  suspended: "warning",
+  unverified: "secondary",
 };
 
-const avatarTones = ['brand', 'info', 'success', 'warning', 'danger'];
+const avatarTones = ["brand", "info", "success", "warning", "danger"];
 const toneGradients = {
-  brand: 'from-brand-500 to-brand-700',
-  info: 'from-info to-info/70',
-  success: 'from-success to-success/70',
-  warning: 'from-warning to-warning/70',
-  danger: 'from-danger to-danger/70',
+  brand: "from-brand-500 to-brand-700",
+  info: "from-info to-info/70",
+  success: "from-success to-success/70",
+  warning: "from-warning to-warning/70",
+  danger: "from-danger to-danger/70",
 };
 
 export default function UsersTable({
@@ -69,9 +69,9 @@ export default function UsersTable({
   }
 
   const getTypeName = (id) =>
-    userTypes.find((t) => t.ut_id === id)?.name || 'Unknown';
+    userTypes.find((t) => t.ut_id === id)?.name || "Unknown";
   const getStatusName = (id) =>
-    userStatuses.find((s) => s.us_id === id)?.name || 'Unknown';
+    userStatuses.find((s) => s.us_id === id)?.name || "Unknown";
 
   return (
     <div className="table-container">
@@ -107,6 +107,11 @@ export default function UsersTable({
                     <p className="font-medium text-fg text-body">
                       {user.f_name} {user.l_name}
                     </p>
+                    <p className="text-caption text-fg-muted truncate">
+                      <span className="font-medium text-fg">
+                        @{user.userName || "no-username"}
+                      </span>
+                    </p>
                   </div>
                 </TableCell>
                 <TableCell className="text-fg-muted">
@@ -119,7 +124,7 @@ export default function UsersTable({
                 </TableCell>
                 <TableCell>
                   <Badge
-                    variant={typeBadgeVariants[typeName] || 'secondary'}
+                    variant={typeBadgeVariants[typeName] || "secondary"}
                     className="capitalize"
                   >
                     {typeName}
@@ -127,17 +132,17 @@ export default function UsersTable({
                 </TableCell>
                 <TableCell>
                   <Badge
-                    variant={statusBadgeVariants[statusName] || 'secondary'}
+                    variant={statusBadgeVariants[statusName] || "secondary"}
                     className="capitalize"
                   >
                     {statusName}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                  {new Date(user.reg_date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
+                  {new Date(user.reg_date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
                   })}
                 </TableCell>
                 <TableCell>

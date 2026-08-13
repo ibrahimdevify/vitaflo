@@ -12,6 +12,7 @@ const getAllUsers = async (req, res) => {
       where.OR = [
         { f_name: { contains: search } },
         { l_name: { contains: search } },
+        { userName: { contains: search } },
         { email: { contains: search } },
         { phone: { contains: search } },
       ];
@@ -28,7 +29,7 @@ const getAllUsers = async (req, res) => {
         take: parseInt(limit),
         orderBy: { [sort_by]: sort_dir },
         select: {
-          user_id: true, f_name: true, l_name: true, email: true, phone: true,
+          user_id: true, f_name: true, l_name: true, email: true, phone: true, userName: true,
           profile_pic: true, is_guardian: true, is_availible: true,
           is_profile_completed: true, is_rpm_allow: true,
           reg_date: true, profile_update_date: true,

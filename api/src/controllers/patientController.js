@@ -13,6 +13,7 @@ const getAllPatients = async (req, res) => {
       where.OR = [
         { f_name: { contains: search } },
         { l_name: { contains: search } },
+        { userName: { contains: search } },
         { email: { contains: search } },
         { patient_details: { chart_no: { contains: search } } },
       ];
@@ -53,6 +54,7 @@ const getAllPatients = async (req, res) => {
           profile_pic: true,
           is_rpm_allow: true,
           reg_date: true,
+          userName: true,
           user_status: { select: { name: true } },
           patient_details: {
             select: {
@@ -207,7 +209,7 @@ const updateAttributes = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
-    
+
     // Remove nested objects for separate handling
     const { addresses, air_monitors, ...attrData } = updateData;
 
