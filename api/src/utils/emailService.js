@@ -84,7 +84,7 @@ async function sendPasswordResetEmail({ to, firstName, resetUrl, username, email
       ${username ? `
       <p style="font-size: 14px; line-height: 1.6;">
         We received a request to reset the password for your account 
-        <strong style="color: #2563eb;">@${username}</strong>${email ? ` (${email})` : ''}.
+        <strong style="color: #2563eb;">${username}</strong>${email ? ` (${email})` : ''}.
       </p>
       ` : `
       <p style="font-size: 14px; line-height: 1.6;">
@@ -108,7 +108,7 @@ async function sendPasswordResetEmail({ to, firstName, resetUrl, username, email
         </p>
         ${username ? `
         <p style="margin: 0 0 4px; font-size: 13px; color: #6b7280;">
-          <strong>Username:</strong> @${username}
+          <strong>Username:</strong> ${username}
         </p>
         ` : ''}
         ${email ? `
