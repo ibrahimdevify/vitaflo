@@ -12,6 +12,7 @@ model dc_users {
   source_uuid                 String?  @unique @db.VarChar(36)
   f_name                      String   @db.VarChar(255)
   l_name                      String   @db.VarChar(255)
+  userName                    String?  @unique @db.VarChar(100)
   email                       String   @unique @db.VarChar(255)
   phone                       String   @unique @db.VarChar(255)
   password                    String   @db.VarChar(255)
