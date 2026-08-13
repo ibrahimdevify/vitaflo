@@ -3,6 +3,7 @@ const { hashPassword, comparePassword } = require('../utils/password');
 const { generateToken, generateRefreshToken } = require('../utils/jwt');
 const { generateAccessToken } = require('../utils/token');
 const jwt = require('jsonwebtoken');
+const { generateUniqueUsername } = require('../utils/usernameGenerator');
 
 const prisma = new PrismaClient();
 
@@ -131,6 +132,11 @@ const register = async (req, res) => {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
+    const userName = await generateUniqueUsername({
+      f_name,
+      l_name,
+      email
+    });
     // Create user
     const user = await prisma.dc_users.create({
       data: {
@@ -138,6 +144,7 @@ const register = async (req, res) => {
         l_name,
         email,
         phone,
+        userName,
         password: hashedPassword,
         ut_id_fk: ut_id_fk || 4,
         us_id_fk: 1, // active

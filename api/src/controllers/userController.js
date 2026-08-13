@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const { hashPassword } = require('../utils/password');
+const { generateUniqueUsername } = require('../utils/usernameGenerator');
 
 const prisma = new PrismaClient();
 
@@ -88,8 +89,13 @@ const createUser = async (req, res) => {
     if (existing) return res.status(409).json({ error: 'User already exists' });
 
     const hashed = await hashPassword(password);
+    const userName = await generateUniqueUsername({
+      f_name,
+      l_name,
+      email
+    });
     const user = await prisma.dc_users.create({
-      data: { f_name, l_name, email, phone, password: hashed, ut_id_fk: parseInt(ut_id_fk), us_id_fk: parseInt(us_id_fk), is_guardian, is_rpm_allow },
+      data: { f_name, l_name, userName, email, phone, password: hashed, ut_id_fk: parseInt(ut_id_fk), us_id_fk: parseInt(us_id_fk), is_guardian, is_rpm_allow },
       include: { user_type: true, user_status: true },
     });
     const { password: _, ...safeUser } = user;
