@@ -33,7 +33,7 @@ const buildAccountAttributes = (user, patientDetails) => ({
   account_name: `${user.f_name} ${user.l_name}`.trim(),
   breezometer: patientDetails?.rpm_consent || false,
   awair: !!patientDetails?.awair_refresh_token,
-  bronchodilator_responsiveness_testing: false,
+  bronchodilator_responsiveness_testing: true,
 });
 
 const patientLogin = async (req, res) => {
