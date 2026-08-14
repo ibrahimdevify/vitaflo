@@ -507,11 +507,39 @@ const clinicianControl = async (req, res) => {
       include: { patient_details: { include: { attributes: true } } },
     });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
     const accessToken = generateAccessToken();
     await prisma.vf_session.create({
-      data: { access_token: accessToken, user_id: patient.user_id, clinician_id: req.user.user_id, last_action: new Date() },
+      data: {
+        access_token: accessToken,
+        user_id: patient.user_id,
+        clinician_id: req.user.user_id,
+        last_action: new Date()
+      },
     });
-    // FLAT response
+
+    // Get the controlling clinician's full user object
+    const clinician = await prisma.dc_users.findUnique({
+      where: { user_id: req.user.user_id },
+      include: { doctor_details: { include: { hospital: true } } },
+    });
+
+    // Build the clinicianControlling as a User object
+    const clinicianControlling = {
+      access_token: null,
+      user_id: String(clinician.user_id),
+      username: clinician.email,
+      type: 'clinician',
+      account_attributes: {
+        account_name: `${clinician.f_name} ${clinician.l_name}`.trim(),
+        breezometer: false,
+        awair: false,
+        bronchodilator_responsiveness_testing: true, // This enables the buttons
+      },
+      extra: {},
+    };
+
+    // Updated response with clinicianControlling as User object
     res.json({
       access_token: accessToken,
       user_id: String(patient.user_id),
@@ -519,17 +547,14 @@ const clinicianControl = async (req, res) => {
       type: 'patient',
       attributes: buildAttributes(patient, patient.patient_details?.attributes),
       account_attributes: buildAccountAttributes(patient, patient.patient_details),
-      clinicianControlling: {
-        accountAttributes: {
-          bronchodilatorResponsivenessTesting: true,
-        }
-      },
+      clinicianControlling: clinicianControlling, // Now it's a User object
       extra: {
         is_clinician_controlled: true,
         controlling_clinician_id: String(req.user.user_id)
       },
     });
   } catch (error) {
+    console.error('Clinician control error:', error);
     res.status(500).json({ error: 'Failed to take control' });
   }
 };
