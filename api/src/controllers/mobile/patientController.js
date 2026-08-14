@@ -110,10 +110,25 @@ const clinicianLogin = async (req, res) => {
     });
     const extra = {};
     const hospital = user.doctor_details?.hospital;
+
+    // Build account attributes with bronchodilator setting
+    let accountAttrs = {
+      account_name: `${user.f_name} ${user.l_name}`.trim(),
+      breezometer: false,
+      awair: false,
+      bronchodilator_responsiveness_testing: true, // ✅ ADD THIS!
+    };
+
     if (hospital) {
       const attrs = await prisma.vf_account_attributes.findUnique({
         where: { account_id: hospital.id },
       }).catch(() => null);
+
+      // Get bronchodilator setting from hospital account if exists
+      if (attrs?.bronchodilator_responsiveness_testing !== undefined) {
+        accountAttrs.bronchodilator_responsiveness_testing = attrs.bronchodilator_responsiveness_testing;
+      }
+
       if (attrs?.extra) {
         try {
           const ed = typeof attrs.extra === 'string' ? JSON.parse(attrs.extra) : attrs.extra;
@@ -121,6 +136,7 @@ const clinicianLogin = async (req, res) => {
         } catch { }
       }
     }
+
     // FLAT response
     res.json({
       access_token: accessToken,
@@ -128,7 +144,7 @@ const clinicianLogin = async (req, res) => {
       username: user.email,
       type: 'clinician',
       attributes: buildClinicianAttributes(user),
-      account_attributes: { account_name: `${user.f_name} ${user.l_name}`.trim() },
+      account_attributes: accountAttrs, // ✅ Now includes bronchodilator_responsiveness_testing
       extra,
     });
   } catch (error) {
@@ -136,7 +152,6 @@ const clinicianLogin = async (req, res) => {
     res.status(500).json({ error: 'Login failed' });
   }
 };
-
 const getMe = async (req, res) => {
   try {
     const userId = req.user.user_id;
@@ -157,6 +172,31 @@ const getMe = async (req, res) => {
       }).catch(() => { });
     }
     const isPatient = user.ut_id_fk === 4;
+
+    let accountAttrs;
+    if (isPatient) {
+      accountAttrs = buildAccountAttributes(user, user.patient_details);
+    } else {
+      // For clinicians, include bronchodilator_responsiveness_testing
+      accountAttrs = {
+        account_name: `${user.f_name} ${user.l_name}`.trim(),
+        breezometer: false,
+        awair: false,
+        bronchodilator_responsiveness_testing: true, // ✅ ADD THIS!
+      };
+
+      // Check hospital account for actual setting
+      if (user.doctor_details?.hospital?.id) {
+        const attrs = await prisma.vf_account_attributes.findUnique({
+          where: { account_id: user.doctor_details.hospital.id },
+        }).catch(() => null);
+
+        if (attrs?.bronchodilator_responsiveness_testing !== undefined) {
+          accountAttrs.bronchodilator_responsiveness_testing = attrs.bronchodilator_responsiveness_testing;
+        }
+      }
+    }
+
     // FLAT response
     res.json({
       access_token: req.headers.vitalfloauth || '',
@@ -166,16 +206,7 @@ const getMe = async (req, res) => {
       attributes: isPatient
         ? buildAttributes(user, user.patient_details?.attributes)
         : buildClinicianAttributes(user),
-      account_attributes: isPatient
-        ? buildAccountAttributes(user, user.patient_details)
-        : { account_name: `${user.f_name} ${user.l_name}`.trim() },
-      ...(isPatient && {
-        clinicianControlling: {
-          accountAttributes: {
-            bronchodilatorResponsivenessTesting: true,
-          }
-        }
-      }),
+      account_attributes: accountAttrs, // ✅ Now includes bronchodilator_responsiveness_testing for clinicians
       extra: {},
     });
   } catch (error) {
