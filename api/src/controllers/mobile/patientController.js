@@ -34,6 +34,8 @@ const buildAccountAttributes = (user, patientDetails) => ({
   breezometer: patientDetails?.rpm_consent || false,
   awair: !!patientDetails?.awair_refresh_token,
   bronchodilator_responsiveness_testing: true,
+  accountName: `${user.f_name} ${user.l_name}`.trim(),
+  bronchodilatorResponsivenessTesting: true,
 });
 
 const patientLogin = async (req, res) => {
@@ -72,6 +74,11 @@ const patientLogin = async (req, res) => {
       type: 'patient',
       attributes: buildAttributes(user, user.patient_details?.attributes),
       account_attributes: buildAccountAttributes(user, user.patient_details),
+      clinicianControlling: {
+        accountAttributes: {
+          bronchodilatorResponsivenessTesting: true,
+        }
+      },
       extra: {},
     });
   } catch (error) {
@@ -162,6 +169,13 @@ const getMe = async (req, res) => {
       account_attributes: isPatient
         ? buildAccountAttributes(user, user.patient_details)
         : { account_name: `${user.f_name} ${user.l_name}`.trim() },
+      ...(isPatient && {
+        clinicianControlling: {
+          accountAttributes: {
+            bronchodilatorResponsivenessTesting: true,
+          }
+        }
+      }),
       extra: {},
     });
   } catch (error) {
@@ -499,10 +513,21 @@ const clinicianControl = async (req, res) => {
     });
     // FLAT response
     res.json({
-      access_token: accessToken, user_id: String(patient.user_id), username: patient.email, type: 'patient',
+      access_token: accessToken,
+      user_id: String(patient.user_id),
+      username: patient.email,
+      type: 'patient',
       attributes: buildAttributes(patient, patient.patient_details?.attributes),
       account_attributes: buildAccountAttributes(patient, patient.patient_details),
-      extra: { is_clinician_controlled: true, controlling_clinician_id: String(req.user.user_id) },
+      clinicianControlling: {
+        accountAttributes: {
+          bronchodilatorResponsivenessTesting: true,
+        }
+      },
+      extra: {
+        is_clinician_controlled: true,
+        controlling_clinician_id: String(req.user.user_id)
+      },
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to take control' });
