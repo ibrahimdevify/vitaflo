@@ -336,49 +336,43 @@ const getClinicianPatients = async (req, res) => {
       include: {
         patient_details: {
           include: {
-            attributes: {
-              include: { addresses: true },
-            },
+            attributes: true,
           },
         },
       },
     });
 
     const result = patients.map(p => {
-      const attr = p.patient_details?.attributes;
-      const addresses = attr?.addresses || [];
+      const pd = p.patient_details;
+      const attr = pd?.attributes;
+
       return {
         id: String(p.user_id),
-        username: p.email || '',
+        username: p.email || p.userName || '',
         email: p.email || '',
         is_active: p.is_availible || false,
         survey: null,
         is_clinician_controlled: false,
         attributes: {
-          id: attr ? String(attr.id) : '',
+          id: attr ? String(attr.id) : (pd ? String(pd.pd_id) : ''),
           first_name: attr?.first_name || p.f_name || '',
           last_name: attr?.last_name || p.l_name || '',
-          phone: p.phone || '',
-          dob: attr?.dob || null,
+          phone: attr?.phone || p.phone || '',
+          dob: attr?.dob ? String(attr.dob) : null,
           gender: attr?.gender || null,
-          height: attr?.height || null,
-          weight: attr?.weight || null,
-          lookup_table: attr?.ethnic_group || attr?.race || '',
+          height: attr?.height ? parseFloat(attr.height) : (pd?.height ? parseFloat(pd.height) : null),
+          weight: attr?.weight ? parseFloat(attr.weight) : (pd?.weight ? parseFloat(pd.weight) : null),
+          lookup_table: attr?.lookup_table || attr?.ethnic_group || '',
           extra: {},
         },
-        address: addresses.map(a => ({
-          street: a.street || '',
-          city: a.city || '',
-          state: a.state || '',
-          zip: a.zip || '',
-        })),
+        address: [],
       };
     });
 
     res.json(result);
   } catch (error) {
     console.error('Get clinician patients error:', error);
-    res.status(500).json({ error: 'Failed to fetch patients' });
+    res.status(500).json({ error: 'Failed to fetch patients', message: error.message });
   }
 };
 
