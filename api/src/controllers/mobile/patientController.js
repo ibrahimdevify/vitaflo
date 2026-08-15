@@ -520,7 +520,7 @@ const createPatient = async (req, res) => {
       },
     });
 
-    // Return the created user with saved attributes
+
     res.status(201).json({
       id: String(user.user_id),
       user_id: String(user.user_id),
@@ -531,10 +531,7 @@ const createPatient = async (req, res) => {
       attributes: {
         first_name: user.f_name,
         last_name: user.l_name,
-        dob: user.patient_details?.attributes?.dob || dobValue || null,
-        gender: user.patient_details?.attributes?.gender || genderValue || null,
-        height: user.patient_details?.attributes?.height || heightValue || null,
-        weight: user.patient_details?.attributes?.weight || weightValue || null,
+        dob: attrs?.dob || null,
         chart_number: user.patient_details?.chart_no || '',
       },
       access_code: access_code || null,
