@@ -17,8 +17,8 @@ const buildAttributes = (user, attrs) => {
   };
   if (attrs?.dob) result.dob = attrs.dob;
   if (attrs?.gender) result.gender = attrs.gender;
-  if (attrs?.height) result.height = parseFloat(attrs.height);
-  if (attrs?.weight) result.weight = parseFloat(attrs.weight);
+  if (attrs?.height) result.height = asFloat(attrs.height, 1);
+  if (attrs?.weight) result.weight = asFloat(attrs.weight, 1);
   if (attrs?.ethnic_group) result.ethnic_group = attrs.ethnic_group;
   if (attrs?.race) result.race = attrs.race;
   return result;
@@ -199,7 +199,7 @@ const getMe = async (req, res) => {
     }
 
     // FLAT response
-    res.json({
+    res.type('application/json').send(stringifyWithFloats({
       access_token: req.headers.vitalfloauth || '',
       user_id: String(user.user_id),
       username: user.email,
@@ -207,9 +207,11 @@ const getMe = async (req, res) => {
       attributes: isPatient
         ? buildAttributes(user, user.patient_details?.attributes)
         : buildClinicianAttributes(user),
-      account_attributes: accountAttrs, // ✅ Now includes bronchodilator_responsiveness_testing for clinicians
+      account_attributes: isPatient
+        ? buildAccountAttributes(user, user.patient_details)
+        : { account_name: `${user.f_name} ${user.l_name}`.trim() },
       extra: {},
-    });
+    }));
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user' });
@@ -392,7 +394,7 @@ const getPatientById = async (req, res) => {
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     const attr = patient.patient_details?.attributes;
     // Flat response - no wrapper
-    res.json({
+    res.type('application/json').send(stringifyWithFloats({
       id: String(patient.user_id),
       username: patient.email,
       email: patient.email,
@@ -402,11 +404,11 @@ const getPatientById = async (req, res) => {
       attributes: {
         gender: attr?.gender || null,
         date_of_birth: attr?.dob || null,
-        height: attr?.height || null,
-        weight: attr?.weight || null,
+        height: asFloat(attr?.height, 1),
+        weight: asFloat(attr?.weight, 1),
       },
       account_attributes: buildAccountAttributes(patient, patient.patient_details),
-    });
+    }));
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch patient' });
   }
@@ -607,19 +609,18 @@ const clinicianControl = async (req, res) => {
     };
 
     // Updated response with clinicianControlling as User object
-    res.json({
+    res.type('application/json').send(stringifyWithFloats({
       access_token: accessToken,
       user_id: String(patient.user_id),
       username: patient.email,
       type: 'patient',
       attributes: buildAttributes(patient, patient.patient_details?.attributes),
       account_attributes: buildAccountAttributes(patient, patient.patient_details),
-      clinicianControlling: clinicianControlling, // Now it's a User object
       extra: {
         is_clinician_controlled: true,
         controlling_clinician_id: String(req.user.user_id)
       },
-    });
+    }));
   } catch (error) {
     console.error('Clinician control error:', error);
     res.status(500).json({ error: 'Failed to take control' });
