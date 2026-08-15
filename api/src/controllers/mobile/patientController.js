@@ -4,7 +4,7 @@ const { generateToken, generateRefreshToken } = require('../../utils/jwt');
 const { generateAccessToken } = require('../../utils/token');
 const crypto = require('crypto');
 const { generateUserName } = require('../../utils/usernameGenerator');
-const { asFloat } = require('../../utils/floatJson');
+const { asFloat, stringifyWithFloats } = require('../../utils/floatJson');
 
 const prisma = new PrismaClient();
 
