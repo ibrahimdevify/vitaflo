@@ -466,12 +466,6 @@ const createPatient = async (req, res) => {
 
     const userName = await generateUserName(userEmail);
 
-    const dobValue = attrs?.dob || attrs?.date_of_birth || '';
-    const genderValue = attrs?.gender || '';
-    const heightValue = attrs?.height ? parseFloat(attrs.height) : null;
-    const weightValue = attrs?.weight ? parseFloat(attrs.weight) : null;
-
-
     const user = await prisma.dc_users.create({
       data: {
         f_name: first_name || '',
@@ -490,18 +484,6 @@ const createPatient = async (req, res) => {
             access_code: access_code || null,
             assigned_clinician_id: clinician_id ? parseInt(clinician_id) : null,
             status: 'active',
-            attributes: {
-              create: {
-                first_name: first_name || '',
-                last_name: last_name || '',
-                phone: userPhone || null,
-                dob: String(dobValue),  // vf_attributes.dob is String
-                height: heightValue || 0,  // vf_attributes.height is Float with default 0
-                weight: weightValue,  // vf_attributes.weight is Float?
-                gender: String(genderValue),  // vf_attributes.gender is String
-                chart_number: chartNo || null,
-              },
-            },
           },
         },
       },
