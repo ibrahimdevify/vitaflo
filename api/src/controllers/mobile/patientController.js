@@ -360,8 +360,8 @@ const getClinicianPatients = async (req, res) => {
           phone: attr?.phone || p.phone || '',
           dob: attr?.dob ? String(attr.dob) : null,
           gender: attr?.gender || null,
-          height: attr?.height ? parseFloat(attr.height) : (pd?.height ? parseFloat(pd.height) : null),
-          weight: attr?.weight ? parseFloat(attr.weight) : (pd?.weight ? parseFloat(pd.weight) : null),
+          height: attr?.height ? Number(parseFloat(attr.height).toFixed(1)) : null,
+          weight: attr?.weight ? Number(parseFloat(attr.weight).toFixed(1)) : null,
           lookup_table: attr?.lookup_table || attr?.ethnic_group || '',
           extra: {},
         },
@@ -375,7 +375,6 @@ const getClinicianPatients = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch patients', message: error.message });
   }
 };
-
 const getPatientById = async (req, res) => {
   try {
     const patient = await prisma.dc_users.findFirst({
