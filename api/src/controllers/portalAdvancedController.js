@@ -8,18 +8,56 @@ const prisma = new PrismaClient();
 const getSpirometryTrends = async (req, res) => {
   try {
     const { user_id, start, end } = req.params;
-    const uid = /^\d+$/.test(user_id) ? parseInt(user_id) : (await prisma.dc_users.findFirst({ where: { OR: [{ email: user_id }, { phone: user_id }], ut_id_fk: 4 }, select: { user_id: true } }))?.user_id;
+
+    // Resolve user ID (supports username, email, phone, or numeric)
+    let uid;
+    if (/^\d+$/.test(user_id)) {
+      uid = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: {
+          OR: [
+            { userName: user_id },
+            { email: user_id },
+            { phone: user_id },
+          ],
+          ut_id_fk: 4
+        },
+        select: { user_id: true },
+      });
+      uid = user?.user_id;
+    }
+
     if (!uid) return res.json({ data: [], total: 0 });
-    const data = await prisma.portal_spirometry.findMany({
+
+    // Get observations with spirometries
+    const observations = await prisma.portal_observation.findMany({
       where: {
-        observation: { user_id: uid },
-        dbdate: { gte: new Date(start || '2020-01-01'), lte: new Date(end || '2030-01-01') },
+        user_id: uid,
+        ...(start && end ? { dbdate: { gte: new Date(start), lte: new Date(end + 'T23:59:59Z') } } : {}),
       },
+      include: { spirometries: true },
       orderBy: { dbdate: 'asc' },
-      select: { dbdate: true, fev1: true, fvc: true, pefr: true, fef2575: true, fev1_perc: true, fev6: true },
     });
-    res.json(data);
+
+    // Flatten to get spirometry data with observation dates
+    const data = observations.flatMap(obs =>
+      obs.spirometries.map(sp => ({
+        dbdate: obs.dbdate,
+        fev1: sp.fev1,
+        fvc: sp.fvc,
+        pefr: sp.pefr,
+        fef2575: sp.fef2575,
+        fev6: sp.fev6,
+        fev1_perc: sp.fev1_perc,
+        is_post_bronchodilator: obs.is_post_bronchodilator,
+        height: obs.height,
+      }))
+    );
+
+    res.json({ data, total: data.length });
   } catch (error) {
+    console.error('Get spirometry trends error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -27,18 +65,41 @@ const getSpirometryTrends = async (req, res) => {
 const getIAQTrends = async (req, res) => {
   try {
     const { user_id, start, end } = req.params;
-    const uid = /^\d+$/.test(user_id) ? parseInt(user_id) : (await prisma.dc_users.findFirst({ where: { OR: [{ email: user_id }, { phone: user_id }], ut_id_fk: 4 }, select: { user_id: true } }))?.user_id;
+
+    let uid;
+    if (/^\d+$/.test(user_id)) {
+      uid = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: {
+          OR: [
+            { userName: user_id },
+            { email: user_id },
+            { phone: user_id },
+          ],
+          ut_id_fk: 4
+        },
+        select: { user_id: true },
+      });
+      uid = user?.user_id;
+    }
+
     if (!uid) return res.json({ data: [], total: 0 });
+
     const data = await prisma.portal_indoor_air_quality.findMany({
-      where: { user_id: uid, dbdate: { gte: new Date(start), lte: new Date(end) } },
+      where: {
+        user_id: uid,
+        ...(start && end ? { dbdate: { gte: new Date(start), lte: new Date(end + 'T23:59:59Z') } } : {}),
+      },
       orderBy: { dbdate: 'asc' },
     });
-    res.json(data);
+
+    res.json({ data, total: data.length });
   } catch (error) {
+    console.error('Get IAQ trends error:', error);
     res.status(500).json({ error: error.message });
   }
 };
-
 const getAQITrends = async (req, res) => {
   try {
     const data = []; // Breezometer models not in DB yet
@@ -89,9 +150,9 @@ const getSurveyTrends = async (req, res) => {
 const getAlerts = async (req, res) => {
   try {
     const { page = 1, limit = 10, search, is_read, start_date, end_date, user_id } = req.query;
-    
+
     const where = {};
-    
+
     // Search by message or user name
     if (search) {
       where.OR = [
@@ -100,26 +161,26 @@ const getAlerts = async (req, res) => {
         { user: { l_name: { contains: search } } },
       ];
     }
-    
+
     // Filter by read status
     if (is_read !== undefined) {
       where.is_read = is_read === 'true';
     }
-    
+
     // Date range filter
     if (start_date || end_date) {
       where.created = {};
       if (start_date) where.created.gte = new Date(start_date);
       if (end_date) where.created.lte = new Date(end_date + 'T23:59:59.999Z');
     }
-    
+
     // Filter by user
     if (user_id) {
       where.user_id = parseInt(user_id);
     }
-    
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     const [data, total] = await Promise.all([
       prisma.portal_alert.findMany({
         where,
@@ -132,7 +193,7 @@ const getAlerts = async (req, res) => {
       }),
       prisma.portal_alert.count({ where }),
     ]);
-    
+
     res.json({
       data,
       pagination: {
@@ -204,39 +265,86 @@ const sendNotification = async (req, res) => {
 const getPredictedValues = async (req, res) => {
   try {
     const { user_id } = req.params;
-    const uid = /^\d+$/.test(user_id) ? parseInt(user_id) : (await prisma.dc_users.findFirst({ where: { OR: [{ email: user_id }, { phone: user_id }], ut_id_fk: 4 }, select: { user_id: true } }))?.user_id;
-    if (!uid) return res.json([]);
+    
+    // Resolve user ID (supports username, email, phone, or numeric)
+    let uid;
+    if (/^\d+$/.test(user_id)) {
+      uid = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { 
+          OR: [
+            { userName: user_id },
+            { email: user_id },
+            { phone: user_id },
+          ], 
+          ut_id_fk: 4 
+        },
+        select: { user_id: true },
+      });
+      uid = user?.user_id;
+    }
+    
+    if (!uid) return res.json({ data: [], total: 0 });
+    
     const data = await prisma.portal_predicted_value.findMany({
       where: { user_id: uid },
-      orderBy: { created: 'desc' },
+      orderBy: { created: "desc" },
     });
-    res.json(data);
+    
+    res.json({ data, total: data.length });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Get predicted values error:", error);
+    res.status(500).json({ error: "Failed to fetch predicted values" });
   }
 };
 
 const createPredictedValues = async (req, res) => {
   try {
     const { user_id, variables } = req.body;
+    
+    // Resolve user ID (supports username, email, phone, or numeric)
+    let uid;
+    if (/^\d+$/.test(String(user_id))) {
+      uid = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { 
+          OR: [
+            { userName: String(user_id) },
+            { email: String(user_id) },
+          ], 
+          ut_id_fk: 4 
+        },
+        select: { user_id: true },
+      });
+      uid = user?.user_id;
+    }
+    
+    if (!uid) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+    
     const created = [];
     for (const v of variables) {
       const pv = await prisma.portal_predicted_value.create({
         data: {
-          user_id: parseInt(user_id),
+          user_id: uid,
           variable: v.variable,
-          predicted: v.predicted,
-          lln: v.lln,
-          uln: v.uln,
-          z_score: v.zScore,
-          percent_predicted: v.percentPredicted,
+          predicted: v.predicted ? parseFloat(v.predicted) : null,
+          lln: v.lln ? parseFloat(v.lln) : null,
+          uln: v.uln ? parseFloat(v.uln) : null,
+          z_score: v.zScore || v.z_score ? parseFloat(v.zScore || v.z_score) : null,
+          percent_predicted: v.percentPredicted || v.percent_predicted ? parseFloat(v.percentPredicted || v.percent_predicted) : null,
         },
       });
       created.push(pv);
     }
-    res.status(201).json({ message: 'Predicted values saved', data: created });
+    
+    res.status(201).json({ message: "Predicted values saved", data: created });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Create predicted values error:", error);
+    res.status(500).json({ error: "Failed to save predicted values", message: error.message });
   }
 };
 

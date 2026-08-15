@@ -1,30 +1,30 @@
-import { Plus, Stethoscope } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import ClinicianDetailModal from '../components/clinicians/ClinicianDetailModal';
-import ClinicianForm from '../components/clinicians/ClinicianForm';
-import CliniciansFilters from '../components/clinicians/CliniciansFilters';
-import CliniciansTable from '../components/clinicians/CliniciansTable';
-import { Button } from '../components/ui/button';
+import { Plus, Stethoscope } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import ClinicianDetailModal from "../components/clinicians/ClinicianDetailModal";
+import ClinicianForm from "../components/clinicians/ClinicianForm";
+import CliniciansFilters from "../components/clinicians/CliniciansFilters";
+import CliniciansTable from "../components/clinicians/CliniciansTable";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import Pagination from '../components/ui/pagination';
-import { cliniciansAPI } from '../services/api';
+} from "../components/ui/card";
+import Pagination from "../components/ui/pagination";
+import { cliniciansAPI } from "../services/api";
 
 export default function Clinicians() {
   const [clinicians, setClinicians] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [filterSpecialist, setFilterSpecialist] = useState('all');
+  const [filterSpecialist, setFilterSpecialist] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editingClinician, setEditingClinician] = useState(null);
   const [selectedClinician, setSelectedClinician] = useState(null);
@@ -46,13 +46,13 @@ export default function Clinicians() {
       setLoading(true);
       const params = { page, limit };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (filterSpecialist !== 'all') params.is_specialist = filterSpecialist;
+      if (filterSpecialist !== "all") params.is_specialist = filterSpecialist;
       const res = await cliniciansAPI.getAll(params);
       setClinicians(res.data.data || []);
       setTotal(res.data.pagination?.total || 0);
       setTotalPages(res.data.pagination?.pages || 1);
     } catch (err) {
-      toast.error('Failed to load clinicians');
+      toast.error("Failed to load clinicians");
     } finally {
       setLoading(false);
     }
@@ -69,7 +69,7 @@ export default function Clinicians() {
       const res = await cliniciansAPI.getById(id);
       setClinicianDetail(res.data.data || res.data);
     } catch (err) {
-      toast.error('Failed to load clinician details');
+      toast.error("Failed to load clinician details");
     } finally {
       setLoadingDetail(false);
     }

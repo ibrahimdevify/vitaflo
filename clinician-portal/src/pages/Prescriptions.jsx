@@ -1,17 +1,18 @@
-import { useState } from 'react';
-import { toast } from 'sonner';
-import PrescriptionsAddForm from '../components/prescriptions/PrescriptionsAddForm';
-import PrescriptionsList from '../components/prescriptions/PrescriptionsList';
-import PrescriptionsPatientBar from '../components/prescriptions/PrescriptionsPatientBar';
-import PrescriptionsSearch from '../components/prescriptions/PrescriptionsSearch';
-import { patientsAPI } from '../services/api';
+import { useState } from "react";
+import { toast } from "sonner";
+import PrescriptionsAddForm from "../components/prescriptions/PrescriptionsAddForm";
+import PrescriptionsList from "../components/prescriptions/PrescriptionsList";
+import PrescriptionsPatientBar from "../components/prescriptions/PrescriptionsPatientBar";
+import PrescriptionsSearch from "../components/prescriptions/PrescriptionsSearch";
+import { patientsAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 export default function Prescriptions() {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [patientId, setPatientId] = useState('');
+  const [patientId, setPatientId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState({});
 
@@ -20,17 +21,19 @@ export default function Prescriptions() {
   const [totalRecords, setTotalRecords] = useState(0);
   const limit = 10;
 
+  const { user } = useAuth(); // ✅ Get logged-in user
+
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
       .toISOString()
-      .split('T')[0],
-    end: new Date().toISOString().split('T')[0],
+      .split("T")[0],
+    end: new Date().toISOString().split("T")[0],
   });
 
   const searchPrescriptions = async (pageNum = 1) => {
     const query = search.trim();
     if (!query) {
-      toast.error('Please enter a Patient ID, Username, or Email');
+      toast.error("Please enter a Patient Username");
       return;
     }
     try {
@@ -53,10 +56,10 @@ export default function Prescriptions() {
       setTotalRecords(pagination.total || data.length);
 
       if (data.length === 0) {
-        toast.info('No prescriptions found for this date range');
+        toast.info("No prescriptions found for this patient");
       }
     } catch (err) {
-      toast.error('Failed to load prescriptions');
+      toast.error("Failed to load prescriptions");
       setPrescriptions([]);
     } finally {
       setLoading(false);
@@ -66,24 +69,24 @@ export default function Prescriptions() {
   const handleSubmit = async (data) => {
     try {
       setSubmitting(true);
+
       await patientsAPI.createPrescription(patientId, {
         diagnosis: data.diagnosis.trim(),
-        pharmacy_instruction: data.pharmacy_instruction?.trim() || '',
-        doctor_id_fk: 1,
+        pharmacy_instruction: data.pharmacy_instruction?.trim() || "",
         medicines: data.medicines.map((m) => ({
           drug: m.drug.trim(),
-          dosage: m.dosage?.trim() || 'N/A',
-          frequency: m.frequency?.trim() || 'N/A',
-          quantity: m.quantity?.trim() || '1',
-          days: m.days?.trim() || '1',
-          direction: m.direction?.trim() || 'N/A',
+          dosage: m.dosage?.trim() || "N/A",
+          frequency: m.frequency?.trim() || "N/A",
+          quantity: m.quantity?.trim() || "1",
+          days: m.days?.trim() || "1",
+          direction: m.direction?.trim() || "N/A",
         })),
       });
-      toast.success('Prescription created successfully!');
+      toast.success("Prescription created successfully!");
       setShowForm(false);
       searchPrescriptions(1);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create prescription');
+      toast.error(err.response?.data?.error || "Failed to create prescription");
     } finally {
       setSubmitting(false);
     }

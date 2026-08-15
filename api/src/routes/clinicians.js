@@ -33,6 +33,8 @@ router.get('/overview/:id', authorize('technician', 'account_admin'), clinicianC
  *         description: Clinicians list
  */
 router.get('/', clinicianController.getAllClinicians);
+router.post('/', authorize('technician', 'account_admin'), clinicianController.createClinician);
+router.put('/:id', authorize('technician', 'account_admin'), clinicianController.updateClinician);
 
 /**
  * @swagger

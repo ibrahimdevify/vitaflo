@@ -35,4 +35,10 @@ router.get('/airquality/airquality', ctrl.getAirQuality);
 router.get('/days_of_spirometry/:user', ctrl.getDaysOfSpirometry);
 router.get('/spirometry_readings', ctrl.getSpirometryReadings);
 
+// Alerts
+router.get("/alerts", ctrl.getAlerts);
+router.post("/alerts", ctrl.createAlert);
+router.put("/alerts/:alertId", ctrl.markAlertAsRead);
+router.put("/alerts/read-all", ctrl.markAllAlertsAsRead);
+
 module.exports = router;

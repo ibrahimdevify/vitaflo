@@ -1,23 +1,23 @@
-import { Search, Users } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import PatientDetailModal from '../components/patients/PatientDetailModal';
-import PatientsTable from '../components/patients/PatientsTable';
+import { Search, Users } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import PatientDetailModal from "../components/patients/PatientDetailModal";
+import PatientsTable from "../components/patients/PatientsTable";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import { Input } from '../components/ui/input';
-import Pagination from '../components/ui/pagination';
-import { patientsAPI, spirometryAPI } from '../services/api';
+} from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import Pagination from "../components/ui/pagination";
+import { patientsAPI, spirometryAPI } from "../services/api";
 
 export default function Patients() {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
@@ -52,7 +52,7 @@ export default function Patients() {
       setTotal(res.data.pagination?.total || 0);
       setTotalPages(res.data.pagination?.pages || 1);
     } catch (err) {
-      toast.error('Failed to load patients');
+      toast.error("Failed to load patients");
     } finally {
       setLoading(false);
     }
@@ -66,21 +66,35 @@ export default function Patients() {
     try {
       setLoadingDetail(true);
       setSelectedPatient(id);
-      const [detailRes, spiroRes] = await Promise.all([
-        patientsAPI.getById(id),
-        spirometryAPI.getByUser(id, { start: '2020-01-01', end: '2030-12-31' }),
-      ]);
+
+      const detailRes = await patientsAPI.getById(id);
       setPatientDetail(detailRes.data.data || detailRes.data);
-      setSpirometryData(
-        (spiroRes.data.data || []).map((d) => ({
+
+      // Get spirometry data
+      try {
+        const spiroRes = await spirometryAPI.getByUser(id, {
+          start: "2020-01-01",
+          end: "2030-12-31",
+        });
+
+        const spiroData = (spiroRes.data.data || []).map((d) => ({
           date: new Date(d.dbdate).toLocaleDateString(),
           fev1: d.fev1,
           fvc: d.fvc,
           pefr: d.pefr,
-        }))
-      );
+          fef2575: d.fef2575,
+          fev1_perc: d.fev1_perc,
+          is_post_bronchodilator: d.is_post_bronchodilator,
+          quality_message: d.quality_message,
+        }));
+
+        setSpirometryData(spiroData);
+      } catch (spiroErr) {
+        console.error("Failed to load spirometry:", spiroErr);
+        setSpirometryData([]);
+      }
     } catch (err) {
-      toast.error('Failed to load details');
+      toast.error("Failed to load patient details");
     } finally {
       setLoadingDetail(false);
     }

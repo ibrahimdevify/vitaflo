@@ -1,7 +1,7 @@
-import { FileText, Search } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
+import { FileText, Search } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 
 export default function NotesSearch({
   search,
@@ -15,7 +15,7 @@ export default function NotesSearch({
   showForm,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') onLoadNotes(search, 1);
+    if (e.key === "Enter") onLoadNotes(search, 1);
   };
 
   return (
@@ -26,7 +26,7 @@ export default function NotesSearch({
             <div className="relative flex-1 max-w-lg">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
               <Input
-                placeholder="Search by Patient ID, Username, or Email..."
+                placeholder="Search by Patient Username..."
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -35,7 +35,7 @@ export default function NotesSearch({
             </div>
             <Button onClick={() => onLoadNotes(search, 1)} disabled={loading}>
               <FileText className="h-4 w-4 mr-2" />
-              {loading ? 'Loading...' : 'Load Notes'}
+              {loading ? "Loading..." : "Load Notes"}
             </Button>
             {patientId && (
               <Button
@@ -44,7 +44,7 @@ export default function NotesSearch({
                 className="border-border gap-2"
               >
                 <FileText className="h-4 w-4" />
-                {showForm ? 'Cancel' : 'Add Note'}
+                {showForm ? "Cancel" : "Add Note"}
               </Button>
             )}
           </div>
@@ -86,7 +86,7 @@ export default function NotesSearch({
           </div>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Supports: Patient ID, Username, or Email
+          Supports: Patient Username
         </p>
       </CardContent>
     </Card>

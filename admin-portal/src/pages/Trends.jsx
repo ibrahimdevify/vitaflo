@@ -1,44 +1,49 @@
-import { Activity, Search } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import EmptyState from '../components/shared/EmptyState';
-import TrendsChart from '../components/trends/TrendsChart';
-import TrendsSearch from '../components/trends/TrendsSearch';
-import TrendsSkeleton from '../components/trends/TrendsSkeleton';
-import TrendsStats from '../components/trends/TrendsStats';
-import TrendsTabSwitcher from '../components/trends/TrendsTabSwitcher';
-import { Badge } from '../components/ui/badge';
-import { Card, CardContent } from '../components/ui/card';
-import { trendsAPI } from '../services/api';
+import { Activity, Search, UserRound } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import EmptyState from "../components/shared/EmptyState";
+import TrendsChart from "../components/trends/TrendsChart";
+import TrendsSearch from "../components/trends/TrendsSearch";
+import TrendsSkeleton from "../components/trends/TrendsSkeleton";
+import TrendsStats from "../components/trends/TrendsStats";
+import TrendsTabSwitcher from "../components/trends/TrendsTabSwitcher";
+import { Badge } from "../components/ui/badge";
+import { Card, CardContent } from "../components/ui/card";
+import { trendsAPI } from "../services/api";
 
 export default function Trends() {
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState("");
   const [spirometryTrends, setSpirometryTrends] = useState([]);
   const [iaqTrends, setIaqTrends] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('spirometry');
+  const [activeTab, setActiveTab] = useState("spirometry");
   const [stats, setStats] = useState(null);
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().getFullYear() - 1, 0, 1)
       .toISOString()
-      .split('T')[0],
-    end: new Date().toISOString().split('T')[0],
+      .split("T")[0],
+    end: new Date().toISOString().split("T")[0],
   });
 
   const loadTrends = async () => {
     if (!userId.trim()) {
-      toast.error('Please enter a Patient ID, Username, or Email');
+      toast.error("Please enter a Patient Username");
       return;
     }
     try {
       setLoading(true);
-      if (activeTab === 'spirometry') {
+      setSpirometryTrends([]);
+      setIaqTrends([]);
+      setStats(null);
+
+      if (activeTab === "spirometry") {
         const res = await trendsAPI.getSpirometry(
           userId.trim(),
           dateRange.start,
-          dateRange.end
+          dateRange.end,
         );
         const data = (res.data.data || []).filter((d) => d.fev1 || d.fvc);
+
         if (data.length > 0) {
           const latest = data[data.length - 1];
           setStats({
@@ -48,54 +53,65 @@ export default function Trends() {
             bestPefr: Math.max(...data.map((d) => d.pefr || 0)),
             total: data.length,
           });
-        } else {
-          setStats(null);
         }
+
         setSpirometryTrends(
           data.map((d) => ({
-            date: new Date(d.dbdate).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: '2-digit',
+            date: new Date(d.dbdate).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "2-digit",
             }),
-            fev1: d.fev1,
-            fvc: d.fvc,
-            pefr: d.pefr,
-            fef2575: d.fef2575,
-            fev1_perc: d.fev1_perc,
-          }))
+            fev1: d.fev1 ? parseFloat(d.fev1.toFixed(2)) : null,
+            fvc: d.fvc ? parseFloat(d.fvc.toFixed(2)) : null,
+            pefr: d.pefr ? parseFloat(d.pefr.toFixed(0)) : null,
+            fef2575: d.fef2575 ? parseFloat(d.fef2575.toFixed(2)) : null,
+            fev1_perc: d.fev1_perc ? parseFloat(d.fev1_perc.toFixed(1)) : null,
+          })),
         );
-        if (data.length === 0) toast.info('No spirometry data found');
+
+        if (data.length === 0)
+          toast.info("No spirometry data found for this patient");
+        else toast.success(`Loaded ${data.length} spirometry records`);
       } else {
         const res = await trendsAPI.getIAQ(
           userId.trim(),
           dateRange.start,
-          dateRange.end
+          dateRange.end,
         );
         const data = res.data.data || [];
         setIaqTrends(
           data.map((d) => ({
-            date: new Date(d.dbdate).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
+            date: new Date(d.dbdate).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
             }),
             pm25: d.pm25,
             pm10: d.pm10,
             temperature: d.temperature,
             humidity: d.humidity,
-          }))
+          })),
         );
-        if (data.length === 0) toast.info('No air quality data found');
+        if (data.length === 0) toast.info("No air quality data found");
       }
     } catch (err) {
-      toast.error('Failed to load trends');
+      toast.error("Failed to load trends");
+      setSpirometryTrends([]);
+      setIaqTrends([]);
+      setStats(null);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading && !spirometryTrends.length && !iaqTrends.length)
-    return <TrendsSkeleton />;
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSpirometryTrends([]);
+    setIaqTrends([]);
+    setStats(null);
+  };
+
+  if (loading) return <TrendsSkeleton />;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -125,11 +141,11 @@ export default function Trends() {
         onSearch={loadTrends}
       />
 
-      {stats && activeTab === 'spirometry' && <TrendsStats stats={stats} />}
+      {stats && activeTab === "spirometry" && <TrendsStats stats={stats} />}
 
-      <TrendsTabSwitcher activeTab={activeTab} onTabChange={setActiveTab} />
+      <TrendsTabSwitcher activeTab={activeTab} onTabChange={handleTabChange} />
 
-      {activeTab === 'spirometry' &&
+      {activeTab === "spirometry" &&
         (spirometryTrends.length > 0 ? (
           <div className="space-y-6">
             <Card>
@@ -138,19 +154,19 @@ export default function Trends() {
                   data={spirometryTrends}
                   lines={[
                     {
-                      key: 'fev1',
-                      color: 'var(--color-info)',
-                      name: 'FEV1 (L)',
+                      key: "fev1",
+                      color: "var(--color-info)",
+                      name: "FEV1 (L)",
                     },
                     {
-                      key: 'fvc',
-                      color: 'var(--color-success)',
-                      name: 'FVC (L)',
+                      key: "fvc",
+                      color: "var(--color-success)",
+                      name: "FVC (L)",
                     },
                     {
-                      key: 'pefr',
-                      color: 'var(--color-warning)',
-                      name: 'PEFR (L/s)',
+                      key: "pefr",
+                      color: "var(--color-warning)",
+                      name: "PEFR (L/s)",
                     },
                   ]}
                 />
@@ -163,14 +179,14 @@ export default function Trends() {
                   height={300}
                   lines={[
                     {
-                      key: 'fev1_perc',
-                      color: 'var(--color-brand-500)',
-                      name: 'FEV1%',
+                      key: "fev1_perc",
+                      color: "var(--color-brand-500)",
+                      name: "FEV1%",
                     },
                     {
-                      key: 'fef2575',
-                      color: '#ec4899',
-                      name: 'FEF25-75 (L/s)',
+                      key: "fef2575",
+                      color: "#ec4899",
+                      name: "FEF25-75 (L/s)",
                     },
                   ]}
                 />
@@ -183,23 +199,23 @@ export default function Trends() {
               <EmptyState
                 icon={Activity}
                 title="No spirometry trends found"
-                description="Try adjusting the date range"
+                description="Try adjusting the date range or search for a different patient"
               />
             </CardContent>
           </Card>
         ) : (
           <Card>
-            <CardContent className="pt-4">
+            <CardContent className="py-12">
               <EmptyState
                 icon={Search}
-                title="Enter a Patient ID to view trends"
-                description="Supports: Patient ID, Username, or Email"
+                title="Search for a Patient"
+                description="Enter a Patient Username above to view their lung function trends"
               />
             </CardContent>
           </Card>
         ))}
 
-      {activeTab === 'iaq' &&
+      {activeTab === "iaq" &&
         (iaqTrends.length > 0 ? (
           <div className="space-y-6">
             <Card>
@@ -208,11 +224,11 @@ export default function Trends() {
                   data={iaqTrends}
                   lines={[
                     {
-                      key: 'pm25',
-                      color: 'var(--color-warning)',
-                      name: 'PM2.5',
+                      key: "pm25",
+                      color: "var(--color-warning)",
+                      name: "PM2.5",
                     },
-                    { key: 'pm10', color: 'var(--color-danger)', name: 'PM10' },
+                    { key: "pm10", color: "var(--color-danger)", name: "PM10" },
                   ]}
                 />
               </CardContent>
@@ -223,8 +239,8 @@ export default function Trends() {
                   data={iaqTrends}
                   height={300}
                   lines={[
-                    { key: 'temperature', color: '#f97316', name: 'Temp (°C)' },
-                    { key: 'humidity', color: '#06b6d4', name: 'Humidity (%)' },
+                    { key: "temperature", color: "#f97316", name: "Temp (°C)" },
+                    { key: "humidity", color: "#06b6d4", name: "Humidity (%)" },
                   ]}
                 />
               </CardContent>
@@ -238,10 +254,11 @@ export default function Trends() {
           </Card>
         ) : (
           <Card>
-            <CardContent className="pt-4">
+            <CardContent className="py-12">
               <EmptyState
                 icon={Search}
-                title="Enter a Patient ID to view trends"
+                title="Search for a Patient"
+                description="Enter a Patient Username above to view air quality trends"
               />
             </CardContent>
           </Card>

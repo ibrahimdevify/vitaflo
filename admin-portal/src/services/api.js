@@ -35,6 +35,11 @@ export const usersAPI = {
 export const patientsAPI = {
   getAll: (params) => api.get('/patients', { params }),
   getById: (id) => api.get(`/patients/${id}`),
+  getClinicians: () => api.get('/patients/clinicians/list'),
+
+  create: (data) => api.post('/patients', data),  // ✅ ADD THIS
+  update: (id, data) => api.put(`/patients/${id}`, data),  // ✅ ADD THIS
+
   createAttributes: (id, data) => api.post(`/patients/${id}/attributes`, data),
   updateAttributes: (id, data) => api.put(`/patients/${id}/attributes`, data),
   getPrescriptions: (id) => api.get(`/patients/${id}/prescriptions`),
@@ -48,6 +53,8 @@ export const patientsAPI = {
 };
 
 export const cliniciansAPI = {
+  create: (data) => api.post('/clinicians', data),  // ✅ ADD THIS
+  update: (id, data) => api.put(`/clinicians/${id}`, data),
   getAll: (params) => api.get('/clinicians', { params }),
   getById: (id) => api.get(`/clinicians/${id}`),
   getOverview: () => api.get('/clinicians/overview'),

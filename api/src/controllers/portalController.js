@@ -19,7 +19,7 @@ const prisma = new PrismaClient();
 const getSpirometryByUser = async (req, res) => {
   try {
     const { user_id } = req.params;
-    const { start, end } = req.query;
+    const { start, end, page = 1, limit = 20 } = req.query;
 
     // Resolve user ID (supports username, email, phone, or numeric)
     let userId;
@@ -27,21 +27,116 @@ const getSpirometryByUser = async (req, res) => {
       userId = parseInt(user_id);
     } else {
       const user = await prisma.dc_users.findFirst({
-        where: { OR: [{ email: user_id }, { phone: user_id }], ut_id_fk: 4 },
-        select: { user_id: true },
+        where: {
+          OR: [
+            { email: user_id },
+            { phone: user_id },
+            { userName: user_id },
+          ],
+          ut_id_fk: 4
+        },
+        select: { user_id: true, f_name: true, l_name: true, userName: true },
       });
-      if (!user) return res.json({ data: [], total: 0 });
+      if (!user) return res.json({ data: [], total: 0, patient: null });
       userId = user.user_id;
     }
 
-    const where = { observation: { user_id: userId }, fvc: { not: null }, fev1: { not: null } };
-    if (start && end) where.dbdate = { gte: new Date(start), lte: new Date(end) };
+    // Build where clause
+    const where = {
+      observation: {
+        user_id: userId,
+      },
+      fvc: { not: null },
+      fev1: { not: null },
+    };
+
+    if (start && end) {
+      where.dbdate = { gte: new Date(start), lte: new Date(end) };
+    }
+
+    // Get total count
+    const total = await prisma.portal_spirometry.count({ where });
+
+    // Get paginated data
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     const data = await prisma.portal_spirometry.findMany({
-      where, orderBy: { dbdate: 'asc' }, take: 100,
-      include: { observation: true },
+      where,
+      orderBy: { dbdate: 'desc' },
+      skip,
+      take: parseInt(limit),
+      include: {
+        observation: true,
+        flows: true,
+        volumes: true,
+      },
     });
-    res.json({ data, total: data.length });
+
+    // Format data for frontend
+    const formattedData = data.map(s => ({
+      id: s.id,
+      dbdate: s.dbdate,
+      fvc: s.fvc,
+      fev1: s.fev1,
+      pefr: s.pefr,
+      fef2575: s.fef2575,
+      fev6: s.fev6,
+      fev1_perc: s.fev1_perc,
+      quality_message: s.quality_message,
+      symptom: s.symptom,
+      btps: s.btps,
+      temp_celsius: s.temp_celsius,
+      fev1_acceptability: s.fev1_acceptability,
+      fvc_acceptability: s.fvc_acceptability,
+      is_post_bronchodilator: s.observation?.is_post_bronchodilator || false,
+      height: s.observation?.height || null,
+      fev1_grade: s.observation?.fev1_grade || null,
+      fvc_grade: s.observation?.fvc_grade || null,
+      observation_id: s.observation_id,
+      flow_count: s.flows?.length || 0,
+      volume_count: s.volumes?.length || 0,
+    }));
+
+    // Get patient info
+    const patient = await prisma.dc_users.findUnique({
+      where: { user_id: userId },
+      select: {
+        user_id: true,
+        f_name: true,
+        l_name: true,
+        userName: true,
+        email: true,
+        patient_details: {
+          select: {
+            attributes: {
+              select: {
+                dob: true,
+                gender: true,
+                height: true,
+                weight: true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    res.json({
+      data: formattedData,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / parseInt(limit)),
+      patient: patient ? {
+        id: patient.user_id,
+        name: `${patient.f_name} ${patient.l_name}`.trim(),
+        userName: patient.userName,
+        email: patient.email,
+        dob: patient.patient_details?.attributes?.dob || null,
+        gender: patient.patient_details?.attributes?.gender || null,
+      } : null,
+    });
   } catch (error) {
+    console.error('Get spirometry by user error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -213,32 +308,104 @@ const syncSteps = async (req, res) => {
 
 const getNotes = async (req, res) => {
   try {
-    const { user_id, page = 1, limit = 10, start_date, end_date, page_type } = req.query;
-    const userId = user_id ? await resolveUserId(user_id) : null;
-    const where = userId ? { user_id: userId } : {};
-    if (start_date || end_date) {
-      where.recorded_date = {};
-      if (start_date) where.recorded_date.gte = new Date(start_date);
-      if (end_date) where.recorded_date.lte = new Date(end_date + 'T23:59:59.999Z');
+    const { user_id, page = 1, limit = 10, start_date, end_date } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: "User ID is required" });
     }
-    if (page_type) where.page = page_type;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [data, total] = await Promise.all([
-      prisma.portal_notes.findMany({ where, skip, take: parseInt(limit), orderBy: { dbdate: 'desc' } }),
+    
+    // Resolve user ID (supports username, email, or numeric)
+    let userId;
+    if (/^\d+$/.test(user_id)) {
+      userId = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { 
+          OR: [
+            { userName: user_id },
+            { email: user_id },
+          ], 
+          ut_id_fk: 4 
+        },
+        select: { user_id: true, f_name: true, l_name: true, userName: true },
+      });
+      if (!user) return res.json({ data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } });
+      userId = user.user_id;
+    }
+    
+    const where = { user_id: userId };
+    
+    if (start_date || end_date) {
+      where.dbdate = {};
+      if (start_date) where.dbdate.gte = new Date(start_date);
+      if (end_date) where.dbdate.lte = new Date(end_date + "T23:59:59Z");
+    }
+    
+    const [notes, total] = await Promise.all([
+      prisma.portal_notes.findMany({
+        where,
+        orderBy: { dbdate: "desc" },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        take: parseInt(limit),
+      }),
       prisma.portal_notes.count({ where }),
     ]);
-    res.json({ data, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    
+    res.json({
+      data: notes,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get notes error:", error);
+    res.status(500).json({ error: "Failed to fetch notes" });
+  }
 };
 const createNote = async (req, res) => {
   try {
     const { user_id, text, page } = req.body;
+    
+    if (!user_id || !text) {
+      return res.status(400).json({ error: "User ID and text are required" });
+    }
+    
+    // Resolve user ID (supports username, email, or numeric)
+    let userId;
+    if (/^\d+$/.test(String(user_id))) {
+      userId = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { 
+          OR: [
+            { userName: String(user_id) },
+            { email: String(user_id) },
+          ], 
+          ut_id_fk: 4 
+        },
+        select: { user_id: true },
+      });
+      if (!user) return res.status(404).json({ error: "Patient not found" });
+      userId = user.user_id;
+    }
+    
     const note = await prisma.portal_notes.create({
-      data: { user_id: parseInt(user_id), text, page, dbdate: new Date(), recorded_date: new Date() },
+      data: {
+        user_id: userId,
+        text: text,
+        page: page || "general",
+        dbdate: new Date(),
+        recorded_date: new Date(),
+      },
     });
-    res.status(201).json({ message: 'Note created', data: note });
+    
+    res.status(201).json({ message: "Note created", data: note });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Create note error:", error);
+    res.status(500).json({ error: "Failed to create note" });
   }
 };
 
@@ -355,9 +522,161 @@ const getSpirometryReadings = async (req, res) => {
   }
 };
 
+// Create alert
+const createAlert = async (req, res) => {
+  try {
+    const { user_id, message, type } = req.body;
+    
+    if (!user_id || !message) {
+      return res.status(400).json({ error: "User ID and message are required" });
+    }
+    
+    // Resolve user ID
+    let userId;
+    if (/^\d+$/.test(String(user_id))) {
+      userId = parseInt(user_id);
+    } else {
+      const user = await prisma.dc_users.findFirst({
+        where: { 
+          OR: [
+            { userName: String(user_id) },
+            { email: String(user_id) },
+          ], 
+          ut_id_fk: 4 
+        },
+        select: { user_id: true },
+      });
+      if (!user) return res.status(404).json({ error: "Patient not found" });
+      userId = user.user_id;
+    }
+    
+    const alert = await prisma.portal_alert.create({
+      data: {
+        user_id: userId,
+        message: message,
+        created: new Date(),
+        is_read: false,
+      },
+      include: {
+        user: {
+          select: {
+            user_id: true,
+            f_name: true,
+            l_name: true,
+            userName: true,
+          },
+        },
+      },
+    });
+    
+    res.status(201).json({ message: "Alert created", data: alert });
+  } catch (error) {
+    console.error("Create alert error:", error);
+    res.status(500).json({ error: "Failed to create alert" });
+  }
+};
+
+// Get alerts with pagination
+const getAlerts = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, is_read, start_date, end_date } = req.query;
+    
+    const where = {};
+    
+    if (search) {
+      where.OR = [
+        { message: { contains: search } },
+        { user: { f_name: { contains: search } } },
+        { user: { l_name: { contains: search } } },
+        { user: { userName: { contains: search } } },
+      ];
+    }
+    
+    if (is_read !== undefined && is_read !== "") {
+      where.is_read = is_read === "true";
+    }
+    
+    if (start_date || end_date) {
+      where.created = {};
+      if (start_date) where.created.gte = new Date(start_date);
+      if (end_date) where.created.lte = new Date(end_date + "T23:59:59Z");
+    }
+    
+    const [alerts, total] = await Promise.all([
+      prisma.portal_alert.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              user_id: true,
+              f_name: true,
+              l_name: true,
+              userName: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { created: "desc" },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        take: parseInt(limit),
+      }),
+      prisma.portal_alert.count({ where }),
+    ]);
+    
+    res.json({
+      data: alerts,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get alerts error:", error);
+    res.status(500).json({ error: "Failed to fetch alerts" });
+  }
+};
+
+// Mark single alert as read
+const markAlertAsRead = async (req, res) => {
+  try {
+    const { alertId } = req.params;
+    
+    const alert = await prisma.portal_alert.update({
+      where: { id: parseInt(alertId) },
+      data: { is_read: true },
+    });
+    
+    res.json({ message: "Alert marked as read", data: alert });
+  } catch (error) {
+    console.error("Mark alert as read error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "Alert not found" });
+    }
+    res.status(500).json({ error: "Failed to update alert" });
+  }
+};
+
+// Mark all alerts as read
+const markAllAlertsAsRead = async (req, res) => {
+  try {
+    const result = await prisma.portal_alert.updateMany({
+      where: { is_read: false },
+      data: { is_read: true },
+    });
+    
+    res.json({ message: "All alerts marked as read", count: result.count });
+  } catch (error) {
+    console.error("Mark all alerts as read error:", error);
+    res.status(500).json({ error: "Failed to update alerts" });
+  }
+};
+
 module.exports = {
   getSpirometryByUser, getSpirometryLatest, getSpirometryAll, syncSpirometry,
   getObservations, getHeartRate, syncHeartRate, getSteps, syncSteps,
   getNotes, createNote, getAirQuality,
   getDaysOfSpirometry, getSpirometryReadings,
+  getAlerts, createAlert, markAlertAsRead, markAllAlertsAsRead,
 };

@@ -1,7 +1,7 @@
-import { Activity, Search } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
+import { Activity, Search } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 
 export default function SpirometrySearch({
   search,
@@ -12,7 +12,7 @@ export default function SpirometrySearch({
   onSearch,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') onSearch();
+    if (e.key === "Enter") onSearch();
   };
 
   return (
@@ -22,7 +22,7 @@ export default function SpirometrySearch({
           <div className="relative flex-1 max-w-lg">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
             <Input
-              placeholder="Search by Patient ID, Username, or Email..."
+              placeholder="Search by Patient Username..."
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -53,11 +53,11 @@ export default function SpirometrySearch({
           </div>
           <Button onClick={onSearch} disabled={loading}>
             <Activity className="h-4 w-4 mr-2" />
-            {loading ? 'Loading...' : 'View Spirometry'}
+            {loading ? "Loading..." : "View Spirometry"}
           </Button>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Supports: Patient ID, Username, or Email address
+          Supports: Patient Username
         </p>
       </CardContent>
     </Card>

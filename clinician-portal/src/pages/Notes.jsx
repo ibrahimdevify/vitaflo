@@ -1,17 +1,17 @@
-import { useState } from 'react';
-import { toast } from 'sonner';
-import NotesAddForm from '../components/notes/NotesAddForm';
-import NotesList from '../components/notes/NotesList';
-import NotesPatientBar from '../components/notes/NotesPatientBar';
-import NotesSearch from '../components/notes/NotesSearch';
-import api from '../services/api';
+import { useState } from "react";
+import { toast } from "sonner";
+import NotesAddForm from "../components/notes/NotesAddForm";
+import NotesList from "../components/notes/NotesList";
+import NotesPatientBar from "../components/notes/NotesPatientBar";
+import NotesSearch from "../components/notes/NotesSearch";
+import api from "../services/api";
 
 export default function Notes() {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [patientId, setPatientId] = useState('');
+  const [patientId, setPatientId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState({});
 
@@ -23,13 +23,13 @@ export default function Notes() {
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
       .toISOString()
-      .split('T')[0],
-    end: new Date().toISOString().split('T')[0],
+      .split("T")[0],
+    end: new Date().toISOString().split("T")[0],
   });
 
   const loadNotes = async (userId, pageNum = 1) => {
     if (!userId) {
-      toast.error('Please enter a Patient ID, Username, or Email');
+      toast.error("Please enter a Patient Username");
       return;
     }
     try {
@@ -37,7 +37,7 @@ export default function Notes() {
       setPatientId(userId);
       setPage(pageNum);
 
-      const res = await api.get('/notes', {
+      const res = await api.get("/notes", {
         params: {
           user_id: userId,
           page: pageNum,
@@ -55,10 +55,10 @@ export default function Notes() {
       setTotalNotes(pagination.total || data.length);
 
       if (data.length === 0) {
-        toast.info('No notes found for this patient');
+        toast.info("No notes found for this patient");
       }
     } catch (err) {
-      toast.error('Failed to load notes');
+      toast.error("Failed to load notes");
       setNotes([]);
     } finally {
       setLoading(false);
@@ -68,16 +68,16 @@ export default function Notes() {
   const handleSubmit = async (data) => {
     try {
       setSubmitting(true);
-      await api.post('/notes', {
+      await api.post("/notes", {
         user_id: patientId,
         text: data.text.trim(),
         page: data.page,
       });
-      toast.success('Note created successfully!');
+      toast.success("Note created successfully!");
       setShowForm(false);
       loadNotes(patientId, 1);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create note');
+      toast.error(err.response?.data?.error || "Failed to create note");
     } finally {
       setSubmitting(false);
     }

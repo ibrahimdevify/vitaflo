@@ -9,26 +9,26 @@ import {
   TrendingUp,
   UserRound,
   Users,
-} from 'lucide-react';
-import { Suspense, useState } from 'react';
-import { Outlet } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import ThemeToggle from '../ThemeToggle';
-import PageLoader from '../ui/PageLoader';
-import AdminSidebar from './AdminSidebar';
-import MobileSidebar from './MobileSidebar';
+} from "lucide-react";
+import { Suspense, useState } from "react";
+import { Outlet } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import ThemeToggle from "../ThemeToggle";
+import PageLoader from "../ui/PageLoader";
+import AdminSidebar from "./AdminSidebar";
+import MobileSidebar from "./MobileSidebar";
 
 const menuItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/users', icon: Users, label: 'Users' },
-  { path: '/patients', icon: UserRound, label: 'Patients' },
-  { path: '/clinicians', icon: Stethoscope, label: 'Clinicians' },
-  { path: '/spirometry', icon: Activity, label: 'Spirometry' },
-  { path: '/trends', icon: TrendingUp, label: 'Trends' },
-  { path: '/alerts', icon: AlertTriangle, label: 'Alerts' },
-  { path: '/predicted', icon: Brain, label: 'Predicted' },
-  { path: '/devices', icon: Smartphone, label: 'Devices' },
-  { path: '/accounts', icon: Building2, label: 'Accounts' },
+  { path: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { path: "/users", icon: Users, label: "Users" },
+  { path: "/patients", icon: UserRound, label: "Patients" },
+  { path: "/clinicians", icon: Stethoscope, label: "Clinicians" },
+  { path: "/spirometry", icon: Activity, label: "Spirometry" },
+  { path: "/trends", icon: TrendingUp, label: "Trends" },
+  { path: "/alerts", icon: AlertTriangle, label: "Alerts" },
+  { path: "/predicted", icon: Brain, label: "Predicted" },
+  // { path: '/devices', icon: Smartphone, label: 'Devices' },
+  { path: "/accounts", icon: Building2, label: "Accounts" },
 ];
 
 export default function AdminLayout() {

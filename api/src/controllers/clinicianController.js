@@ -137,4 +137,116 @@ const updateDoctorDetails = async (req, res) => {
   }
 };
 
-module.exports = { getAllClinicians, getClinicianById, assignPatient, unassignPatient, getClinicianPatients, getClinicianOverview, updateDoctorDetails };
+// Create clinician
+const createClinician = async (req, res) => {
+  try {
+    const {
+      f_name, l_name, email, phone, password,
+      license_no, experience, about_doctor, education, is_specialist,
+      h_id_fk,
+    } = req.body;
+    
+    if (!f_name || !l_name || !email || !phone || !license_no) {
+      return res.status(400).json({ error: "First name, last name, email, phone, and license number are required" });
+    }
+    
+    const existingEmail = await prisma.dc_users.findUnique({ where: { email } });
+    if (existingEmail) {
+      return res.status(409).json({ error: "Email already exists", field: "email" });
+    }
+    
+    const existingPhone = await prisma.dc_users.findUnique({ where: { phone } });
+    if (existingPhone) {
+      return res.status(409).json({ error: "Phone already exists", field: "phone" });
+    }
+    
+    const { hashPassword } = require("../utils/password");
+    const { generateUserName } = require("../utils/usernameGenerator");
+    const hashedPassword = await hashPassword(password || "Doctor@123456");
+    const userName = await generateUserName(email);
+    
+    const clinician = await prisma.dc_users.create({
+      data: {
+        f_name,
+        l_name,
+        email,
+        phone,
+        password: hashedPassword,
+        userName,
+        ut_id_fk: 3,
+        us_id_fk: 1,
+        is_availible: true,
+        doctor_details: {
+          create: {
+            about_doctor: about_doctor || "",
+            license_no,
+            education: education || "",
+            is_specialist: is_specialist || false,
+            experience: experience || "2 yrs",
+            h_id_fk: h_id_fk ? parseInt(h_id_fk) : 1,
+            ps_id_fk: 1,
+          },
+        },
+      },
+      include: {
+        doctor_details: true,
+      },
+    });
+    
+    res.status(201).json({ message: "Clinician created", data: clinician });
+  } catch (error) {
+    console.error("Create clinician error:", error);
+    if (error.code === "P2002") {
+      return res.status(409).json({ error: "Already exists", message: error.message });
+    }
+    res.status(500).json({ error: "Failed to create clinician", message: error.message });
+  }
+};
+
+// Update clinician
+const updateClinician = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      f_name, l_name, email, phone, password,
+      license_no, experience, about_doctor, education, is_specialist,
+    } = req.body;
+    
+    const userData = {};
+    if (f_name) userData.f_name = f_name;
+    if (l_name) userData.l_name = l_name;
+    if (email) userData.email = email;
+    if (phone) userData.phone = phone;
+    if (password) {
+      const { hashPassword } = require("../utils/password");
+      userData.password = await hashPassword(password);
+    }
+    
+    const clinician = await prisma.dc_users.update({
+      where: { user_id: parseInt(id) },
+      data: userData,
+      include: { doctor_details: true },
+    });
+    
+    if (clinician.doctor_details) {
+      const doctorData = {};
+      if (license_no) doctorData.license_no = license_no;
+      if (experience) doctorData.experience = experience;
+      if (about_doctor) doctorData.about_doctor = about_doctor;
+      if (education) doctorData.education = education;
+      if (is_specialist !== undefined) doctorData.is_specialist = is_specialist;
+      
+      await prisma.dc_doctor_details.update({
+        where: { user_id_fk: parseInt(id) },
+        data: doctorData,
+      });
+    }
+    
+    res.json({ message: "Clinician updated", data: clinician });
+  } catch (error) {
+    console.error("Update clinician error:", error);
+    res.status(500).json({ error: "Failed to update clinician", message: error.message });
+  }
+};
+
+module.exports = { createClinician, updateClinician, getAllClinicians, getClinicianById, assignPatient, unassignPatient, getClinicianPatients, getClinicianOverview, updateDoctorDetails };

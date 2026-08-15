@@ -1,11 +1,11 @@
-import { Eye, MoreHorizontal, UserRound } from 'lucide-react';
-import { Badge } from '../../components/ui/badge';
+import { Eye, MoreHorizontal, UserRound } from "lucide-react";
+import { Badge } from "../../components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
+} from "../../components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -13,18 +13,18 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../components/ui/table';
-import EmptyState from '../shared/EmptyState';
-import PatientsTableSkeleton from './PatientsTableSkeleton';
+} from "../../components/ui/table";
+import EmptyState from "../shared/EmptyState";
+import PatientsTableSkeleton from "./PatientsTableSkeleton";
 
-const avatarTones = ['brand', 'info', 'success', 'warning', 'danger'];
+const avatarTones = ["brand", "info", "success", "warning", "danger"];
 
 const toneGradients = {
-  brand: 'from-brand-500 to-brand-700',
-  info: 'from-info to-info/70',
-  success: 'from-success to-success/70',
-  warning: 'from-warning to-warning/70',
-  danger: 'from-danger to-danger/70',
+  brand: "from-brand-500 to-brand-700",
+  info: "from-info to-info/70",
+  success: "from-success to-success/70",
+  warning: "from-warning to-warning/70",
+  danger: "from-danger to-danger/70",
 };
 
 export default function PatientsTable({ patients, loading, onViewPatient }) {
@@ -45,7 +45,10 @@ export default function PatientsTable({ patients, loading, onViewPatient }) {
       <TableHeader>
         <TableRow>
           <TableHead>Patient</TableHead>
+          <TableHead>Username</TableHead>
           <TableHead>Chart No</TableHead>
+          <TableHead>Gender</TableHead>
+          <TableHead>DOB</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Group</TableHead>
           <TableHead>Joined</TableHead>
@@ -77,29 +80,44 @@ export default function PatientsTable({ patients, loading, onViewPatient }) {
                   </div>
                 </div>
               </TableCell>
+              <TableCell className="text-fg">
+                <span className="font-mono text-caption bg-surface px-2 py-0.5 rounded border border-border">
+                  {patient.userName || "—"}
+                </span>
+              </TableCell>
               <TableCell className="text-fg tabular-nums">
-                {patient.patient_details?.chart_no || '—'}
+                {patient.patient_details?.chart_no || "—"}
+              </TableCell>
+              <TableCell className="text-fg-muted">
+                {patient.attributes?.gender ||
+                  patient.patient_details?.attributes?.gender ||
+                  "—"}
+              </TableCell>
+              <TableCell className="text-fg-muted whitespace-nowrap">
+                {patient.attributes?.dob ||
+                  patient.patient_details?.attributes?.dob ||
+                  "—"}
               </TableCell>
               <TableCell>
                 <Badge
                   variant={
-                    patient.patient_details?.status === 'active'
-                      ? 'success'
-                      : 'warning'
+                    patient.patient_details?.status === "active"
+                      ? "success"
+                      : "warning"
                   }
                   className="capitalize"
                 >
-                  {patient.patient_details?.status || 'unknown'}
+                  {patient.patient_details?.status || "unknown"}
                 </Badge>
               </TableCell>
               <TableCell className="text-fg-muted">
-                {patient.patient_details?.patient_group?.name || '—'}
+                {patient.patient_details?.patient_group?.name || "—"}
               </TableCell>
               <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                {new Date(patient.reg_date).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
+                {new Date(patient.reg_date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
                 })}
               </TableCell>
               <TableCell>

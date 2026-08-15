@@ -1,7 +1,7 @@
-import { ClipboardList, Filter, Plus, Search } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
+import { ClipboardList, Filter, Plus, Search } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 
 export default function PrescriptionsSearch({
   search,
@@ -15,7 +15,7 @@ export default function PrescriptionsSearch({
   showForm,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') onSearch(1);
+    if (e.key === "Enter") onSearch(1);
   };
 
   return (
@@ -26,7 +26,7 @@ export default function PrescriptionsSearch({
             <div className="relative flex-1 max-w-lg">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
               <Input
-                placeholder="Search by Patient ID, Username, or Email..."
+                placeholder="Search by Patient Username..."
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -35,7 +35,7 @@ export default function PrescriptionsSearch({
             </div>
             <Button onClick={() => onSearch(1)} disabled={loading}>
               <ClipboardList className="h-4 w-4 mr-2" />
-              {loading ? 'Loading...' : 'Load'}
+              {loading ? "Loading..." : "Load"}
             </Button>
             {patientId && (
               <Button
@@ -44,7 +44,7 @@ export default function PrescriptionsSearch({
                 className="border-border gap-2"
               >
                 <Plus className="h-4 w-4" />
-                {showForm ? 'Cancel' : 'New Prescription'}
+                {showForm ? "Cancel" : "New Prescription"}
               </Button>
             )}
           </div>
@@ -87,7 +87,7 @@ export default function PrescriptionsSearch({
           </div>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Supports: Patient ID, Username, or Email address
+          Search by Patient Username
         </p>
       </CardContent>
     </Card>

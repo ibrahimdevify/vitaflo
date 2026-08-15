@@ -1,4 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
+const { hashPassword } = require('../utils/password');
+const { generateUserName } = require('../utils/usernameGenerator');
 
 const prisma = new PrismaClient();
 
@@ -15,6 +17,7 @@ const getAllPatients = async (req, res) => {
         { l_name: { contains: search } },
         { userName: { contains: search } },
         { email: { contains: search } },
+        { phone: { contains: search } },
         { patient_details: { chart_no: { contains: search } } },
       ];
     }
@@ -64,8 +67,22 @@ const getAllPatients = async (req, res) => {
               status: true,
               graph_view: true,
               rpm_consent: true,
+              height: true,
+              weight: true,
               patient_group: { select: { id: true, name: true } },
               assigned_clinician: { select: { user_id: true, f_name: true, l_name: true } },
+              attributes: {
+                select: {
+                  id: true,
+                  dob: true,
+                  gender: true,
+                  height: true,
+                  weight: true,
+                  ethnic_group: true,
+                  lookup_table: true,
+                  smoking: true,
+                },
+              },
             },
           },
         },
@@ -73,8 +90,14 @@ const getAllPatients = async (req, res) => {
       prisma.dc_users.count({ where }),
     ]);
 
+    // Format patients to include attributes at top level
+    const formattedPatients = patients.map(p => ({
+      ...p,
+      attributes: p.patient_details?.attributes || null,
+    }));
+
     res.json({
-      data: patients,
+      data: formattedPatients,
       pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
     });
   } catch (error) {
@@ -82,7 +105,6 @@ const getAllPatients = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch patients' });
   }
 };
-
 // Get single patient with full medical details
 const getPatientById = async (req, res) => {
   try {
@@ -235,44 +257,57 @@ const getPrescriptions = async (req, res) => {
     const { id } = req.params;
     const { page = 1, limit = 10, start_date, end_date } = req.query;
 
-    // Resolve patient ID (supports numeric ID, username, email, phone)
-    let patientId;
+    let patientId = null;
+
+    // Check if id is numeric
     if (/^\d+$/.test(id)) {
       patientId = parseInt(id);
     } else {
-      const user = await prisma.dc_users.findFirst({
-        where: { OR: [{ email: id }, { phone: id }], ut_id_fk: 4 },
-        select: { user_id: true },
+      // Search ONLY by userName
+      const patient = await prisma.dc_users.findFirst({
+        where: {
+          ut_id_fk: 4,
+          userName: id,
+        },
       });
-      if (!user) return res.json({ data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } });
-      patientId = user.user_id;
+
+      if (patient) {
+        patientId = patient.user_id;
+      } else {
+        // Return empty list instead of error
+        return res.json({
+          data: [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: 0,
+            pages: 0,
+          },
+        });
+      }
     }
 
-    // Build where clause
     const where = {
       patient_id_fk: patientId,
       is_deleted: false,
     };
 
-    // Date range filter
     if (start_date || end_date) {
       where.pr_date = {};
       if (start_date) where.pr_date.gte = new Date(start_date);
-      if (end_date) where.pr_date.lte = new Date(end_date + 'T23:59:59.999Z');
+      if (end_date) where.pr_date.lte = new Date(end_date + 'T23:59:59Z');
     }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const [prescriptions, total] = await Promise.all([
       prisma.dc_ehr_prescriptions.findMany({
         where,
-        skip,
-        take: parseInt(limit),
         include: {
           doctor: { select: { user_id: true, f_name: true, l_name: true } },
-          medicines: { where: { is_deleted: false } },
+          medicines: true,
         },
         orderBy: { pr_date: 'desc' },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        take: parseInt(limit),
       }),
       prisma.dc_ehr_prescriptions.count({ where }),
     ]);
@@ -292,19 +327,45 @@ const getPrescriptions = async (req, res) => {
   }
 };
 
-// Create prescription
 const createPrescription = async (req, res) => {
+  console.log('createPrescription req.body:', req.body);
   try {
+    const { pharmacy_instruction, diagnosis, medicines } = req.body;
     const { id } = req.params;
-    const { pharmacy_instruction, diagnosis, doctor_id_fk, medicines } = req.body;
+    const doctorId = req.user?.user_id;
+
+    let patientId = null;
+
+    // Check if id is numeric
+    if (/^\d+$/.test(id)) {
+      patientId = parseInt(id);
+    } else {
+      // Search ONLY by userName
+      const patient = await prisma.dc_users.findFirst({
+        where: {
+          ut_id_fk: 4,
+          userName: id,
+        },
+      });
+
+      if (patient) {
+        patientId = patient.user_id;
+      } else {
+        return res.status(404).json({ error: 'Patient not found' });
+      }
+    }
+
+    if (!doctorId || isNaN(doctorId)) {
+      return res.status(400).json({ error: 'Doctor ID is required' });
+    }
 
     const prescription = await prisma.dc_ehr_prescriptions.create({
       data: {
         pharmacy_instruction: pharmacy_instruction || '',
         diagnosis: diagnosis || '',
-        patient_id_fk: parseInt(id),
-        doctor_id_fk: doctor_id_fk || req.user.user_id,
-        medicines: medicines ? {
+        patient_id_fk: patientId,
+        doctor_id_fk: doctorId,
+        medicines: medicines && medicines.length > 0 ? {
           create: medicines.map(m => ({
             type: m.type || null,
             drug: m.drug || 'N/A',
@@ -323,13 +384,18 @@ const createPrescription = async (req, res) => {
       },
     });
 
-    res.status(201).json({ message: 'Prescription created', data: prescription });
+    res.status(201).json({
+      message: 'Prescription created',
+      data: prescription
+    });
   } catch (error) {
     console.error('Create prescription error:', error);
-    res.status(500).json({ error: 'Failed to create prescription' });
+    res.status(500).json({
+      error: 'Failed to create prescription',
+      message: error.message
+    });
   }
 };
-
 // Get patient groups
 const getPatientGroups = async (req, res) => {
   try {
@@ -346,20 +412,157 @@ const getPatientGroups = async (req, res) => {
 };
 
 // Create patient group
+const createPatient = async (req, res) => {
+  try {
+    const body = req.body || {};
+    const {
+      f_name, l_name, email, phone, password,
+      dob, chart_no, blood_group, height, weight, gender,
+      patient_group_id, assigned_clinician_id, status,
+    } = body;
+
+    const first_name = f_name || "";
+    const last_name = l_name || "";
+    const userEmail = email || phone || `patient-${Date.now()}@vitalflow.com`;
+    const userPhone = phone || `phone-${crypto.randomBytes(8).toString("hex")}`;
+
+    // Check for existing user by email
+    const existingEmail = await prisma.dc_users.findUnique({ where: { email: userEmail } });
+    if (existingEmail) {
+      return res.status(409).json({ error: "User already exists", message: "A user with this email already exists", field: "email" });
+    }
+
+    // Check for existing user by phone
+    const existingPhone = await prisma.dc_users.findUnique({ where: { phone: userPhone } });
+    if (existingPhone) {
+      return res.status(409).json({ error: "User already exists", message: "A user with this phone number already exists", field: "phone" });
+    }
+
+    const hashedPassword = await hashPassword(password || "TempPass123!");
+
+    let chartNo = chart_no || crypto.randomBytes(4).toString("hex").toUpperCase();
+
+    // Generate username from email
+    const userName = await generateUserName(userEmail);
+
+    const heightValue = height ? parseFloat(height) : null;
+    const weightValue = weight ? parseFloat(weight) : null;
+    const clinicianId = assigned_clinician_id ? parseInt(assigned_clinician_id) : null;
+    const groupId = patient_group_id ? parseInt(patient_group_id) : null;
+
+    // Create user with patient_details AND attributes
+    const user = await prisma.dc_users.create({
+      data: {
+        f_name: first_name,
+        l_name: last_name,
+        email: userEmail,
+        phone: userPhone,
+        password: hashedPassword,
+        userName,
+        ut_id_fk: 4,
+        us_id_fk: status === "active" ? 1 : 4,
+        is_availible: true,
+        patient_details: {
+          create: {
+            chart_no: chartNo,
+            invite_code: chartNo,
+            access_code: chartNo,
+            assigned_clinician_id: clinicianId,
+            status: status || "active",
+            height: heightValue,
+            weight: weightValue,
+            blood_group: blood_group || null,
+            patient_group_id: groupId,
+            attributes: {
+              create: {
+                first_name: first_name,
+                last_name: last_name,
+                phone: userPhone,
+                dob: dob || "",
+                height: heightValue || 0,
+                weight: weightValue,
+                gender: gender || "",
+                chart_number: chartNo,
+              },
+            },
+          },
+        },
+      },
+      include: {
+        patient_details: {
+          include: {
+            attributes: true,
+            assigned_clinician: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      message: "Patient created successfully",
+      data: user,
+    });
+  } catch (error) {
+    console.error("Create patient error:", error.message);
+    if (error.code === "P2002") {
+      const targets = error.meta?.target || [];
+      let field = "field";
+      if (targets.includes("email")) field = "email";
+      else if (targets.includes("phone")) field = "phone";
+      return res.status(409).json({ error: "User already exists", message: `A user with this ${field} already exists`, field });
+    }
+    res.status(400).json({ error: "Failed to create patient", message: error.message });
+  }
+};
+
+// Get all clinicians for dropdown
+const getClinicians = async (req, res) => {
+  try {
+    const clinicians = await prisma.dc_users.findMany({
+      where: { ut_id_fk: 3 },
+      select: {
+        user_id: true,
+        f_name: true,
+        l_name: true,
+        email: true,
+        userName: true,
+      },
+      orderBy: { f_name: "asc" },
+    });
+    res.json({ data: clinicians });
+  } catch (error) {
+    console.error("Get clinicians error:", error);
+    res.status(500).json({ error: "Failed to fetch clinicians" });
+  }
+};
+
+// Create patient group
 const createPatientGroup = async (req, res) => {
   try {
     const { name, account_id } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: "Group name is required" });
+    }
+
     const group = await prisma.vf_patient_group.create({
-      data: { name, account_id },
+      data: {
+        name,
+        account_id: account_id ? parseInt(account_id) : 1,
+        creation_date: new Date(),
+      },
     });
-    res.status(201).json({ message: 'Group created', data: group });
+
+    res.status(201).json({ message: "Group created", data: group });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create group' });
+    console.error("Create patient group error:", error);
+    res.status(500).json({ error: "Failed to create group" });
   }
 };
 
 module.exports = {
   getAllPatients,
+  createPatient,
   getPatientById,
   createAttributes,
   updateAttributes,
@@ -367,4 +570,5 @@ module.exports = {
   createPrescription,
   getPatientGroups,
   createPatientGroup,
+  getClinicians,
 };

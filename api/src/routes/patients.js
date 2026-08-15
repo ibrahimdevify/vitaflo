@@ -38,6 +38,7 @@ router.use(authenticate);
  */
 router.get('/groups', patientController.getPatientGroups);
 router.post('/groups', authorize('technician', 'account_admin'), patientController.createPatientGroup);
+router.get('/clinicians/list', patientController.getClinicians);
 
 /**
  * @swagger
@@ -69,6 +70,7 @@ router.post('/groups', authorize('technician', 'account_admin'), patientControll
  *         description: Patients list
  */
 router.get('/', patientController.getAllPatients);
+router.post('/', authorize('technician', 'account_admin', 'clinician'), patientController.createPatient);
 
 /**
  * @swagger
@@ -192,7 +194,8 @@ router.put('/:id/attributes', authorize('technician', 'account_admin', 'clinicia
  *       201:
  *         description: Prescription created
  */
+
 router.get('/:id/prescriptions', patientController.getPrescriptions);
-router.post('/:id/prescriptions', authorize('technician', 'account_admin', 'clinician'), patientController.createPrescription);
+router.post('/:id/prescriptions', patientController.createPrescription);
 
 module.exports = router;

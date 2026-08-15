@@ -1,34 +1,34 @@
-import { Filter, Loader2, Search, TrendingUp } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Card, CardContent } from '../ui/card';
-import { Input } from '../ui/input';
+import { Filter, Loader2, Search, TrendingUp } from "lucide-react";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
+import { Input } from "../ui/input";
 
 const presets = [
   {
-    label: '1M',
+    label: "1M",
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString()
-      .split('T')[0],
+      .split("T")[0],
   },
   {
-    label: '3M',
+    label: "3M",
     start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
       .toISOString()
-      .split('T')[0],
+      .split("T")[0],
   },
   {
-    label: '6M',
+    label: "6M",
     start: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
       .toISOString()
-      .split('T')[0],
+      .split("T")[0],
   },
   {
-    label: '1Y',
+    label: "1Y",
     start: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
       .toISOString()
-      .split('T')[0],
+      .split("T")[0],
   },
-  { label: 'All', start: '2020-01-01' },
+  { label: "All", start: "2020-01-01" },
 ];
 
 export default function TrendsSearch({
@@ -40,7 +40,7 @@ export default function TrendsSearch({
   onSearch,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') onSearch();
+    if (e.key === "Enter") onSearch();
   };
 
   return (
@@ -51,7 +51,7 @@ export default function TrendsSearch({
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
               <Input
-                placeholder="Patient ID, Username, or Email..."
+                placeholder="Search by Patient Username..."
                 value={userId}
                 onChange={(e) => onUserIdChange(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -64,7 +64,7 @@ export default function TrendsSearch({
               ) : (
                 <TrendingUp className="h-4 w-4 mr-2" />
               )}
-              {loading ? 'Loading...' : 'Load Trends'}
+              {loading ? "Loading..." : "Load Trends"}
             </Button>
           </div>
 
@@ -112,7 +112,7 @@ export default function TrendsSearch({
           </div>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Supports: Patient ID, Username, or Email
+          Supports: Patient Username
         </p>
       </CardContent>
     </Card>

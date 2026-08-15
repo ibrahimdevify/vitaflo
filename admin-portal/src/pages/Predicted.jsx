@@ -1,50 +1,65 @@
-import { Brain, Plus } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import AddPredictionForm from '../components/predicted/AddPredictionForm';
-import PredictedSearch from '../components/predicted/PredictedSearch';
-import PredictedStats from '../components/predicted/PredictedStats';
-import PredictedTable from '../components/predicted/PredictedTable';
-import { Badge } from '../components/ui/badge';
-import { Button } from '../components/ui/button';
+import { Brain, Plus, Search, UserRound, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import AddPredictionForm from "../components/predicted/AddPredictionForm";
+
+import PredictedStats from "../components/predicted/PredictedStats";
+import PredictedTable from "../components/predicted/PredictedTable";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import { predictedAPI } from '../services/api';
+} from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import EmptyState from "../components/shared/EmptyState";
+import { predictedAPI } from "../services/api";
 
 export default function Predicted() {
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState("");
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [patientInfo, setPatientInfo] = useState(null);
 
   const loadPredictions = async () => {
     if (!userId.trim()) {
-      toast.error('Please enter a Patient ID');
+      toast.error("Please enter a Patient Username");
       return;
     }
     try {
       setLoading(true);
       const res = await predictedAPI.getByUser(userId.trim());
-      const data = res.data || res.data?.data || [];
+      const data = res.data?.data || res.data || [];
       setPredictions(Array.isArray(data) ? data : []);
-      if (data.length === 0) toast.info('No predicted values found');
+      setPatientInfo({ userName: userId.trim() });
+
+      if (data.length === 0) {
+        toast.info("No predicted values found for this patient");
+      } else {
+        toast.success(`Loaded ${data.length} predicted values`);
+      }
     } catch (err) {
-      toast.error('Failed to load predictions');
+      toast.error("Failed to load predictions");
+      setPredictions([]);
+      setPatientInfo(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") loadPredictions();
   };
 
   const handleCreate = async (data) => {
     try {
       setSubmitting(true);
       await predictedAPI.create({
-        user_id: parseInt(userId),
+        user_id: userId, // ✅ Send username string, backend will resolve
         variables: [
           {
             ...data,
@@ -58,11 +73,11 @@ export default function Predicted() {
           },
         ],
       });
-      toast.success('Predicted values saved!');
+      toast.success("Predicted values saved!");
       setShowForm(false);
       loadPredictions();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || "Failed to save predictions");
     } finally {
       setSubmitting(false);
     }
@@ -76,7 +91,7 @@ export default function Predicted() {
           avgPredicted: (
             predictions.reduce(
               (sum, p) => sum + (p.percent_predicted || 0),
-              0
+              0,
             ) / predictions.length
           ).toFixed(1),
         }
@@ -90,22 +105,57 @@ export default function Predicted() {
             Predicted Values (GLI)
           </h1>
           <p className="text-caption text-fg-muted mt-1">
-            Manage GLI predicted reference values
+            Manage GLI predicted reference values for patients
           </p>
         </div>
-        {userId && (
+        {patientInfo && (
           <Button onClick={() => setShowForm(true)} className="gap-2">
             <Plus className="h-4 w-4" /> Add Prediction
           </Button>
         )}
       </div>
 
-      <PredictedSearch
-        userId={userId}
-        onUserIdChange={setUserId}
-        loading={loading}
-        onSearch={loadPredictions}
-      />
+      {/* Search Card */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
+              <Input
+                placeholder="Search by Patient Username..."
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="pl-10"
+              />
+            </div>
+            <Button onClick={loadPredictions} disabled={loading}>
+              <Search className="h-4 w-4 mr-2" />
+              {loading ? "Loading..." : "Search"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Patient Info */}
+      {patientInfo && (
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-pill bg-linear-to-br from-brand-500 to-brand-700 text-white font-semibold">
+              <UserRound className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-fg">
+                Patient: {patientInfo.userName}
+              </p>
+              <p className="text-caption text-fg-muted">
+                {predictions.length} predicted values found
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {stats && <PredictedStats stats={stats} />}
 
       {showForm && (
@@ -117,6 +167,7 @@ export default function Predicted() {
         />
       )}
 
+      {/* Table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
           <CardTitle className="text-subheading font-semibold flex items-center gap-2.5 text-fg">
@@ -130,11 +181,29 @@ export default function Predicted() {
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
-          <PredictedTable
-            data={predictions}
-            loading={loading}
-            hasSearched={!!userId}
-          />
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
+            </div>
+          ) : predictions.length > 0 ? (
+            <PredictedTable
+              data={predictions}
+              loading={loading}
+              hasSearched={!!userId}
+            />
+          ) : userId ? (
+            <EmptyState
+              icon={Brain}
+              title="No predicted values found"
+              description="Search for a patient username to view their GLI predicted values"
+            />
+          ) : (
+            <EmptyState
+              icon={Brain}
+              title="Search for a Patient"
+              description="Enter a Patient Username above to view their predicted values"
+            />
+          )}
         </CardContent>
       </Card>
     </div>
