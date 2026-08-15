@@ -444,7 +444,7 @@ const createPatient = async (req, res) => {
       });
     }
 
-    // Check for existing user by phone (if phone provided)
+    // Check for existing user by phone
     if (userPhone) {
       const existingPhone = await prisma.dc_users.findUnique({ where: { phone: userPhone } });
       if (existingPhone) {
@@ -466,6 +466,13 @@ const createPatient = async (req, res) => {
 
     const userName = await generateUserName(userEmail);
 
+    // Prepare attributes data
+    const dobValue = attrs?.dob || attrs?.date_of_birth || '';
+    const genderValue = attrs?.gender || '';
+    const heightValue = attrs?.height ? parseFloat(attrs.height) : null;
+    const weightValue = attrs?.weight ? parseFloat(attrs.weight) : null;
+
+    // Create user with patient_details AND attributes
     const user = await prisma.dc_users.create({
       data: {
         f_name: first_name || '',
@@ -484,11 +491,36 @@ const createPatient = async (req, res) => {
             access_code: access_code || null,
             assigned_clinician_id: clinician_id ? parseInt(clinician_id) : null,
             status: 'active',
+            height: heightValue,  // Also store in patient_details
+            weight: weightValue,  // Also store in patient_details
+            // ✅ CREATE vf_attributes HERE!
+            attributes: {
+              create: {
+                first_name: first_name || '',
+                last_name: last_name || '',
+                phone: userPhone || null,
+                dob: String(dobValue),  // vf_attributes.dob is String
+                height: heightValue || 0,  // vf_attributes.height is Float with default 0
+                weight: weightValue,  // vf_attributes.weight is Float?
+                gender: String(genderValue),  // vf_attributes.gender is String
+                chart_number: chartNo || null,
+                account_type: 'test',
+                welcome_method: 'text',
+              },
+            },
+          },
+        },
+      },
+      include: {
+        patient_details: {
+          include: {
+            attributes: true,
           },
         },
       },
     });
 
+    // Return the created user with saved attributes
     res.status(201).json({
       id: String(user.user_id),
       user_id: String(user.user_id),
@@ -499,7 +531,10 @@ const createPatient = async (req, res) => {
       attributes: {
         first_name: user.f_name,
         last_name: user.l_name,
-        dob: attrs?.dob || null,
+        dob: user.patient_details?.attributes?.dob || dobValue || null,
+        gender: user.patient_details?.attributes?.gender || genderValue || null,
+        height: user.patient_details?.attributes?.height || heightValue || null,
+        weight: user.patient_details?.attributes?.weight || weightValue || null,
         chart_number: user.patient_details?.chart_no || '',
       },
       access_code: access_code || null,
