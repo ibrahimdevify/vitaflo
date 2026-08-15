@@ -81,7 +81,7 @@ const syncSpirometryPlus = async (req, res) => {
         }).catch(() => {});
       }
     }
-    const observation = await prisma.portal_observation.create({ data: { user_id: userId, dbdate: now, is_post_bronchodilator: isPostBronchodilator || false, height: attributes?.height } });
+    const observation = await prisma.portal_observation.create({ data: { user_id: userId, dbdate: now, is_post_bronchodilator: typeof isPostBronchodilator === "string" ? isPostBronchodilator === "true" : Boolean(isPostBronchodilator), height: attributes?.height } });
     // First create a spirometry record to link flows to
     let spirometryId = null;
     const resultsArr = Array.isArray(parsedResults) ? parsedResults : (parsedResults.values || [parsedResults]);
