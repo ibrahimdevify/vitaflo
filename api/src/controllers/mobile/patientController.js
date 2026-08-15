@@ -4,6 +4,7 @@ const { generateToken, generateRefreshToken } = require('../../utils/jwt');
 const { generateAccessToken } = require('../../utils/token');
 const crypto = require('crypto');
 const { generateUserName } = require('../../utils/usernameGenerator');
+const { asFloat } = require('../../utils/floatJson');
 
 const prisma = new PrismaClient();
 
@@ -360,8 +361,10 @@ const getClinicianPatients = async (req, res) => {
           phone: attr?.phone || p.phone || '',
           dob: attr?.dob ? String(attr.dob) : null,
           gender: attr?.gender || null,
-          height: attr?.height ? Number(parseFloat(attr.height).toFixed(1)) : null,
-          weight: attr?.weight ? Number(parseFloat(attr.weight).toFixed(1)) : null,
+          // Wrapped so JSON.stringify emits e.g. 80.0 instead of 80.
+          // asFloat(..., 1) matches the previous .toFixed(1) precision.
+          height: asFloat(attr?.height, 1),
+          weight: asFloat(attr?.weight, 1),
           lookup_table: attr?.lookup_table || attr?.ethnic_group || '',
           extra: {},
         },
@@ -369,7 +372,10 @@ const getClinicianPatients = async (req, res) => {
       };
     });
 
-    res.json(result);
+    // NOTE: res.json(result) would run JSON.stringify internally and strip
+    // the decimal points again. Serialize manually with stringifyWithFloats
+    // and send it as JSON explicitly.
+    res.type('application/json').send(stringifyWithFloats(result));
   } catch (error) {
     console.error('Get clinician patients error:', error);
     res.status(500).json({ error: 'Failed to fetch patients', message: error.message });
