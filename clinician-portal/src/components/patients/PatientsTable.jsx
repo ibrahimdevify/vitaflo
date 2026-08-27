@@ -1,4 +1,4 @@
-import { Eye, MoreHorizontal, UserRound } from "lucide-react";
+import { Eye, MoreHorizontal, Stethoscope, UserRound } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import {
   DropdownMenu,
@@ -16,6 +16,7 @@ import {
 } from "../../components/ui/table";
 import EmptyState from "../shared/EmptyState";
 import PatientsTableSkeleton from "./PatientsTableSkeleton";
+import { useNavigate } from "react-router-dom";
 
 const avatarTones = ["brand", "info", "success", "warning", "danger"];
 
@@ -28,6 +29,7 @@ const toneGradients = {
 };
 
 export default function PatientsTable({ patients, loading, onViewPatient }) {
+  const navigate = useNavigate();
   if (loading) return <PatientsTableSkeleton />;
 
   if (!patients?.length) {
@@ -132,6 +134,14 @@ export default function PatientsTable({ patients, loading, onViewPatient }) {
                     side="top"
                     className="w-fit min-w-0"
                   >
+                    <DropdownMenuItem
+                      onClick={() =>
+                        navigate(`/spirometry?username=${patient.userName}`)
+                      }
+                      className="cursor-pointer"
+                    >
+                      <Stethoscope className="h-4 w-4 mr-2" /> View Spirometry
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => onViewPatient(patient.user_id)}
                       className="cursor-pointer w-auto"

@@ -12,14 +12,35 @@ const getAllPatients = async (req, res) => {
     const where = { ut_id_fk: 4 }; // Only patients
 
     if (search) {
+      const searchTerm = search.trim();
+      const nameParts = searchTerm.split(/\s+/).filter(Boolean);
+
       where.OR = [
-        { f_name: { contains: search } },
-        { l_name: { contains: search } },
-        { userName: { contains: search } },
-        { email: { contains: search } },
-        { phone: { contains: search } },
-        { patient_details: { chart_no: { contains: search } } },
+        { f_name: { contains: searchTerm } },
+        { l_name: { contains: searchTerm } },
+        { userName: { contains: searchTerm } },
+        { email: { contains: searchTerm } },
+        { phone: { contains: searchTerm } },
+        { patient_details: { chart_no: { contains: searchTerm } } },
       ];
+
+      // Handle "First Last" style full-name search across two fields
+      if (nameParts.length > 1) {
+        where.OR.push(
+          {
+            AND: [
+              { f_name: { contains: nameParts[0] } },
+              { l_name: { contains: nameParts.slice(1).join(' ') } },
+            ],
+          },
+          {
+            AND: [
+              { f_name: { contains: nameParts[nameParts.length - 1] } },
+              { l_name: { contains: nameParts.slice(0, -1).join(' ') } },
+            ],
+          },
+        );
+      }
     }
 
     if (status) {

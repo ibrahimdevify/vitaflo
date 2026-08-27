@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -42,8 +42,11 @@ import Pagination from "../components/ui/pagination";
 import EmptyState from "../components/shared/EmptyState";
 import SpirometryTableSkeleton from "../components/spirometry/SpirometryTableSkeleton";
 import { spirometryAPI } from "../services/api";
+import { useSearchParams } from "react-router-dom"; // ✅ add this
 
 export default function Spirometry() {
+  const [searchParams, setSearchParams] = useSearchParams(); // ✅ add this
+
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
@@ -57,9 +60,8 @@ export default function Spirometry() {
     start: "2020-01-01",
     end: "2030-12-31",
   });
-
-  const searchPatient = async (pageNum = 1) => {
-    const query = search.trim();
+  const searchPatient = async (pageNum = 1, overrideQuery) => {
+    const query = (overrideQuery ?? search).trim(); // ✅ allow passing query directly
     if (!query) {
       toast.error("Please enter a Patient Username");
       return;
@@ -114,6 +116,16 @@ export default function Spirometry() {
     }
   };
 
+  // ✅ On mount: read ?username=ibbi from URL and auto-search
+  useEffect(() => {
+    const usernameFromUrl = searchParams.get("username");
+    if (usernameFromUrl) {
+      setSearch(usernameFromUrl);
+      searchPatient(1, usernameFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
+
   const clearSearch = () => {
     setSearch("");
     setPatientInfo(null);
@@ -122,10 +134,18 @@ export default function Spirometry() {
     setTotal(0);
     setTotalPages(1);
     setPage(1);
+    setSearchParams({}); // ✅ also clear the URL param
   };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") searchPatient(1);
+  };
+
+  const handleSearchClick = () => {
+    if (search.trim()) {
+      setSearchParams({ username: search.trim() }); // ✅ keep URL in sync
+    }
+    searchPatient(1);
   };
 
   const handlePageChange = (newPage) => {
@@ -227,7 +247,7 @@ export default function Spirometry() {
             <div className="relative flex-1 max-w-lg">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
               <Input
-                placeholder="Search by Patient Username..."
+                placeholder="Search by Patient Username, email, or phone..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -253,7 +273,7 @@ export default function Spirometry() {
                 className="w-36 h-9 text-caption"
               />
             </div>
-            <Button onClick={() => searchPatient(1)} disabled={loading}>
+            <Button onClick={handleSearchClick} disabled={loading}>
               <Search className="h-4 w-4 mr-2" />
               {loading ? "Loading..." : "Search"}
             </Button>

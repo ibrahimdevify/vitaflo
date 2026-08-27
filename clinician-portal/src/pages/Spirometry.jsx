@@ -1,5 +1,6 @@
 import { TrendingUp, User } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react"; // ✅ add useEffect
+import { useSearchParams } from "react-router-dom"; // ✅ add this
 import { toast } from "sonner";
 import EmptyState from "../components/shared/EmptyState";
 import SpirometryChart from "../components/spirometry/SpirometryChart";
@@ -17,6 +18,7 @@ import Pagination from "../components/ui/pagination";
 import { spirometryAPI } from "../services/api";
 
 export default function Spirometry() {
+  const [searchParams, setSearchParams] = useSearchParams(); // ✅ add this
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientInfo, setPatientInfo] = useState(null);
@@ -32,8 +34,8 @@ export default function Spirometry() {
     end: "2030-12-31",
   });
 
-  const searchPatient = async (pageNum = 1) => {
-    const query = search.trim();
+  const searchPatient = async (pageNum = 1, overrideQuery) => {
+    const query = (overrideQuery ?? search).trim(); // ✅ allow direct query
     if (!query) {
       toast.error("Please enter a Patient Username");
       return;
@@ -93,8 +95,26 @@ export default function Spirometry() {
     }
   };
 
+  // ✅ On mount: read ?username=ibbi from URL and auto-search
+  useEffect(() => {
+    const usernameFromUrl = searchParams.get("username");
+    if (usernameFromUrl) {
+      setSearch(usernameFromUrl);
+      searchPatient(1, usernameFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
+
   const handlePageChange = (newPage) => {
     searchPatient(newPage);
+  };
+
+  // ✅ wrap the search box's onSearch so manual searches sync the URL too
+  const handleManualSearch = () => {
+    if (search.trim()) {
+      setSearchParams({ username: search.trim() });
+    }
+    searchPatient(1);
   };
 
   const bestFEV1 = spirometryData.reduce(
@@ -127,7 +147,7 @@ export default function Spirometry() {
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         loading={loading}
-        onSearch={() => searchPatient(1)}
+        onSearch={handleManualSearch} // ✅ changed from () => searchPatient(1)
       />
 
       {selectedPatient && patientInfo && (

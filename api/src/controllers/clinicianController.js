@@ -6,10 +6,35 @@ const getAllClinicians = async (req, res) => {
     const { page = 1, limit = 20, search, h_id_fk, is_specialist } = req.query;
     const where = { ut_id_fk: 3 };
     if (search) {
+      const searchTerm = search.trim();
+      const nameParts = searchTerm.split(/\s+/).filter(Boolean);
+
       where.OR = [
-        { f_name: { contains: search } }, { l_name: { contains: search }, userName: { contains: search } },
-        { email: { contains: search } }, { doctor_details: { license_no: { contains: search } } },
+        { f_name: { contains: searchTerm } },
+        { l_name: { contains: searchTerm } },
+        { userName: { contains: searchTerm } },
+        { email: { contains: searchTerm } },
+        { phone: { contains: searchTerm } },
+        { patient_details: { chart_no: { contains: searchTerm } } },
       ];
+
+      // Handle "First Last" style full-name search across two fields
+      if (nameParts.length > 1) {
+        where.OR.push(
+          {
+            AND: [
+              { f_name: { contains: nameParts[0] } },
+              { l_name: { contains: nameParts.slice(1).join(' ') } },
+            ],
+          },
+          {
+            AND: [
+              { f_name: { contains: nameParts[nameParts.length - 1] } },
+              { l_name: { contains: nameParts.slice(0, -1).join(' ') } },
+            ],
+          },
+        );
+      }
     }
     if (h_id_fk) where.doctor_details = { h_id_fk: parseInt(h_id_fk) };
     if (is_specialist) where.doctor_details = { ...where.doctor_details, is_specialist: is_specialist === 'true' };
@@ -145,26 +170,26 @@ const createClinician = async (req, res) => {
       license_no, experience, about_doctor, education, is_specialist,
       h_id_fk,
     } = req.body;
-    
+
     if (!f_name || !l_name || !email || !phone || !license_no) {
       return res.status(400).json({ error: "First name, last name, email, phone, and license number are required" });
     }
-    
+
     const existingEmail = await prisma.dc_users.findUnique({ where: { email } });
     if (existingEmail) {
       return res.status(409).json({ error: "Email already exists", field: "email" });
     }
-    
+
     const existingPhone = await prisma.dc_users.findUnique({ where: { phone } });
     if (existingPhone) {
       return res.status(409).json({ error: "Phone already exists", field: "phone" });
     }
-    
+
     const { hashPassword } = require("../utils/password");
     const { generateUserName } = require("../utils/usernameGenerator");
     const hashedPassword = await hashPassword(password || "Doctor@123456");
     const userName = await generateUserName(email);
-    
+
     const clinician = await prisma.dc_users.create({
       data: {
         f_name,
@@ -192,7 +217,7 @@ const createClinician = async (req, res) => {
         doctor_details: true,
       },
     });
-    
+
     res.status(201).json({ message: "Clinician created", data: clinician });
   } catch (error) {
     console.error("Create clinician error:", error);
@@ -211,7 +236,7 @@ const updateClinician = async (req, res) => {
       f_name, l_name, email, phone, password,
       license_no, experience, about_doctor, education, is_specialist,
     } = req.body;
-    
+
     const userData = {};
     if (f_name) userData.f_name = f_name;
     if (l_name) userData.l_name = l_name;
@@ -221,13 +246,13 @@ const updateClinician = async (req, res) => {
       const { hashPassword } = require("../utils/password");
       userData.password = await hashPassword(password);
     }
-    
+
     const clinician = await prisma.dc_users.update({
       where: { user_id: parseInt(id) },
       data: userData,
       include: { doctor_details: true },
     });
-    
+
     if (clinician.doctor_details) {
       const doctorData = {};
       if (license_no) doctorData.license_no = license_no;
@@ -235,13 +260,13 @@ const updateClinician = async (req, res) => {
       if (about_doctor) doctorData.about_doctor = about_doctor;
       if (education) doctorData.education = education;
       if (is_specialist !== undefined) doctorData.is_specialist = is_specialist;
-      
+
       await prisma.dc_doctor_details.update({
         where: { user_id_fk: parseInt(id) },
         data: doctorData,
       });
     }
-    
+
     res.json({ message: "Clinician updated", data: clinician });
   } catch (error) {
     console.error("Update clinician error:", error);

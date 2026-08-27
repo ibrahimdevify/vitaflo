@@ -22,7 +22,7 @@ export default function SpirometrySearch({
           <div className="relative flex-1 max-w-lg">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
             <Input
-              placeholder="Search by Patient Username..."
+              placeholder="Search by Patient Username, email or phone..."
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -57,7 +57,7 @@ export default function SpirometrySearch({
           </Button>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Supports: Patient Username
+          Supports: Patient Username, email or phone
         </p>
       </CardContent>
     </Card>
