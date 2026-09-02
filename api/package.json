@@ -12,6 +12,9 @@
     "prisma:pull": "npx prisma db pull",
     "prisma:studio": "npx prisma studio"
   },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "keywords": [],
   "author": "ibbi-programmer",
   "license": "ISC",
@@ -26,6 +29,7 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "prisma": "^5.22.0",
+    "puppeteer": "^22.15.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },

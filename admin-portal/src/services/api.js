@@ -101,6 +101,10 @@ export const spirometryAPI = {
   getByUser: (userId, params) =>
     api.get(`/spirometry/user/${userId}`, { params }),
   getLatest: () => api.get('/spirometry/latest'),
+  getReportPDF: (observationId) =>
+    api.get(`/spirometry/observation/${observationId}/pdf`, {
+      responseType: "blob",
+    }),
   getAll: (params) => api.get('/spirometry/all', { params }),
   sync: (data) => api.post('/user_observations/sync_plus', data),
   getObservations: (params) => api.get('/user_observations', { params }),

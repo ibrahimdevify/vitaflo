@@ -1,5 +1,16 @@
-import { Activity } from "lucide-react";
-import { Badge } from "../../components/ui/badge";
+
+import {
+  Activity,
+  Calendar,
+  FileText,
+  Loader2,
+  TrendingUp,
+  UserRound,
+} from 'lucide-react';
+
+import EmptyState from '../shared/EmptyState';
+import { Badge } from '../ui/badge';
+
 import {
   Table,
   TableBody,
@@ -7,36 +18,71 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
-import EmptyState from "../shared/EmptyState";
-import SpirometryTableSkeleton from "./SpirometryTableSkeleton";
+} from '../ui/table';
 
-export default function SpirometryTable({ data, loading }) {
-  if (loading) return <SpirometryTableSkeleton />;
+import SpirometryTableSkeleton from './SpirometryTableSkeleton';
 
-  if (!data?.length) {
+export default function SpirometryTable({
+  data,
+  loading,
+  onViewPatient,
+  getLatestBlow,
+  onViewReport,
+  reportLoadingId,
+}) {
+  // Loading state
+  if (loading) {
+    return <SpirometryTableSkeleton />;
+  }
+
+  // Empty state
+  if (!Array.isArray(data) || data.length === 0) {
     return (
       <EmptyState
         icon={Activity}
         title="No spirometry data found"
-        description="Try a different date range or patient"
+        description="Try adjusting your search"
       />
     );
   }
 
   const getFEV1BadgeVariant = (value) => {
-    if (!value) return null;
-    if (value >= 80) return "success";
-    if (value >= 60) return "warning";
-    return "danger";
+    const fev1Percent = Number(value);
+
+    if (!Number.isFinite(fev1Percent)) {
+      return null;
+    }
+
+    if (fev1Percent >= 80) return 'success';
+    if (fev1Percent >= 60) return 'warning';
+
+    return 'danger';
   };
 
-  const getQualityLabel = (value) => {
-    if (!value) return "—";
-    if (value === 1) return "Good";
-    if (value === 2) return "Acceptable";
-    if (value === 3) return "Poor";
-    return "—";
+  const formatDate = (date) => {
+    if (!date) return '—';
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return '—';
+    }
+
+    return parsedDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: '2-digit',
+    });
+  };
+
+  const formatNumber = (value, decimals = 2) => {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+      return '—';
+    }
+
+    return number.toFixed(decimals);
   };
 
   return (
@@ -45,62 +91,145 @@ export default function SpirometryTable({ data, loading }) {
         <TableHeader>
           <TableRow>
             <TableHead>Date</TableHead>
+            <TableHead>Patient ID</TableHead>
             <TableHead>FEV1 (L)</TableHead>
             <TableHead>FVC (L)</TableHead>
             <TableHead>PEFR</TableHead>
-            <TableHead>FEF25-75</TableHead>
-            <TableHead>FEV6</TableHead>
             <TableHead>FEV1%</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Quality</TableHead>
+            <TableHead>Last Blow</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead className="w-24"></TableHead>
           </TableRow>
         </TableHeader>
+
         <TableBody>
-          {data.map((s, i) => (
-            <TableRow key={s.id || i}>
-              <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                {new Date(s.dbdate).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "2-digit",
-                })}
-              </TableCell>
-              <TableCell className="font-medium text-fg tabular-nums">
-                {s.fev1?.toFixed(2) || "—"}
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {s.fvc?.toFixed(2) || "—"}
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {s.pefr?.toFixed(0) || "—"}
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {s.fef2575?.toFixed(2) || "—"}
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {s.fev6?.toFixed(2) || "—"}
-              </TableCell>
-              <TableCell>
-                {s.fev1_perc ? (
-                  <Badge variant={getFEV1BadgeVariant(s.fev1_perc)}>
-                    {s.fev1_perc.toFixed(0)}%
-                  </Badge>
-                ) : (
-                  <span className="text-fg-muted">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {s.is_post_bronchodilator ? (
-                  <Badge variant="info">Post-BD</Badge>
-                ) : (
-                  <Badge variant="secondary">Pre-BD</Badge>
-                )}
-              </TableCell>
-              <TableCell className="text-caption text-fg-muted">
-                {getQualityLabel(s.quality_message)}
-              </TableCell>
-            </TableRow>
-          ))}
+          {data.map((s, i) => {
+            // Safely get observation
+            const observation = s?.observation || {};
+
+            // Support both possible API structures
+            const userId =
+              observation?.user_id ??
+              s?.user_id ??
+              s?.userId ??
+              null;
+
+            // Support observation_id from different possible structures
+            const observationId =
+              s?.observation_id ??
+              observation?.id ??
+              s?.observationId ??
+              null;
+
+            const isReportLoading =
+              Boolean(onViewReport) &&
+              reportLoadingId != null &&
+              String(reportLoadingId) === String(observationId);
+
+            const canViewPatient =
+              Boolean(onViewPatient) && userId != null;
+
+            const canViewReport =
+              Boolean(onViewReport) && observationId != null;
+
+            return (
+              <TableRow key={s?.id ?? observationId ?? i}>
+                {/* Date */}
+                <TableCell className="text-caption text-fg-muted whitespace-nowrap">
+                  <Calendar className="h-3 w-3 inline mr-1.5" />
+
+                  {formatDate(s?.dbdate ?? s?.date ?? s?.created_at)}
+                </TableCell>
+
+                {/* Patient ID */}
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <UserRound className="h-3 w-3 text-fg-muted" />
+
+                    <span className="text-body font-mono text-fg">
+                      {userId ?? 'N/A'}
+                    </span>
+                  </div>
+                </TableCell>
+
+                {/* FEV1 */}
+                <TableCell className="font-medium text-fg tabular-nums">
+                  {formatNumber(s?.fev1, 2)}
+                </TableCell>
+
+                {/* FVC */}
+                <TableCell className="tabular-nums">
+                  {formatNumber(s?.fvc, 2)}
+                </TableCell>
+
+                {/* PEFR */}
+                <TableCell className="tabular-nums">
+                  {formatNumber(s?.pefr, 0)}
+                </TableCell>
+
+                {/* FEV1 % */}
+                <TableCell>
+                  {s?.fev1_perc != null &&
+                  Number.isFinite(Number(s.fev1_perc)) ? (
+                    <Badge variant={getFEV1BadgeVariant(s.fev1_perc)}>
+                      {Number(s.fev1_perc).toFixed(0)}%
+                    </Badge>
+                  ) : (
+                    <span className="text-fg-muted">—</span>
+                  )}
+                </TableCell>
+
+                {/* Last Blow */}
+                <TableCell className="text-caption text-fg-muted">
+                  {userId != null && typeof getLatestBlow === 'function'
+                    ? getLatestBlow(userId)
+                    : '—'}
+                </TableCell>
+
+                {/* Actions */}
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    {/* View Trends */}
+                    {canViewPatient && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors"
+                        onClick={() => onViewPatient(userId)}
+                        title="View trends"
+                      >
+                        <TrendingUp className="h-4 w-4 text-brand-600" />
+                      </button>
+                    )}
+
+                    {/* View Bronchodilator Report */}
+                    {canViewReport && (
+                      <button
+                        type="button"
+                        disabled={isReportLoading}
+                        className={`inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) transition-colors ${
+                          isReportLoading
+                            ? 'cursor-wait opacity-60'
+                            : 'cursor-pointer hover:bg-surface-raised'
+                        }`}
+                        onClick={() => {
+                          if (!isReportLoading && observationId != null) {
+                            onViewReport(observationId);
+                          }
+                        }}
+                        title="View bronchodilator report"
+                      >
+                        {isReportLoading ? (
+                          <Loader2 className="h-4 w-4 text-fg-muted animate-spin" />
+                        ) : (
+                          <FileText className="h-4 w-4 text-brand-600" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

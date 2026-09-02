@@ -1,6 +1,16 @@
-import { Activity, Calendar, TrendingUp, UserRound } from 'lucide-react';
+
+import {
+  Activity,
+  Calendar,
+  FileText,
+  Loader2,
+  TrendingUp,
+  UserRound,
+} from 'lucide-react';
+
 import EmptyState from '../shared/EmptyState';
 import { Badge } from '../ui/badge';
+
 import {
   Table,
   TableBody,
@@ -9,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
+
 import SpirometryTableSkeleton from './SpirometryTableSkeleton';
 
 export default function SpirometryTable({
@@ -16,10 +27,16 @@ export default function SpirometryTable({
   loading,
   onViewPatient,
   getLatestBlow,
+  onViewReport,
+  reportLoadingId,
 }) {
-  if (loading) return <SpirometryTableSkeleton />;
+  // Loading state
+  if (loading) {
+    return <SpirometryTableSkeleton />;
+  }
 
-  if (!data?.length) {
+  // Empty state
+  if (!Array.isArray(data) || data.length === 0) {
     return (
       <EmptyState
         icon={Activity}
@@ -30,10 +47,42 @@ export default function SpirometryTable({
   }
 
   const getFEV1BadgeVariant = (value) => {
-    if (!value) return null;
-    if (value >= 80) return 'success';
-    if (value >= 60) return 'warning';
+    const fev1Percent = Number(value);
+
+    if (!Number.isFinite(fev1Percent)) {
+      return null;
+    }
+
+    if (fev1Percent >= 80) return 'success';
+    if (fev1Percent >= 60) return 'warning';
+
     return 'danger';
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '—';
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return '—';
+    }
+
+    return parsedDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: '2-digit',
+    });
+  };
+
+  const formatNumber = (value, decimals = 2) => {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+      return '—';
+    }
+
+    return number.toFixed(decimals);
   };
 
   return (
@@ -48,58 +97,134 @@ export default function SpirometryTable({
             <TableHead>PEFR</TableHead>
             <TableHead>FEV1%</TableHead>
             <TableHead>Last Blow</TableHead>
-            <TableHead className="w-16"></TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead className="w-24"></TableHead>
           </TableRow>
         </TableHeader>
+
         <TableBody>
           {data.map((s, i) => {
-            const userId = s.observation?.user_id;
+            // Safely get observation
+            const observation = s?.observation || {};
+
+            // Support both possible API structures
+            const userId =
+              observation?.user_id ??
+              s?.user_id ??
+              s?.userId ??
+              null;
+
+            // Support observation_id from different possible structures
+            const observationId =
+              s?.observation_id ??
+              observation?.id ??
+              s?.observationId ??
+              null;
+
+            const isReportLoading =
+              Boolean(onViewReport) &&
+              reportLoadingId != null &&
+              String(reportLoadingId) === String(observationId);
+
+            const canViewPatient =
+              Boolean(onViewPatient) && userId != null;
+
+            const canViewReport =
+              Boolean(onViewReport) && observationId != null;
+
             return (
-              <TableRow key={s.id || i}>
+              <TableRow key={s?.id ?? observationId ?? i}>
+                {/* Date */}
                 <TableCell className="text-caption text-fg-muted whitespace-nowrap">
                   <Calendar className="h-3 w-3 inline mr-1.5" />
-                  {new Date(s.dbdate).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: '2-digit',
-                  })}
+
+                  {formatDate(s?.dbdate ?? s?.date ?? s?.created_at)}
                 </TableCell>
+
+                {/* Patient ID */}
                 <TableCell>
                   <div className="flex items-center gap-1.5">
                     <UserRound className="h-3 w-3 text-fg-muted" />
+
                     <span className="text-body font-mono text-fg">
-                      {userId || 'N/A'}
+                      {userId ?? 'N/A'}
                     </span>
                   </div>
                 </TableCell>
+
+                {/* FEV1 */}
                 <TableCell className="font-medium text-fg tabular-nums">
-                  {s.fev1?.toFixed(2) || '—'}
+                  {formatNumber(s?.fev1, 2)}
                 </TableCell>
+
+                {/* FVC */}
                 <TableCell className="tabular-nums">
-                  {s.fvc?.toFixed(2) || '—'}
+                  {formatNumber(s?.fvc, 2)}
                 </TableCell>
+
+                {/* PEFR */}
                 <TableCell className="tabular-nums">
-                  {s.pefr?.toFixed(0) || '—'}
+                  {formatNumber(s?.pefr, 0)}
                 </TableCell>
+
+                {/* FEV1 % */}
                 <TableCell>
-                  {s.fev1_perc ? (
+                  {s?.fev1_perc != null &&
+                  Number.isFinite(Number(s.fev1_perc)) ? (
                     <Badge variant={getFEV1BadgeVariant(s.fev1_perc)}>
-                      {s.fev1_perc.toFixed(0)}%
+                      {Number(s.fev1_perc).toFixed(0)}%
                     </Badge>
                   ) : (
                     <span className="text-fg-muted">—</span>
                   )}
                 </TableCell>
+
+                {/* Last Blow */}
                 <TableCell className="text-caption text-fg-muted">
-                  {getLatestBlow(userId)}
+                  {userId != null && typeof getLatestBlow === 'function'
+                    ? getLatestBlow(userId)
+                    : '—'}
                 </TableCell>
+
+                {/* Actions */}
                 <TableCell>
-                  <div
-                    className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors"
-                    onClick={() => onViewPatient(userId)}
-                    title="View trends"
-                  >
-                    <TrendingUp className="h-4 w-4 text-brand-600" />
+                  <div className="flex items-center gap-1">
+                    {/* View Trends */}
+                    {canViewPatient && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors"
+                        onClick={() => onViewPatient(userId)}
+                        title="View trends"
+                      >
+                        <TrendingUp className="h-4 w-4 text-brand-600" />
+                      </button>
+                    )}
+
+                    {/* View Bronchodilator Report */}
+                    {canViewReport && (
+                      <button
+                        type="button"
+                        disabled={isReportLoading}
+                        className={`inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) transition-colors ${
+                          isReportLoading
+                            ? 'cursor-wait opacity-60'
+                            : 'cursor-pointer hover:bg-surface-raised'
+                        }`}
+                        onClick={() => {
+                          if (!isReportLoading && observationId != null) {
+                            onViewReport(observationId);
+                          }
+                        }}
+                        title="View bronchodilator report"
+                      >
+                        {isReportLoading ? (
+                          <Loader2 className="h-4 w-4 text-fg-muted animate-spin" />
+                        ) : (
+                          <FileText className="h-4 w-4 text-brand-600" />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

@@ -43,14 +43,16 @@ import EmptyState from "../components/shared/EmptyState";
 import SpirometryTableSkeleton from "../components/spirometry/SpirometryTableSkeleton";
 import { spirometryAPI } from "../services/api";
 import { useSearchParams } from "react-router-dom"; // ✅ add this
+import SpirometryTable from "../components/spirometry/SpirometryTable";
 
 export default function Spirometry() {
   const [searchParams, setSearchParams] = useSearchParams(); // ✅ add this
-
+  const [reportLoadingId, setReportLoadingId] = useState(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
   const [spirometryData, setSpirometryData] = useState([]);
+  
   const [chartData, setChartData] = useState([]);
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
@@ -115,6 +117,26 @@ export default function Spirometry() {
       setLoading(false);
     }
   };
+
+  const handleViewReport = async (observationId) => {
+      if (!observationId) {
+        toast.error("This record has no observation to report on");
+        return;
+      }
+      try {
+        setReportLoadingId(observationId);
+        const res = await spirometryAPI.getReportPDF(observationId);
+        const blob = new Blob([res.data], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener,noreferrer");
+        // release the blob URL once the browser has had a chance to load it
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } catch (err) {
+        toast.error("Failed to generate report");
+      } finally {
+        setReportLoadingId(null);
+      }
+    };
 
   // ✅ On mount: read ?username=ibbi from URL and auto-search
   useEffect(() => {
@@ -455,105 +477,22 @@ export default function Spirometry() {
                 {dateRange.start} → {dateRange.end}
               </span>
             </CardHeader>
-            <CardContent className="pt-4">
-              {loading ? (
-                <SpirometryTableSkeleton />
-              ) : spirometryData.length > 0 ? (
-                <>
-                  <div className="table-container">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>FEV1 (L)</TableHead>
-                          <TableHead>FVC (L)</TableHead>
-                          <TableHead>PEFR</TableHead>
-                          <TableHead>FEF25-75</TableHead>
-                          <TableHead>FEV6</TableHead>
-                          <TableHead>FEV1%</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Quality</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {spirometryData.map((s, i) => (
-                          <TableRow key={s.id || i}>
-                            <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                              {new Date(s.dbdate).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "2-digit",
-                              })}
-                            </TableCell>
-                            <TableCell className="font-medium text-fg tabular-nums">
-                              {s.fev1?.toFixed(2) || "—"}
-                            </TableCell>
-                            <TableCell className="tabular-nums">
-                              {s.fvc?.toFixed(2) || "—"}
-                            </TableCell>
-                            <TableCell className="tabular-nums">
-                              {s.pefr?.toFixed(0) || "—"}
-                            </TableCell>
-                            <TableCell className="tabular-nums">
-                              {s.fef2575?.toFixed(2) || "—"}
-                            </TableCell>
-                            <TableCell className="tabular-nums">
-                              {s.fev6?.toFixed(2) || "—"}
-                            </TableCell>
-                            <TableCell>
-                              {s.fev1_perc ? (
-                                <Badge
-                                  variant={
-                                    s.fev1_perc >= 80
-                                      ? "success"
-                                      : s.fev1_perc >= 60
-                                        ? "warning"
-                                        : "danger"
-                                  }
-                                >
-                                  {s.fev1_perc.toFixed(0)}%
-                                </Badge>
-                              ) : (
-                                <span className="text-fg-muted">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {s.is_post_bronchodilator ? (
-                                <Badge variant="info">Post-BD</Badge>
-                              ) : (
-                                <Badge variant="secondary">Pre-BD</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-caption text-fg-muted">
-                              {s.quality_message === 1
-                                ? "Good"
-                                : s.quality_message === 2
-                                  ? "Acceptable"
-                                  : s.quality_message === 3
-                                    ? "Poor"
-                                    : "—"}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    total={total}
-                    label="records"
-                    loading={loading}
-                    onPageChange={handlePageChange}
-                  />
-                </>
-              ) : (
-                <EmptyState
-                  icon={Activity}
-                  title="No spirometry data found"
-                  description="Try a different date range or patient username"
-                />
-              )}
+           <CardContent className="pt-4">
+              <SpirometryTable
+                data={spirometryData}
+                loading={loading}
+                onViewReport={handleViewReport} // ✅ new
+                reportLoadingId={reportLoadingId} // ✅ new
+              />
+
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                label="records"
+                loading={loading}
+                onPageChange={handlePageChange}
+              />
             </CardContent>
           </Card>
         </>

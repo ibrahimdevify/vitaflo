@@ -1,12 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/portalController');
+const pdf = require('../controllers/spirometryReportController');
 const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
 // Spirometry
 router.get('/spirometry/user/:user_id', ctrl.getSpirometryByUser);
+router.get('/spirometry/observation/:observation_id/pdf', pdf.getSpirometryReportPDF);
 router.get('/spirometry/latest', ctrl.getSpirometryLatest);
 router.get('/spirometry/all', ctrl.getSpirometryAll);
 router.get('/spirometry/max', ctrl.getSpirometryAll); // Same as all for now

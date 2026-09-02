@@ -33,6 +33,9 @@ export default function Spirometry() {
     start: "2020-01-01",
     end: "2030-12-31",
   });
+  // ✅ tracks which record's report is currently being generated,
+  // so the "View Report" button can show a per-row loading state
+  const [reportLoadingId, setReportLoadingId] = useState(null);
 
   const searchPatient = async (pageNum = 1, overrideQuery) => {
     const query = (overrideQuery ?? search).trim(); // ✅ allow direct query
@@ -115,6 +118,30 @@ export default function Spirometry() {
       setSearchParams({ username: search.trim() });
     }
     searchPatient(1);
+  };
+
+  // ✅ Fetches the ATS Bronchodilator Responsiveness Report PDF for a
+  // given observation and opens it in a new tab. Pass this down to
+  // SpirometryTable and wire it to a "View Report" button per row,
+  // e.g. onClick={() => onViewReport(record.observation_id)}.
+  const handleViewReport = async (observationId) => {
+    if (!observationId) {
+      toast.error("This record has no observation to report on");
+      return;
+    }
+    try {
+      setReportLoadingId(observationId);
+      const res = await spirometryAPI.getReportPDF(observationId);
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      // release the blob URL once the browser has had a chance to load it
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      toast.error("Failed to generate report");
+    } finally {
+      setReportLoadingId(null);
+    }
   };
 
   const bestFEV1 = spirometryData.reduce(
@@ -205,7 +232,12 @@ export default function Spirometry() {
               </span>
             </CardHeader>
             <CardContent className="pt-4">
-              <SpirometryTable data={spirometryData} loading={loading} />
+              <SpirometryTable
+                data={spirometryData}
+                loading={loading}
+                onViewReport={handleViewReport} // ✅ new
+                reportLoadingId={reportLoadingId} // ✅ new
+              />
 
               <Pagination
                 page={page}
