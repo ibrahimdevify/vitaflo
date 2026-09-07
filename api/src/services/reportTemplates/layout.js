@@ -32,7 +32,8 @@ function percentPredictedClass(percentPredicted) {
 }
 
 function fmt(value, digits = 2) {
-  if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
+  if (value === null || value === undefined || Number.isNaN(value))
+    return 'N/A';
   return typeof value === 'number' ? value.toFixed(digits) : String(value);
 }
 
@@ -40,7 +41,11 @@ function fmtDate(value) {
   if (!value) return 'N/A';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-US', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 /** Renders the "SPIROMETRY RESULTS"-style table used by spirometry / reports / session-comparison. */
@@ -75,7 +80,13 @@ function resultsTable(rows, { title = 'Spirometry Results' } = {}) {
 }
 
 /** A single circular "gauge" card, e.g. Lung Age or a letter-grade card. Pure CSS conic-gradient ring. */
-function gaugeCard({ title, valueLabel, ringPercent = 0, ringColor = BRAND.primary, footnote = '' }) {
+function gaugeCard({
+  title,
+  valueLabel,
+  ringPercent = 0,
+  ringColor = BRAND.primary,
+  footnote = '',
+}) {
   const pct = Math.max(0, Math.min(100, ringPercent));
   return `
     <div class="gauge-card">
@@ -170,7 +181,10 @@ function chartBootstrap(chartInitScripts) {
 }
 
 function renderDocument({ title, meta = {}, bodyHtml, chartInitScripts = [] }) {
-  const generatedAt = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  const generatedAt = new Date().toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -273,9 +287,11 @@ function renderDocument({ title, meta = {}, bodyHtml, chartInitScripts = [] }) {
     <div class="report-header">
       <div>
         <div class="brand">
-          ${meta.logoDataUri
-            ? `<img class="brand-logo" src="${meta.logoDataUri}" alt="VitalFlo" />`
-            : 'VitalFlo'}
+          ${
+            meta.logoDataUri
+              ? `<img class="brand-logo" src="${meta.logoDataUri}" alt="VitalFlo" />`
+              : 'VitalFlo'
+          }
         </div>
         <div class="subtitle">${title}</div>
       </div>

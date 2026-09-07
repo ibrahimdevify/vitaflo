@@ -1,38 +1,31 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  Check,
-  ChevronDown,
-  Loader2,
-  Save,
-  UserRound,
-} from "lucide-react";
-import { useEffect, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
-import { z } from "zod";
-import { cn } from "../../lib/utils";
-import { patientsAPI } from "../../services/api";
-import { useAuth } from "../../context/AuthContext";
-import Field from "../shared/Field";
-import { Button } from "../ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Check, ChevronDown, Loader2, Save, UserRound } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { z } from 'zod';
+import { useAuth } from '../../context/AuthContext';
+import { cn } from '../../lib/utils';
+import { patientsAPI } from '../../services/api';
+import Field from '../shared/Field';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
-import { Input } from "../ui/input";
-import { Textarea } from "../ui/textarea"; // Optional if you want notes/address
+} from '../ui/dropdown-menu';
+import { Input } from '../ui/input';
 
-const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-const genderOptions = ["M", "F"];
+const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const genderOptions = ['M', 'F'];
 
 const patientSchema = z.object({
-  f_name: z.string().min(1, "First name is required"),
-  l_name: z.string().min(1, "Last name is required"),
-  email: z.string().email("Invalid email").optional().or(z.literal("")),
-  phone: z.string().min(1, "Phone is required"),
+  f_name: z.string().min(1, 'First name is required'),
+  l_name: z.string().min(1, 'Last name is required'),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  phone: z.string().min(1, 'Phone is required'),
   password: z.string().optional(),
   dob: z.string().optional(),
   chart_no: z.string().optional(),
@@ -58,19 +51,19 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
   } = useForm({
     resolver: zodResolver(patientSchema),
     defaultValues: {
-      f_name: "",
-      l_name: "",
-      email: "",
-      phone: "",
-      password: "",
-      dob: "",
-      chart_no: "",
-      blood_group: "",
-      height: "",
-      weight: "",
-      gender: "M",
-      status: "active",
-      patient_group_id: "",
+      f_name: '',
+      l_name: '',
+      email: '',
+      phone: '',
+      password: '',
+      dob: '',
+      chart_no: '',
+      blood_group: '',
+      height: '',
+      weight: '',
+      gender: 'M',
+      status: 'active',
+      patient_group_id: '',
     },
   });
 
@@ -85,22 +78,22 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
   useEffect(() => {
     if (initialData) {
       reset({
-        f_name: initialData.f_name || "",
-        l_name: initialData.l_name || "",
-        email: initialData.email || "",
-        phone: initialData.phone || "",
-        password: "",
-        dob: initialData.patient_details?.attributes?.dob || "",
-        chart_no: initialData.patient_details?.chart_no || "",
-        blood_group: initialData.patient_details?.blood_group || "",
+        f_name: initialData.f_name || '',
+        l_name: initialData.l_name || '',
+        email: initialData.email || '',
+        phone: initialData.phone || '',
+        password: '',
+        dob: initialData.patient_details?.attributes?.dob || '',
+        chart_no: initialData.patient_details?.chart_no || '',
+        blood_group: initialData.patient_details?.blood_group || '',
         height:
-          initialData.patient_details?.attributes?.height?.toString() || "",
+          initialData.patient_details?.attributes?.height?.toString() || '',
         weight:
-          initialData.patient_details?.attributes?.weight?.toString() || "",
-        gender: initialData.patient_details?.attributes?.gender || "M",
-        status: initialData.patient_details?.status || "active",
+          initialData.patient_details?.attributes?.weight?.toString() || '',
+        gender: initialData.patient_details?.attributes?.gender || 'M',
+        status: initialData.patient_details?.status || 'active',
         patient_group_id:
-          initialData.patient_details?.patient_group_id?.toString() || "",
+          initialData.patient_details?.patient_group_id?.toString() || '',
       });
     }
   }, [initialData, reset]);
@@ -114,14 +107,14 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
           data.email ||
           `${data.f_name.toLowerCase()}.${data.l_name.toLowerCase()}@vitalflow.com`,
         phone: data.phone,
-        password: data.password || "TempPass123!",
+        password: data.password || 'TempPass123!',
         dob: data.dob,
-        chart_no: data.chart_no || "",
+        chart_no: data.chart_no || '',
         blood_group: data.blood_group || null,
         height: data.height ? parseFloat(data.height) : null,
         weight: data.weight ? parseFloat(data.weight) : null,
-        gender: data.gender || "",
-        status: data.status || "active",
+        gender: data.gender || '',
+        status: data.status || 'active',
         patient_group_id: data.patient_group_id
           ? parseInt(data.patient_group_id)
           : null,
@@ -131,13 +124,15 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
 
       await patientsAPI.create(payload);
       toast.success(
-        isEditing ? "Patient updated successfully!" : "Patient created successfully!"
+        isEditing
+          ? 'Patient updated successfully!'
+          : 'Patient created successfully!'
       );
       if (onSuccess) onSuccess();
     } catch (err) {
       toast.error(
-        err.response?.data?.error || 
-        (isEditing ? "Failed to update patient" : "Failed to create patient")
+        err.response?.data?.error ||
+          (isEditing ? 'Failed to update patient' : 'Failed to create patient')
       );
     }
   };
@@ -146,13 +141,15 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
     <Card className="w-full">
       <CardHeader className="border-b border-border pb-4">
         <CardTitle className="text-subheading font-semibold text-fg flex items-center gap-2">
-          <UserRound className="h-5 w-5 text-brand-600" />
-          {isEditing ? "Edit Patient" : "Patient Information"}
+          <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-brand-500 to-brand-700">
+            <UserRound className="h-3.5 w-3.5 text-white" />
+          </div>
+          {isEditing ? 'Edit Patient' : 'Patient Information'}
         </CardTitle>
         <p className="text-caption text-fg-muted mt-1">
-          {isEditing 
-            ? "Update patient information below" 
-            : "Fill in the patient details below to create a new record"}
+          {isEditing
+            ? 'Update patient information below'
+            : 'Fill in the patient details below to create a new record'}
         </p>
       </CardHeader>
 
@@ -165,30 +162,30 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="First Name *" error={errors.f_name?.message}>
-                <Input {...register("f_name")} placeholder="John" />
+                <Input {...register('f_name')} placeholder="John" />
               </Field>
               <Field label="Last Name *" error={errors.l_name?.message}>
-                <Input {...register("l_name")} placeholder="Doe" />
+                <Input {...register('l_name')} placeholder="Doe" />
               </Field>
               <Field label="Email (optional)" error={errors.email?.message}>
                 <Input
-                  {...register("email")}
+                  {...register('email')}
                   type="email"
                   placeholder="john@example.com"
                 />
               </Field>
               <Field label="Phone *" error={errors.phone?.message}>
-                <Input {...register("phone")} placeholder="1234567890" />
+                <Input {...register('phone')} placeholder="1234567890" />
               </Field>
               <Field label="Password (default: TempPass123!)">
                 <Input
-                  {...register("password")}
+                  {...register('password')}
                   type="password"
                   placeholder="Min 6 chars"
                 />
               </Field>
               <Field label="Date of Birth">
-                <Input {...register("dob")} type="date" />
+                <Input {...register('dob')} type="date" />
               </Field>
             </div>
           </div>
@@ -200,7 +197,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Chart Number">
-                <Input {...register("chart_no")} placeholder="CH-001" />
+                <Input {...register('chart_no')} placeholder="CH-001" />
               </Field>
               <Field label="Blood Group">
                 <Controller
@@ -212,10 +209,10 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                         <div className="flex w-full items-center justify-between h-9 px-3 text-sm rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
                           <span
                             className={
-                              !field.value ? "text-fg-muted" : "text-fg"
+                              !field.value ? 'text-fg-muted' : 'text-fg'
                             }
                           >
-                            {field.value || "Select Blood Group"}
+                            {field.value || 'Select Blood Group'}
                           </span>
                           <ChevronDown className="h-4 w-4 text-fg-muted" />
                         </div>
@@ -229,9 +226,9 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                             key={bg}
                             onClick={() => field.onChange(bg)}
                             className={cn(
-                              "cursor-pointer",
+                              'cursor-pointer',
                               field.value === bg &&
-                                "bg-surface-raised font-medium",
+                                'bg-surface-raised font-medium'
                             )}
                           >
                             {bg}
@@ -247,7 +244,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
               </Field>
               <Field label="Height (cm)">
                 <Input
-                  {...register("height")}
+                  {...register('height')}
                   type="number"
                   step="0.1"
                   placeholder="170"
@@ -255,7 +252,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
               </Field>
               <Field label="Weight (kg)">
                 <Input
-                  {...register("weight")}
+                  {...register('weight')}
                   type="number"
                   step="0.1"
                   placeholder="70"
@@ -270,7 +267,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                       <DropdownMenuTrigger asChild>
                         <div className="flex w-full items-center justify-between h-9 px-3 text-sm rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
                           <span className="text-fg">
-                            {field.value === "M" ? "Male" : "Female"}
+                            {field.value === 'M' ? 'Male' : 'Female'}
                           </span>
                           <ChevronDown className="h-4 w-4 text-fg-muted" />
                         </div>
@@ -284,12 +281,12 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                             key={g}
                             onClick={() => field.onChange(g)}
                             className={cn(
-                              "cursor-pointer",
+                              'cursor-pointer',
                               field.value === g &&
-                                "bg-surface-raised font-medium",
+                                'bg-surface-raised font-medium'
                             )}
                           >
-                            {g === "M" ? "Male" : "Female"}
+                            {g === 'M' ? 'Male' : 'Female'}
                             {field.value === g && (
                               <Check className="h-3.5 w-3.5 ml-auto text-brand-600" />
                             )}
@@ -309,7 +306,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                       <DropdownMenuTrigger asChild>
                         <div className="flex w-full items-center justify-between h-9 px-3 text-sm rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
                           <span className="text-fg">
-                            {field.value === "active" ? "Active" : "Pending"}
+                            {field.value === 'active' ? 'Active' : 'Pending'}
                           </span>
                           <ChevronDown className="h-4 w-4 text-fg-muted" />
                         </div>
@@ -319,13 +316,13 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                         className="w-(--anchor-width)"
                       >
                         <DropdownMenuItem
-                          onClick={() => field.onChange("active")}
+                          onClick={() => field.onChange('active')}
                           className="cursor-pointer"
                         >
                           Active
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => field.onChange("unverified")}
+                          onClick={() => field.onChange('unverified')}
                           className="cursor-pointer"
                         >
                           Unverified
@@ -354,12 +351,12 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                         <div className="flex w-full items-center justify-between h-9 px-3 text-sm rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
                           <span
                             className={
-                              !field.value ? "text-fg-muted" : "text-fg"
+                              !field.value ? 'text-fg-muted' : 'text-fg'
                             }
                           >
                             {patientGroups.find(
-                              (g) => g.id.toString() === field.value,
-                            )?.name || "Select Patient Group"}
+                              (g) => g.id.toString() === field.value
+                            )?.name || 'Select Patient Group'}
                           </span>
                           <ChevronDown className="h-4 w-4 text-fg-muted" />
                         </div>
@@ -369,7 +366,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                         className="w-(--anchor-width)"
                       >
                         <DropdownMenuItem
-                          onClick={() => field.onChange("")}
+                          onClick={() => field.onChange('')}
                           className="cursor-pointer text-fg-muted"
                         >
                           No Group
@@ -379,9 +376,9 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                             key={g.id}
                             onClick={() => field.onChange(g.id.toString())}
                             className={cn(
-                              "cursor-pointer",
+                              'cursor-pointer',
                               field.value === g.id.toString() &&
-                                "bg-surface-raised font-medium",
+                                'bg-surface-raised font-medium'
                             )}
                           >
                             {g.name}
@@ -395,7 +392,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                   )}
                 />
               </Field>
-              
+
               {/* Auto-assigned clinician info */}
               <div className="flex items-center gap-3 p-4 rounded-lg bg-surface-raised border border-border">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100">
@@ -415,9 +412,9 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
 
           {/* Action Buttons */}
           <div className="flex gap-2 pt-6 border-t border-border">
-            <Button 
-              type="submit" 
-              disabled={isSubmitting} 
+            <Button
+              type="submit"
+              disabled={isSubmitting}
               className="gap-1.5 min-w-[150px]"
             >
               {isSubmitting ? (
@@ -428,7 +425,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  {isEditing ? "Update Patient" : "Create Patient"}
+                  {isEditing ? 'Update Patient' : 'Create Patient'}
                 </>
               )}
             </Button>

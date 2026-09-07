@@ -35,17 +35,18 @@ export const usersAPI = {
 export const patientsAPI = {
   getAll: (params) => api.get('/patients', { params }),
   getById: (id) => api.get(`/patients/${id}`),
-   getTabData: (id, tab, params = {}) =>
-  api.get(`/patients/${id}`, {  // Or whatever your actual endpoint is
-    params: {
-      tab,
-      ...params,
-    },
-  }),
- getPatientReportPdf(id, tab, params = {}) {
+  getTabData: (id, tab, params = {}) =>
+    api.get(`/patients/${id}`, {
+      // Or whatever your actual endpoint is
+      params: {
+        tab,
+        ...params,
+      },
+    }),
+  getPatientReportPdf(id, tab, params = {}) {
     return api.get(`/patients/${id}/report`, {
       params: { tab, ...params, download: 1 },
-      responseType: "blob",
+      responseType: 'blob',
     });
   },
   createAttributes: (id, data) => api.post(`/patients/${id}/attributes`, data),
@@ -117,9 +118,9 @@ export const spirometryAPI = {
     api.get(`/spirometry/user/${userId}`, { params }),
   getReportPDF: (observationId) =>
     api.get(`/spirometry/observation/${observationId}/pdf`, {
-      responseType: "blob",
+      responseType: 'blob',
     }),
-    
+
   getLatest: () => api.get('/spirometry/latest'),
   getAll: (params) => api.get('/spirometry/all', { params }),
   sync: (data) => api.post('/user_observations/sync_plus', data),

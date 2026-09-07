@@ -1,51 +1,51 @@
-import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, BookOpen, Download, Loader2 } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
-import { Card, CardContent, CardHeader } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
-import { patientsAPI } from "../services/api";
+import { ArrowLeft, BookOpen, Download, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Skeleton } from '../components/ui/skeleton';
+import { patientsAPI } from '../services/api';
 
-import PatientInfoTab from "../components/patients/tabs/PatientInfoTab.jsx";
-import SpirometryTab from "../components/patients/tabs/SpirometryTab";
-import AnalysisTab from "../components/patients/tabs/AnalysisTab";
-import ReportsTab from "../components/patients/tabs/ReportsTab";
-import AlertsTab from "../components/patients/tabs/AlertsTab";
-import BillingTab from "../components/patients/tabs/BillingTab";
-import SessionComparisonTab from "../components/patients/tabs/SessionComparisonTab";
-import GlossaryModal from "../components/patients/GlossaryModal.jsx";
+import GlossaryModal from '../components/patients/GlossaryModal.jsx';
+import AlertsTab from '../components/patients/tabs/AlertsTab';
+import AnalysisTab from '../components/patients/tabs/AnalysisTab';
+import BillingTab from '../components/patients/tabs/BillingTab';
+import PatientInfoTab from '../components/patients/tabs/PatientInfoTab.jsx';
+import ReportsTab from '../components/patients/tabs/ReportsTab';
+import SessionComparisonTab from '../components/patients/tabs/SessionComparisonTab';
+import SpirometryTab from '../components/patients/tabs/SpirometryTab';
 
 const TABS = [
-  { key: "patient-info", label: "Patient Info" },
-  { key: "spirometry", label: "Spirometry" },
-  { key: "analysis", label: "Analysis" },
-  { key: "session-comparison", label: "Session Comparison" },
-  { key: "reports", label: "Reports" },
-  { key: "alerts", label: "Alerts" },
-  { key: "billing", label: "Billing" },
+  { key: 'patient-info', label: 'Patient Info' },
+  { key: 'spirometry', label: 'Spirometry' },
+  { key: 'analysis', label: 'Analysis' },
+  { key: 'session-comparison', label: 'Session Comparison' },
+  { key: 'reports', label: 'Reports' },
+  { key: 'alerts', label: 'Alerts' },
+  { key: 'billing', label: 'Billing' },
 ];
 
 const TAB_COMPONENTS = {
-  "patient-info": PatientInfoTab,
+  'patient-info': PatientInfoTab,
   spirometry: SpirometryTab,
   analysis: AnalysisTab,
-  "session-comparison": SessionComparisonTab,
+  'session-comparison': SessionComparisonTab,
   reports: ReportsTab,
   alerts: AlertsTab,
   billing: BillingTab,
 };
 
 // Tabs where a PDF report doesn't make sense / needs user-picked input first
-const NON_DOWNLOADABLE_TABS = new Set(["alerts"]);
+const NON_DOWNLOADABLE_TABS = new Set(['alerts']);
 
 export default function PatientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "patient-info";
+  const activeTab = searchParams.get('tab') || 'patient-info';
 
-  const [patientName, setPatientName] = useState("");
+  const [patientName, setPatientName] = useState('');
   const [tabData, setTabData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -62,12 +62,15 @@ export default function PatientDetail() {
     let isMounted = true;
 
     patientsAPI
-      .getTabData(id, "patient-info")
+      .getTabData(id, 'patient-info')
       .then((res) => {
-        if (isMounted) setPatientName(res.data?.data?.name || "");
+        if (isMounted) setPatientName(res.data?.data?.name || '');
       })
       .catch((err) => {
-        console.error("[Header fetch error]", err?.response?.data || err.message);
+        console.error(
+          '[Header fetch error]',
+          err?.response?.data || err.message
+        );
       });
 
     return () => {
@@ -79,7 +82,7 @@ export default function PatientDetail() {
     async (tab, params = {}) => {
       if (!id) {
         setLoading(false);
-        setError("No patient id in URL");
+        setError('No patient id in URL');
         return;
       }
 
@@ -92,13 +95,13 @@ export default function PatientDetail() {
         setTabData(res.data?.data ?? null);
         setCurrentParams(params); // remember what produced this data
       } catch (err) {
-        console.error("[PatientDetail] Load patient tab error:", err);
+        console.error('[PatientDetail] Load patient tab error:', err);
 
         const detail =
           err?.response?.data?.error ||
           err?.response?.data?.message ||
           err?.message ||
-          "Failed to load patient data";
+          'Failed to load patient data';
         const status = err?.response?.status;
         setError(status ? `[${status}] ${detail}` : detail);
         toast.error(detail);
@@ -110,26 +113,26 @@ export default function PatientDetail() {
   );
 
   const getDefaultParamsForTab = (tab) => {
-    const toISODate = (d) => d.toISOString().split("T")[0];
+    const toISODate = (d) => d.toISOString().split('T')[0];
     const today = new Date();
 
     switch (tab) {
-      case "spirometry":
+      case 'spirometry':
         return { date: toISODate(today) };
 
-      case "analysis":
-      case "reports":
-      case "billing": {
+      case 'analysis':
+      case 'reports':
+      case 'billing': {
         const startDate = new Date(today);
         startDate.setDate(startDate.getDate() - 30);
         return { startDate: toISODate(startDate), endDate: toISODate(today) };
       }
 
-      case "session-comparison":
+      case 'session-comparison':
         return null; // waits for user to pick sessions
 
-      case "patient-info":
-      case "alerts":
+      case 'patient-info':
+      case 'alerts':
       default:
         return {};
     }
@@ -158,16 +161,16 @@ export default function PatientDetail() {
   // body but we requested responseType: 'blob' (axios hands back a Blob).
   const parseDownloadError = async (err) => {
     const data = err?.response?.data;
-    if (data instanceof Blob && data.type.includes("json")) {
+    if (data instanceof Blob && data.type.includes('json')) {
       try {
         const text = await data.text();
         const json = JSON.parse(text);
-        return json.error || json.message || "Failed to generate PDF";
+        return json.error || json.message || 'Failed to generate PDF';
       } catch {
-        return "Failed to generate PDF";
+        return 'Failed to generate PDF';
       }
     }
-    return err?.message || "Failed to generate PDF";
+    return err?.message || 'Failed to generate PDF';
   };
 
   const handleDownloadReport = async () => {
@@ -175,11 +178,15 @@ export default function PatientDetail() {
 
     try {
       setDownloading(true);
-      const res = await patientsAPI.getPatientReportPdf(id, activeTab, currentParams);
+      const res = await patientsAPI.getPatientReportPdf(
+        id,
+        activeTab,
+        currentParams
+      );
 
-      const blob = new Blob([res.data], { type: "application/pdf" });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.href = url;
       link.download = `patient-${id}-${activeTab}-report.pdf`;
       document.body.appendChild(link);
@@ -188,7 +195,7 @@ export default function PatientDetail() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       const message = await parseDownloadError(err);
-      console.error("[PatientDetail] PDF download error:", err);
+      console.error('[PatientDetail] PDF download error:', err);
       toast.error(message);
     } finally {
       setDownloading(false);
@@ -201,28 +208,44 @@ export default function PatientDetail() {
     !loading &&
     !error &&
     !NON_DOWNLOADABLE_TABS.has(activeTab) &&
-    (activeTab !== "session-comparison" ||
+    (activeTab !== 'session-comparison' ||
       Boolean(currentParams?.sessionId1 && currentParams?.sessionId2));
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => navigate("/patients")}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => navigate('/patients')}
+            className="shrink-0"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-heading font-bold text-fg tracking-tight">
-              {patientName || <Skeleton className="h-6 w-48 rounded-(--radius-control)" />}
+
+          <div className="min-w-0">
+            <h1 className="truncate text-heading font-semibold tracking-tight text-fg">
+              {patientName || (
+                <Skeleton className="h-6 w-48 rounded-(--radius-control)" />
+              )}
             </h1>
-            <p className="text-caption text-fg-muted mt-1">Patient overview and clinical data</p>
+
+            <p className="mt-0.5 text-caption text-fg-muted">
+              Patient overview and clinical data
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setGlossaryOpen(true)}>
-            <BookOpen className="h-4 w-4 mr-2" />
-            Glossary
+        <div className="flex items-center gap-2 sm:shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setGlossaryOpen(true)}
+            className="gap-1.5 flex-1"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span className="">Glossary</span>
           </Button>
 
           <Button
@@ -230,41 +253,46 @@ export default function PatientDetail() {
             size="sm"
             onClick={handleDownloadReport}
             disabled={!canDownload || downloading}
+            className="gap-1.5 flex-1"
           >
             {downloading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Download className="h-4 w-4 mr-2" />
+              <Download className="h-4 w-4" />
             )}
-            Download PDF
+            <span className="">Download PDF</span>
           </Button>
         </div>
       </div>
-
       <Card>
-        <CardHeader className="border-b border-border pb-0">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => handleTabChange(tab.key)}
-                className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? "border-brand-600 text-brand-700"
-                    : "border-transparent text-fg-muted hover:text-fg"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <CardHeader className="border-b border-border">
+          <div className="flex overflow-x-auto scrollbar-none">
+            <div className="flex min-w-max  w-full items-center gap-1 rounded-(--radius-control) bg-surface-raised p-1">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleTabChange(tab.key)}
+                  className={`whitespace-nowrap grow rounded-(--radius-control) px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                    activeTab === tab.key
+                      ? 'bg-surface text-brand-600 shadow-sm'
+                      : 'text-fg-muted hover:text-fg'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
           {loading ? (
             <div className="space-y-3">
               {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-4 w-full rounded-(--radius-control)" />
+                <Skeleton
+                  key={i}
+                  className="h-9 w-full rounded-(--radius-control)"
+                />
               ))}
             </div>
           ) : error ? (
@@ -278,8 +306,10 @@ export default function PatientDetail() {
           ) : null}
         </CardContent>
       </Card>
-
-      <GlossaryModal open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
+      <GlossaryModal
+        open={glossaryOpen}
+        onClose={() => setGlossaryOpen(false)}
+      />
     </div>
   );
 }

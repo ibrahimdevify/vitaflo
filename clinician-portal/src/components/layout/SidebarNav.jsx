@@ -1,6 +1,6 @@
+import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
 
 // [CONFIG] Add a new resource by adding one line here + dropping the
 // matching PDF into `public/resources/` in the frontend project.
@@ -15,9 +15,15 @@ const RESOURCES = [
 export default function SidebarNav({ items, onItemClick }) {
   const location = useLocation();
   const [resourcesOpen, setResourcesOpen] = useState(true);
-
+  const isDark = document.documentElement.classList.contains('dark');
   return (
-    <nav className="flex-1 space-y-0.5 p-3 pt-4 overflow-auto">
+    <nav
+      className="flex-1 space-y-0.5 p-3 pt-4 overflow-auto"
+      style={{
+        scrollbarColor: isDark ? '#4b5563 transparent' : '#d1d5db transparent',
+        scrollbarWidth: 'thin',
+      }}
+    >
       <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-brand-400/70">
         Main Menu
       </p>
