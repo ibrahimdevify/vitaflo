@@ -1,7 +1,20 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
+
+// [CONFIG] Add a new resource by adding one line here + dropping the
+// matching PDF into `public/resources/` in the frontend project.
+const RESOURCES = [
+  { label: 'Assessing Asthma', file: 'assessing-asthma.pdf' },
+  { label: 'Asthma Action Plan', file: 'asthma-action-plan.pdf' },
+  { label: 'Spirometry Summary', file: 'spirometry-summary.pdf' },
+  { label: 'ATS 2019 Update', file: 'ats-2019-update.pdf' },
+  { label: 'Interpretation of PFTs', file: 'interpretation-of-pfts.pdf' },
+];
 
 export default function SidebarNav({ items, onItemClick }) {
   const location = useLocation();
+  const [resourcesOpen, setResourcesOpen] = useState(true);
 
   return (
     <nav className="flex-1 space-y-0.5 p-3 pt-4 overflow-auto">
@@ -35,6 +48,42 @@ export default function SidebarNav({ items, onItemClick }) {
           </Link>
         );
       })}
+
+      {/* [ADDED] Resources section — collapsible, each link opens its PDF
+          in a new tab. Files live in `public/resources/` (see RESOURCES
+          above). This does not use <Link> since these aren't app routes. */}
+      <div className="pt-3">
+        <button
+          type="button"
+          onClick={() => setResourcesOpen((o) => !o)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
+        >
+          <FileText className="h-4 w-4 shrink-0 text-brand-400/60" />
+          <span className="flex-1 text-left">Resources</span>
+          {resourcesOpen ? (
+            <ChevronUp className="h-4 w-4 text-brand-400/60" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-brand-400/60" />
+          )}
+        </button>
+
+        {resourcesOpen && (
+          <div className="mt-0.5 space-y-0.5 pl-4">
+            {RESOURCES.map((r) => (
+              <a
+                key={r.file}
+                href={`/resources/${r.file}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
+              >
+                <FileText className="h-4 w-4 shrink-0 text-brand-400/60 transition-colors group-hover:text-brand-400" />
+                {r.label}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
     </nav>
   );
 }

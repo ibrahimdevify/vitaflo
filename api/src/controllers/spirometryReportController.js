@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
 const { buildSpirometryReportHtml } = require('../pdf/spirometryReport');
+const { getLogoDataUri } = require('../services/reportService');
 const prisma = new PrismaClient();
 
 /**
@@ -170,7 +171,7 @@ const getSpirometryReportPDF = async (req, res) => {
       bmi: bmi ?? 'N/A',
     };
 
-    const html = buildSpirometryReportHtml({
+      const html = buildSpirometryReportHtml({
       patient,
       pre,
       post,
@@ -178,8 +179,7 @@ const getSpirometryReportPDF = async (req, res) => {
       postFlows: postRaw?.flows,
       preVolumes: preRaw?.volumes,
       postVolumes: postRaw?.volumes,
-    });
-
+    }, { logoDataUri: getLogoDataUri() });
     browser = await puppeteer.launch({
       headless: 'new',
       channel: 'chrome',

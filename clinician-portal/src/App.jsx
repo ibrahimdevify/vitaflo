@@ -9,6 +9,8 @@ import ResetPassword from "./pages/ResetPassword";
 
 const Alerts = lazy(() => import("./pages/Alerts"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AddPatient = lazy(() => import("./pages/AddPatient"));
+const PatientDetail = lazy(() => import("./pages/PatientDetail"));
 const Forbidden = lazy(() => import("./pages/Forbidden"));
 const Notes = lazy(() => import("./pages/Notes"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -61,10 +63,13 @@ export default function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/patients" element={<Patients />} />
+              <Route path="/patients/:id" element={<PatientDetail />} />
+              <Route path="/notes" element={<Notes />} />
               <Route path="/spirometry" element={<Spirometry />} />
               <Route path="/prescriptions" element={<Prescriptions />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/alerts" element={<Alerts />} />
+              <Route path="/patients/add" element={<AddPatient />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/forbidden" element={<Forbidden />} />
 

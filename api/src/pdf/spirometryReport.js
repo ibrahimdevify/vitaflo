@@ -12,6 +12,12 @@
  * @param {Array}  data.postFlows  [{volume, flow}]
  * @param {Array}  data.preVolumes  [{time, volume}]
  * @param {Array}  data.postVolumes [{time, volume}]
+ * @param {Object} [meta]
+ * @param {string} [meta.logoDataUri]  `data:<mime>;base64,...` URI for the VitalFlo
+ *                                     logo. Get this from services/reportService.js's
+ *                                     `getLogoDataUri()` so both PDF systems share the
+ *                                     same cached file lookup. Falls back to the
+ *                                     original "VP" badge + text if omitted.
  * @returns {string} full HTML document
  */
 
@@ -25,7 +31,7 @@ function toPct(z) {
   return ((clamped - SCALE_MIN) / SCALE_RANGE) * 100;
 }
 
-function buildSpirometryReportHtml(data) {
+function buildSpirometryReportHtml(data, meta = {}) {
   const { patient, pre, post, preFlows, postFlows, preVolumes, postVolumes } = data;
 
   const fmt = (v, digits = 2) =>
@@ -145,6 +151,10 @@ function buildSpirometryReportHtml(data) {
     { label: 'FEV1/FVC', z: post?.zscore_fev1_fvc },
   ];
 
+  const brandHtml = meta.logoDataUri
+    ? `<img class="brand-logo" src="${meta.logoDataUri}" alt="VitalFlo" />`
+    : `<div class="badge">VP</div><div class="name">VitalFlo</div>`;
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -159,6 +169,7 @@ function buildSpirometryReportHtml(data) {
   .brand .badge { width:30px; height:30px; border-radius:50%; background:#3d8b3d; color:#fff; font-weight:bold;
                    font-size:13px; display:flex; align-items:center; justify-content:center; }
   .brand .name { font-style: italic; font-weight: bold; font-size: 21px; color: #2f6f2f; font-family: Georgia, serif; }
+  .brand .brand-logo { height: 34px; display:block; }
   .header h1 { font-size: 15px; margin: 0; font-weight:bold; }
   .headrule { border: none; border-top: 2px solid #444; margin: 4px 0 10px; }
 
@@ -204,8 +215,7 @@ function buildSpirometryReportHtml(data) {
 
   <div class="header">
     <div class="brand">
-      <div class="badge">VP</div>
-      <div class="name">VitalFlo</div>
+      ${brandHtml}
     </div>
     <h1>ATS Bronchodilator Responsiveness Report</h1>
   </div>

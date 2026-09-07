@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const patientController = require('../controllers/patientController');
+const patientReportController = require('../controllers/patientReportController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 router.use(authenticate);
@@ -91,6 +92,10 @@ router.post('/', authorize('technician', 'account_admin', 'clinician'), patientC
  *         description: Patient detail
  */
 router.get('/:id', patientController.getPatientById);
+router.get('/:id/report', patientReportController.getPatientReportPdf);
+
+router.get('/patients', patientController.listPatients);
+// router.get('/patients/:id', patientController.getPatientById);
 
 /**
  * @swagger

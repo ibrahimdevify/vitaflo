@@ -1,16 +1,165 @@
 const { PrismaClient } = require('@prisma/client');
 const { hashPassword } = require('../utils/password');
 const { generateUserName } = require('../utils/usernameGenerator');
+const patientService = require('../services/reportTemplates/patientService');
+const { ValidationError } = patientService;
+
 
 const prisma = new PrismaClient();
 
+const ALLOWED_TABS = ['patient-info', 'spirometry', 'analysis', 'session-comparison', 'reports', 'billing', 'alerts'];
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
 // Get all patients with medical details
+// const getAllPatients = async (req, res) => {
+//   try {
+//     const { page = 1, limit = 20, search, status, patient_group_id, assigned_clinician_id } = req.query;
+
+//     const where = { ut_id_fk: 4 }; // Only patients
+
+//     if (search) {
+//       const searchTerm = search.trim();
+//       const nameParts = searchTerm.split(/\s+/).filter(Boolean);
+
+//       where.OR = [
+//         { f_name: { contains: searchTerm } },
+//         { l_name: { contains: searchTerm } },
+//         { userName: { contains: searchTerm } },
+//         { email: { contains: searchTerm } },
+//         { phone: { contains: searchTerm } },
+//         { patient_details: { chart_no: { contains: searchTerm } } },
+//       ];
+
+//       // Handle "First Last" style full-name search across two fields
+//       if (nameParts.length > 1) {
+//         where.OR.push(
+//           {
+//             AND: [
+//               { f_name: { contains: nameParts[0] } },
+//               { l_name: { contains: nameParts.slice(1).join(' ') } },
+//             ],
+//           },
+//           {
+//             AND: [
+//               { f_name: { contains: nameParts[nameParts.length - 1] } },
+//               { l_name: { contains: nameParts.slice(0, -1).join(' ') } },
+//             ],
+//           },
+//         );
+//       }
+//     }
+
+//     if (status) {
+//       where.patient_details = { ...where.patient_details, status };
+//     }
+
+//     if (patient_group_id) {
+//       where.patient_details = { ...where.patient_details, patient_group_id: parseInt(patient_group_id) };
+//     }
+
+//     if (assigned_clinician_id) {
+//       where.patient_details = { ...where.patient_details, assigned_clinician_id: parseInt(assigned_clinician_id) };
+//     }
+
+//     // 🔒 Clinicians only see their assigned patients
+//     // Admin (ut_id_fk=2) and Technician (ut_id_fk=1) see all
+//     if (req.user.ut_id_fk === 3) {
+//       where.patient_details = { ...where.patient_details, assigned_clinician_id: req.user.user_id };
+//     }
+
+//     const skip = (parseInt(page) - 1) * parseInt(limit);
+
+//     const [patients, total] = await Promise.all([
+//       prisma.dc_users.findMany({
+//         where,
+//         skip,
+//         take: parseInt(limit),
+//         orderBy: { reg_date: 'desc' },
+//         select: {
+//           user_id: true,
+//           f_name: true,
+//           l_name: true,
+//           email: true,
+//           phone: true,
+//           profile_pic: true,
+//           is_rpm_allow: true,
+//           reg_date: true,
+//           userName: true,
+//           user_status: { select: { name: true } },
+//           patient_details: {
+//             select: {
+//               pd_id: true,
+//               chart_no: true,
+//               blood_group: true,
+//               status: true,
+//               graph_view: true,
+//               rpm_consent: true,
+//               height: true,
+//               weight: true,
+//               patient_group: { select: { id: true, name: true } },
+//               assigned_clinician: { select: { user_id: true, f_name: true, l_name: true } },
+//               attributes: {
+//                 select: {
+//                   id: true,
+//                   dob: true,
+//                   gender: true,
+//                   height: true,
+//                   weight: true,
+//                   ethnic_group: true,
+//                   lookup_table: true,
+//                   smoking: true,
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       }),
+//       prisma.dc_users.count({ where }),
+//     ]);
+
+//     // Format patients to include attributes at top level
+//     const formattedPatients = patients.map(p => ({
+//       ...p,
+//       attributes: p.patient_details?.attributes || null,
+//     }));
+
+//     res.json({
+//       data: formattedPatients,
+//       pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
+//     });
+//   } catch (error) {
+//     console.error('Get patients error:', error);
+//     res.status(500).json({ error: 'Failed to fetch patients' });
+//   }
+// };
+
 const getAllPatients = async (req, res) => {
   try {
-    const { page = 1, limit = 20, search, status, patient_group_id, assigned_clinician_id } = req.query;
+    const { 
+      page = 1, 
+      limit = 20, 
+      search,
+      status, 
+      patient_group_id, 
+      assigned_clinician_id,
+      // Filter fields
+      first_name,
+      last_name,
+      dob_from,
+      dob_to,
+      chart_no,
+      clinician_name,
+      spirometry_date_from,
+      spirometry_date_to,
+      last_alert_from,
+      last_alert_to,
+      last_spirometry_from,
+      last_spirometry_to
+    } = req.query;
 
     const where = { ut_id_fk: 4 }; // Only patients
 
+    // Search across multiple fields
     if (search) {
       const searchTerm = search.trim();
       const nameParts = searchTerm.split(/\s+/).filter(Boolean);
@@ -43,22 +192,159 @@ const getAllPatients = async (req, res) => {
       }
     }
 
+    // Build patient_details where clause
+    let patientDetailsWhere = {};
+
+    // Status filter
     if (status) {
-      where.patient_details = { ...where.patient_details, status };
+      patientDetailsWhere.status = status;
     }
 
+    // Patient group filter
     if (patient_group_id) {
-      where.patient_details = { ...where.patient_details, patient_group_id: parseInt(patient_group_id) };
+      patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
     }
 
+    // Assigned clinician filter
     if (assigned_clinician_id) {
-      where.patient_details = { ...where.patient_details, assigned_clinician_id: parseInt(assigned_clinician_id) };
+      patientDetailsWhere.assigned_clinician_id = parseInt(assigned_clinician_id);
+    }
+
+    // Chart number filter
+    if (chart_no) {
+      patientDetailsWhere.chart_no = { contains: chart_no };
+    }
+
+    // Date of birth filter - Handle string-based DOB
+    if (dob_from || dob_to) {
+      let dobFilter = {};
+      
+      if (dob_from) {
+        // Convert date to string format that matches the stored format
+        // Assuming DOB is stored as "YYYY-MM-DD" or similar format
+        const fromDate = new Date(dob_from);
+        const fromDateString = fromDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        
+        // Use string comparison for DOB
+        dobFilter.gte = fromDateString;
+      }
+      
+      if (dob_to) {
+        const toDate = new Date(dob_to);
+        const toDateString = toDate.toISOString().split('T')[0];
+        dobFilter.lte = toDateString;
+      }
+      
+      if (Object.keys(dobFilter).length > 0) {
+        patientDetailsWhere.attributes = {
+          dob: dobFilter
+        };
+      }
+    }
+
+    // Apply patient details where if exists
+    if (Object.keys(patientDetailsWhere).length > 0) {
+      where.patient_details = patientDetailsWhere;
+    }
+
+    // First name filter
+    if (first_name) {
+      where.f_name = { contains: first_name };
+    }
+
+    // Last name filter
+    if (last_name) {
+      where.l_name = { contains: last_name };
+    }
+
+    // Assigned clinician name filter (through relation)
+    if (clinician_name) {
+      const clinicianNameParts = clinician_name.trim().split(/\s+/).filter(Boolean);
+      
+      if (clinicianNameParts.length > 1) {
+        where.patient_details = {
+          ...(where.patient_details || {}),
+          assigned_clinician: {
+            OR: [
+              {
+                AND: [
+                  { f_name: { contains: clinicianNameParts[0] } },
+                  { l_name: { contains: clinicianNameParts.slice(1).join(' ') } },
+                ],
+              },
+              {
+                AND: [
+                  { f_name: { contains: clinicianNameParts[clinicianNameParts.length - 1] } },
+                  { l_name: { contains: clinicianNameParts.slice(0, -1).join(' ') } },
+                ],
+              },
+            ],
+          },
+        };
+      } else {
+        where.patient_details = {
+          ...(where.patient_details || {}),
+          assigned_clinician: {
+            OR: [
+              { f_name: { contains: clinician_name } },
+              { l_name: { contains: clinician_name } },
+            ],
+          },
+        };
+      }
+    }
+
+    // Spirometry date filters (through observations)
+    if (spirometry_date_from || spirometry_date_to) {
+      where.observations = {
+        some: {
+          spirometries: {
+            some: {
+              dbdate: {
+                ...(spirometry_date_from && { gte: new Date(spirometry_date_from) }),
+                ...(spirometry_date_to && { lte: new Date(spirometry_date_to) }),
+              },
+            },
+          },
+        },
+      };
+    }
+
+    // Last spirometry date filters (through observations)
+    if (last_spirometry_from || last_spirometry_to) {
+      where.observations = {
+        some: {
+          spirometries: {
+            some: {
+              dbdate: {
+                ...(last_spirometry_from && { gte: new Date(last_spirometry_from) }),
+                ...(last_spirometry_to && { lte: new Date(last_spirometry_to) }),
+              },
+            },
+          },
+        },
+      };
+    }
+
+    // Last alert filters
+    if (last_alert_from || last_alert_to) {
+      where.alerts = {
+        some: {
+          created: {
+            ...(last_alert_from && { gte: new Date(last_alert_from) }),
+            ...(last_alert_to && { lte: new Date(last_alert_to) }),
+          },
+        },
+      };
     }
 
     // 🔒 Clinicians only see their assigned patients
     // Admin (ut_id_fk=2) and Technician (ut_id_fk=1) see all
     if (req.user.ut_id_fk === 3) {
-      where.patient_details = { ...where.patient_details, assigned_clinician_id: req.user.user_id };
+      where.patient_details = { 
+        ...(where.patient_details || {}), 
+        assigned_clinician_id: req.user.user_id 
+      };
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -106,72 +392,225 @@ const getAllPatients = async (req, res) => {
               },
             },
           },
+          // New fields for the enhanced view
+          alerts: {
+            orderBy: { created: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              message: true,
+              created: true,
+              is_read: true,
+            },
+          },
+          observations: {
+            orderBy: { dbdate: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              dbdate: true,
+              spirometries: {
+                select: {
+                  id: true,
+                  dbdate: true,
+                  fvc: true,
+                  fev1: true,
+                  pefr: true,
+                  fef2575: true,
+                  fev1_perc: true,
+                  quality_message: true,
+                },
+              },
+            },
+          },
+          portal_notes: {
+            orderBy: { dbdate: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              text: true,
+              dbdate: true,
+              page: true,
+            },
+          },
+          // Count total observations
+          _count: {
+            select: {
+              observations: true,
+              alerts: true,
+            },
+          },
         },
       }),
       prisma.dc_users.count({ where }),
     ]);
 
-    // Format patients to include attributes at top level
-    const formattedPatients = patients.map(p => ({
-      ...p,
-      attributes: p.patient_details?.attributes || null,
-    }));
+    // Format patients with all required fields
+    const formattedPatients = patients.map(p => {
+      const latestAlert = p.alerts?.[0] || null;
+      const latestObservation = p.observations?.[0] || null;
+      const latestSpirometry = latestObservation?.spirometries?.[0] || null;
+      const latestNote = p.portal_notes?.[0] || null;
+
+      return {
+        ...p,
+        attributes: p.patient_details?.attributes || null,
+        last_alert: latestAlert ? {
+          message: latestAlert.message,
+          date: latestAlert.created,
+          is_read: latestAlert.is_read,
+        } : null,
+        last_spirometry: latestSpirometry ? {
+          date: latestSpirometry.dbdate || latestObservation.dbdate,
+          fvc: latestSpirometry.fvc,
+          fev1: latestSpirometry.fev1,
+          pefr: latestSpirometry.pefr,
+          fef2575: latestSpirometry.fef2575,
+          fev1_perc: latestSpirometry.fev1_perc,
+          quality_message: latestSpirometry.quality_message,
+        } : null,
+        last_note: latestNote ? {
+          text: latestNote.text,
+          date: latestNote.dbdate,
+          page: latestNote.page,
+        } : null,
+        total_observations: p._count?.observations || 0,
+        total_alerts: p._count?.alerts || 0,
+      };
+    });
 
     res.json({
       data: formattedPatients,
-      pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
+      pagination: { 
+        page: parseInt(page), 
+        limit: parseInt(limit), 
+        total, 
+        pages: Math.ceil(total / parseInt(limit)) 
+      },
+      filters: {
+        available_filters: [
+          'first_name',
+          'last_name',
+          'dob_from',
+          'dob_to',
+          'chart_no',
+          'clinician_name',
+          'spirometry_date_from',
+          'spirometry_date_to',
+          'last_alert_from',
+          'last_alert_to',
+          'last_spirometry_from',
+          'last_spirometry_to',
+          'status',
+          'patient_group_id',
+          'assigned_clinician_id',
+        ],
+      },
     });
   } catch (error) {
     console.error('Get patients error:', error);
-    res.status(500).json({ error: 'Failed to fetch patients' });
+    res.status(500).json({ error: 'Failed to fetch patients', details: error.message });
   }
 };
 // Get single patient with full medical details
+function parsePositiveInt(value, fieldName) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new ValidationError(`${fieldName} must be a positive integer`);
+  }
+  return parsed;
+}
+ 
+function parseDateParam(value, fieldName) {
+  if (typeof value !== 'string' || !DATE_REGEX.test(value)) {
+    throw new ValidationError(`${fieldName} must be a valid date in YYYY-MM-DD format`);
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ValidationError(`${fieldName} is not a valid date`);
+  }
+  return parsed;
+}
+ 
+function ensureRangeOrdered(startDate, endDate) {
+  if (startDate > endDate) {
+    throw new ValidationError('startDate must be before or equal to endDate');
+  }
+}
+ 
+function buildTabParams(tab, userId, query) {
+  switch (tab) {
+    case 'patient-info':
+    case 'alerts':
+      return { userId };
+ 
+    case 'spirometry': {
+      if (!query.date || !DATE_REGEX.test(query.date)) {
+        throw new ValidationError('date (YYYY-MM-DD) is required for the spirometry tab');
+      }
+      return { userId, date: query.date };
+    }
+ 
+    case 'analysis': {
+      const startDate = parseDateParam(query.startDate, 'startDate');
+      const endDate = parseDateParam(query.endDate, 'endDate');
+      ensureRangeOrdered(startDate, endDate);
+      return { userId, startDate, endDate, variable: query.variable || 'FEV1' };
+    }
+ 
+    case 'session-comparison': {
+      const sessionId1 = parsePositiveInt(query.sessionId1, 'sessionId1');
+      const sessionId2 = parsePositiveInt(query.sessionId2, 'sessionId2');
+      return { userId, sessionId1, sessionId2 };
+    }
+ 
+    case 'reports':
+    case 'billing': {
+      const startDate = parseDateParam(query.startDate, 'startDate');
+      const endDate = parseDateParam(query.endDate, 'endDate');
+      ensureRangeOrdered(startDate, endDate);
+      return { userId, startDate, endDate };
+    }
+ 
+    default:
+      throw new ValidationError(`Unsupported tab: ${tab}`);
+  }
+}
+ 
 const getPatientById = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const patient = await prisma.dc_users.findFirst({
-      where: { user_id: parseInt(id), ut_id_fk: 4 },
-      select: {
-        user_id: true, f_name: true, l_name: true, email: true, phone: true,
-        profile_pic: true, is_rpm_allow: true, reg_date: true,
-        user_status: { select: { name: true } },
-        user_details: {
-          include: { gender: true, city: true, martial: true },
-        },
-        patient_details: {
-          include: {
-            patient_group: true,
-            assigned_clinician: { select: { user_id: true, f_name: true, l_name: true, email: true } },
-            attributes: {
-              include: {
-                addresses: true,
-                air_monitors: { include: { device: true } },
-              },
-            },
-          },
-        },
-        prescriptions_patient: {
-          where: { is_deleted: false },
-          include: {
-            doctor: { select: { user_id: true, f_name: true, l_name: true } },
-            medicines: { where: { is_deleted: false } },
-          },
-          orderBy: { pr_date: 'desc' },
-        },
-        fcm_tokens: { where: { is_enabled: true } },
-      },
-    });
-
+    const userId = parsePositiveInt(req.params.id, 'id');
+    const tab = req.query.tab;
+ 
+    if (!ALLOWED_TABS.includes(tab)) {
+      return res.status(400).json({ error: `tab must be one of: ${ALLOWED_TABS.join(', ')}` });
+    }
+ 
+    const patient = await patientService.ensurePatientExists(userId);
     if (!patient) {
       return res.status(404).json({ error: 'Patient not found' });
     }
-
-    res.json({ data: patient });
+ 
+    const params = buildTabParams(tab, userId, req.query);
+    const data = await patientService.getPatientTabData(tab, params);
+ 
+    return res.json({ tab, data });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('Get patient error:', error);
-    res.status(500).json({ error: 'Failed to fetch patient' });
+    return res.status(500).json({ error: 'Failed to fetch patient data' });
+  }
+};
+ 
+const listPatients = async (req, res) => {
+  try {
+    const patients = await patientService.getPatientsList();
+    return res.json({ data: patients });
+  } catch (error) {
+    console.error('List patients error:', error);
+    return res.status(500).json({ error: 'Failed to fetch patients' });
   }
 };
 
@@ -592,4 +1031,5 @@ module.exports = {
   getPatientGroups,
   createPatientGroup,
   getClinicians,
+  listPatients,
 };

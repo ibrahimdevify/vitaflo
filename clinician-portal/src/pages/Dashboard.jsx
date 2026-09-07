@@ -2,6 +2,7 @@ import { Activity, FileText, UserRound, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
 import MyPatients from '../components/dashboard/MyPatients';
+import QuickLinks from '../components/dashboard/QuickLinks.jsx';
 import RecentPrescriptions from '../components/dashboard/RecentPrescriptions';
 import StatCards from '../components/dashboard/StatCards';
 import { useAuth } from '../context/AuthContext';
@@ -69,6 +70,9 @@ export default function Dashboard() {
 
       {/* Stat Cards */}
       <StatCards cards={cards} />
+
+      {/* Quick Links */}
+      <QuickLinks />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
