@@ -1,21 +1,15 @@
 import { Mail, Phone, X } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
 
-export default function PatientDetailModal({
-  open,
-  onClose,
-  patient,
-  loading,
-}) {
+export default function PatientDetailModal({ open, onClose, patient }) {
   if (!open) return null;
 
   const details = patient?.patient_details || {};
 
   return (
     <div
-      className="fixed inset-0 z-(--z-modal) min-h-screen min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
@@ -29,18 +23,7 @@ export default function PatientDetailModal({
           </Button>
         </div>
         <div className="p-6">
-          {loading ? (
-            <div className="space-y-6">
-              <div className="flex items-center gap-4 pb-4 border-b border-border">
-                <Skeleton className="h-16 w-16 rounded-full" />
-                <div className="space-y-2">
-                  <Skeleton className="h-5 w-40 rounded-(--radius-control)" />
-                  <Skeleton className="h-3 w-56 rounded-(--radius-control)" />
-                </div>
-              </div>
-              <Skeleton className="h-32 w-full rounded-card" />
-            </div>
-          ) : patient ? (
+          {patient ? (
             <div className="space-y-6">
               <div className="flex items-center gap-4 pb-4 border-b border-border">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-500/10 text-subheading font-bold text-brand-600">
@@ -115,7 +98,9 @@ export default function PatientDetailModal({
                     <p>
                       <span className="text-fg-muted">Joined:</span>{' '}
                       <span className="text-fg">
-                        {new Date(patient.reg_date).toLocaleDateString()}
+                        {patient.reg_date
+                          ? new Date(patient.reg_date).toLocaleDateString()
+                          : 'N/A'}
                       </span>
                     </p>
                   </div>

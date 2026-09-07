@@ -63,23 +63,14 @@ export default function Patients() {
     loadPatients();
   }, [loadPatients]);
 
-  const viewPatient = async (id) => {
-    try {
-      setLoadingDetail(true);
-      setSelectedPatient(id);
-      const res = await patientsAPI.getById(id);
-      setPatientDetail(res.data.data || res.data);
-    } catch (err) {
-      toast.error('Failed to load patient details');
-    } finally {
-      setLoadingDetail(false);
-    }
-  };
+ const viewPatient = (patient) => {
+  if (!patient) return;
+  setSelectedPatient(patient);
+};
 
   const closeModal = () => {
-    setSelectedPatient(null);
-    setPatientDetail(null);
-  };
+  setSelectedPatient(null);
+};
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -119,11 +110,10 @@ export default function Patients() {
       )}
 
       <PatientDetailModal
-        open={!!selectedPatient}
-        onClose={closeModal}
-        patient={patientDetail}
-        loading={loadingDetail}
-      />
+  open={!!selectedPatient}
+  onClose={closeModal}
+  patient={selectedPatient}
+/>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">

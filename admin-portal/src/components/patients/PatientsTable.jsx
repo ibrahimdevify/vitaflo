@@ -140,7 +140,7 @@ export default function PatientsTable({ patients, loading, onView, onEdit }) {
                         <Stethoscope className="h-4 w-4 mr-2" /> View Spirometry
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => onView(patient.user_id)}
+                        onClick={() => onView(patient)}
                         className="cursor-pointer"
                       >
                         <Eye className="h-4 w-4 mr-2" /> View Details
