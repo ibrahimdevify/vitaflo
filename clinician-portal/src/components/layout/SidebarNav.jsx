@@ -69,18 +69,17 @@ export default function SidebarNav({ items, onItemClick }) {
 
         {resourcesOpen && (
           <div className="mt-0.5 space-y-0.5 pl-4">
-            {RESOURCES.map((r) => (
-              <a
-                key={r.file}
-                href={`/resources/${r.file}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
-              >
-                <FileText className="h-4 w-4 shrink-0 text-brand-400/60 transition-colors group-hover:text-brand-400" />
-                {r.label}
-              </a>
-            ))}
+           {RESOURCES.map((r) => (
+  <Link
+    key={r.file}
+    to={`/resources/${r.file}`}
+
+    className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
+  >
+    <FileText className="h-4 w-4 shrink-0 text-brand-400/60 transition-colors group-hover:text-brand-400" />
+    {r.label}
+  </Link>
+))}
           </div>
         )}
       </div>
