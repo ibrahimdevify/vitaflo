@@ -15,6 +15,9 @@ const RESOURCES = [
 export default function SidebarNav({ items, onItemClick }) {
   const location = useLocation();
   const [resourcesOpen, setResourcesOpen] = useState(true);
+  
+  // Get the API URL from environment
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   return (
     <nav className="flex-1 space-y-0.5 p-3 pt-4 overflow-auto">
@@ -49,9 +52,7 @@ export default function SidebarNav({ items, onItemClick }) {
         );
       })}
 
-      {/* [ADDED] Resources section — collapsible, each link opens its PDF
-          in a new tab. Files live in `public/resources/` (see RESOURCES
-          above). This does not use <Link> since these aren't app routes. */}
+      {/* Resources section */}
       <div className="pt-3">
         <button
           type="button"
@@ -69,17 +70,22 @@ export default function SidebarNav({ items, onItemClick }) {
 
         {resourcesOpen && (
           <div className="mt-0.5 space-y-0.5 pl-4">
-           {RESOURCES.map((r) => (
-  <Link
-    key={r.file}
-    to={`/resources/${r.file}`}
-
-    className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
-  >
-    <FileText className="h-4 w-4 shrink-0 text-brand-400/60 transition-colors group-hover:text-brand-400" />
-    {r.label}
-  </Link>
-))}
+            {RESOURCES.map((r) => (
+              <a
+                key={r.file}
+                href={`${API_URL}/${r.file}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
+                onClick={(e) => {
+                  // Optional: Close mobile menu if needed
+                  if (onItemClick) onItemClick();
+                }}
+              >
+                <FileText className="h-4 w-4 shrink-0 text-brand-400/60 transition-colors group-hover:text-brand-400" />
+                {r.label}
+              </a>
+            ))}
           </div>
         )}
       </div>

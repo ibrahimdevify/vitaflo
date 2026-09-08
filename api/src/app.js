@@ -4,10 +4,12 @@ const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
-
+const path = require('path');
+const app = express();
+app.use('/api', express.static(path.join(__dirname, 'public')));
 dotenv.config();
 const prisma = new PrismaClient();
-const app = express();
+
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -15,6 +17,8 @@ app.use(express.json({ limit: '50mb' }));
 prisma.$connect()
   .then(() => console.log('✅ DB connected'))
   .catch(err => console.error('❌ DB Error:', err.message));
+
+
 
 // Health check
 app.get('/', (req, res) => res.json({ message: 'Ande + Portal API', version: '4.0.0' }));
