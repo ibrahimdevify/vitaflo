@@ -1,5 +1,4 @@
 const express = require('express');
-
 const {
   listResources,
   getResourcePdf,
@@ -7,10 +6,10 @@ const {
 
 const router = express.Router();
 
-// GET /api/resources
-router.get('/resources/', listResources);
+// Resource list
+router.get('/resources', listResources);
 
-// GET /api/resources/:filename
-router.get('/:filename', getResourcePdf);
+// PDF — no Authorization middleware
+router.get('/resources/:filename', getResourcePdf);
 
 module.exports = router;
