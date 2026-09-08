@@ -139,5 +139,59 @@ export const predictedAPI = {
   getByUser: (userId) => api.get(`/predicted/${userId}`),
   create: (data) => api.post('/predicted', data),
 };
+// Add this alongside your existing patientsAPI/dashboardAPI in services/api.js.
+// Assumes the same shared `api` axios instance those use.
+
+export const rolesAPI = {
+  // Roles (dc_user_type)
+  listRoles() {
+    return api.get("/roles");
+  },
+  createRole(name) {
+    return api.post("/roles", { name });
+  },
+  updateRole(id, name) {
+    return api.put(`/roles/${id}`, { name });
+  },
+  deleteRole(id) {
+    return api.delete(`/roles/${id}`);
+  },
+
+  // Modules (dc_modules)
+  listModules() {
+    return api.get("/modules");
+  },
+  createModule(name) {
+    return api.post("/modules", { name });
+  },
+  updateModule(id, name) {
+    return api.put(`/modules/${id}`, { name });
+  },
+  deleteModule(id) {
+    return api.delete(`/modules/${id}`);
+  },
+
+  // Permissions (dc_module_roles)
+  getRolePermissions(roleId) {
+    return api.get(`/roles/${roleId}/permissions`);
+  },
+  setRolePermissions(roleId, permissions) {
+    return api.put(`/roles/${roleId}/permissions`, { permissions });
+  },
+  getPermissionsMatrix() {
+    return api.get("/permissions/matrix");
+  },
+  setPermissionCell(roleId, moduleId, { isView, isWriteable }) {
+    return api.put(`/permissions/${roleId}/${moduleId}`, { isView, isWriteable });
+  },
+
+  // User <-> role assignment
+  getUserRole(userId) {
+    return api.get(`/users/${userId}/role`);
+  },
+  setUserRole(userId, roleId) {
+    return api.patch(`/users/${userId}/role`, { roleId });
+  },
+};
 
 export default api;

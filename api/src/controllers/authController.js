@@ -4,6 +4,7 @@ const { generateToken, generateRefreshToken } = require('../utils/jwt');
 const { generateAccessToken } = require('../utils/token');
 const jwt = require('jsonwebtoken');
 const { generateUserName } = require('../utils/usernameGenerator');
+const roleService = require('../services/roleService');
 
 const prisma = new PrismaClient();
 
@@ -11,11 +12,11 @@ const prisma = new PrismaClient();
 const login = async (req, res) => {
   try {
     const { username, password } = req.body;
-
+ 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
-
+ 
     // Find user by email or phone
     const user = await prisma.dc_users.findFirst({
       where: {
@@ -29,27 +30,27 @@ const login = async (req, res) => {
         user_status: true,
       },
     });
-
+ 
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
+ 
     // Check password
     const validPassword = await comparePassword(password, user.password);
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
+ 
     // Check if user is active
     if (user.user_status.name !== 'active') {
       return res.status(403).json({ error: 'Account is not active' });
     }
-
+ 
     // Generate tokens
     const jwtToken = generateToken(user);
     const refreshToken = generateRefreshToken(user);
     const accessToken = generateAccessToken();
-
+ 
     // Store session
     await prisma.vf_session.create({
       data: {
@@ -58,7 +59,7 @@ const login = async (req, res) => {
         last_action: new Date(),
       },
     });
-
+ 
     // Get user type specific data
     let userData = {
       user_id: user.user_id,
@@ -67,9 +68,10 @@ const login = async (req, res) => {
       f_name: user.f_name,
       l_name: user.l_name,
       user_type: user.user_type.name,
+      ut_id_fk: user.ut_id_fk,
       is_guardian: user.is_guardian,
     };
-
+ 
     // Get type-specific details
     if (user.ut_id_fk === 3) {
       // Clinician
@@ -84,13 +86,21 @@ const login = async (req, res) => {
       });
       userData.patient_details = patient;
     }
-
+ 
+    // Module permissions for this user's role — lets the frontend decide which
+    // nav items to show and which routes to guard, without a separate round trip.
+    // Every module in dc_modules comes back (isView/isWriteable default to false
+    // for modules with no dc_module_roles row yet), so the client never has to
+    // guess whether "missing" means "denied" or "not loaded".
+    const modules = (await roleService.getRolePermissions(user.ut_id_fk)) || [];
+ 
     res.json({
       message: 'Login successful',
       access_token: accessToken,
       jwt_token: jwtToken,
       refresh_token: refreshToken,
       user: userData,
+      modules,
     });
   } catch (error) {
     console.error('Login error:', error);

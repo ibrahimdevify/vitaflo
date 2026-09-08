@@ -34,12 +34,15 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/accounts', require('./routes/accounts'));
 app.use('/api', require('./routes/portal'));
 app.use('/api', require('./routes/portalAdvanced'));
+app.use('/api', require('./routes/roleRoutes'));
+app.use('/api', require('./routes/resource.routes'));
 
 // ============ MOBILE API ROUTES (New - /api2/) ============
 app.use('/api2', require('./routes/mobile/patient'));
 app.use('/api2', require('./routes/mobile/password'));
 app.use('/api2', require('./routes/mobile/spirometry'));
 app.use('/api2', require('./routes/mobile/reports'));
+
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));

@@ -31,6 +31,10 @@ export const usersAPI = {
   getTypes: () => api.get('/users/types'),
   getStatuses: () => api.get('/users/statuses'),
 };
+export const pdfApis = {
+  getAll: (params) => api.get('/resources', { params }),
+  getResourcePdf: (filename) => api.get(`/resources/${filename}`, { responseType: 'blob' }),
+};
 
 export const patientsAPI = {
   getAll: (params) => api.get('/patients', { params }),
