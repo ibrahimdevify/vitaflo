@@ -1,1 +1,0 @@
-import{n as e,t}from"./jsx-runtime-U_-0feWC.js";var n=t();function r({className:t,...r}){return(0,n.jsx)(`div`,{"data-slot":`skeleton`,role:`status`,"aria-label":`Loading`,className:e(`animate-pulse rounded-md bg-surface-raised`,t),...r})}export{r as t};

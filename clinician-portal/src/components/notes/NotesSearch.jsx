@@ -9,13 +9,13 @@ export default function NotesSearch({
   dateRange,
   onDateRangeChange,
   loading,
-  patientId,
-  onLoadNotes,
+  onSearch,
+  canCreate = false,
   onToggleForm,
   showForm,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") onLoadNotes(search, 1);
+    if (e.key === "Enter") onSearch();
   };
 
   return (
@@ -26,18 +26,18 @@ export default function NotesSearch({
             <div className="relative flex-1 max-w-lg">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
               <Input
-                placeholder="Search by Patient Username..."
+                placeholder="Filter by Patient Username (optional)..."
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="pl-10"
               />
             </div>
-            <Button onClick={() => onLoadNotes(search, 1)} disabled={loading}>
+            <Button onClick={onSearch} disabled={loading}>
               <FileText className="h-4 w-4 mr-2" />
-              {loading ? "Loading..." : "Load Notes"}
+              {loading ? "Loading..." : "Filter"}
             </Button>
-            {patientId && (
+            {canCreate && (
               <Button
                 variant="outline"
                 onClick={onToggleForm}
@@ -78,7 +78,7 @@ export default function NotesSearch({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onLoadNotes(patientId || search, 1)}
+              onClick={onSearch}
               className="text-brand-600 hover:text-brand-700"
             >
               Apply Filter
@@ -86,7 +86,7 @@ export default function NotesSearch({
           </div>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Supports: Patient Username
+          Showing all clinic patients — filter by username to narrow down
         </p>
       </CardContent>
     </Card>

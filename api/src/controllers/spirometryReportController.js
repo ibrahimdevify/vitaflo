@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
-const { buildSpirometryReportHtml } = require('../pdf/spirometryReport');
+const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
 const prisma = new PrismaClient();
 

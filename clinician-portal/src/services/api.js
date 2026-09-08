@@ -64,6 +64,7 @@ export const patientsAPI = {
     const qs = query.toString();
     return api.get(`/patients/${id}/prescriptions${qs ? '?' + qs : ''}`);
   },
+  getPrescriptionsList: (params) => api.get('patients/prescriptions', { params }),
   createPrescription: (id, data) =>
     api.post(`/patients/${id}/prescriptions`, data),
   getGroups: () => api.get('/patients/groups'),
@@ -120,6 +121,7 @@ export const accountsAPI = {
 export const spirometryAPI = {
   getByUser: (userId, params) =>
     api.get(`/spirometry/user/${userId}`, { params }),
+  getList: (params) => api.get('/spirometry', { params }),
   getReportPDF: (observationId) =>
     api.get(`/spirometry/observation/${observationId}/pdf`, {
       responseType: 'blob',

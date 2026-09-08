@@ -15,12 +15,8 @@ export default function Alerts() {
   const [totalAlerts, setTotalAlerts] = useState(0);
   const limit = 10;
 
-  const [dateRange, setDateRange] = useState({
-    start: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
-      .toISOString()
-      .split("T")[0],
-    end: new Date().toISOString().split("T")[0],
-  });
+  // ✅ empty by default — no date filter applied until the user sets one
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [filterRead, setFilterRead] = useState("all");
 
   useEffect(() => {
@@ -35,9 +31,11 @@ export default function Alerts() {
       const params = {
         page: pageNum,
         limit,
-        start_date: dateRange.start,
-        end_date: dateRange.end,
       };
+
+      // ✅ only send date params when the user has actually set them
+      if (dateRange.start) params.start_date = dateRange.start;
+      if (dateRange.end) params.end_date = dateRange.end;
 
       if (search.trim()) params.search = search.trim();
       if (filterRead === "read") params.is_read = true;

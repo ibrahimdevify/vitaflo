@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, UserRound } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import {
   Card,
@@ -21,13 +21,14 @@ const pageBadgeVariants = {
 export default function NotesList({
   notes,
   loading,
-  patientId,
   page,
   totalPages,
   totalNotes,
   expanded,
   onToggleExpand,
   onPageChange,
+  showPatientColumn = true,
+  onSelectPatient,
 }) {
   return (
     <Card>
@@ -48,18 +49,22 @@ export default function NotesList({
             {notes.map((note, i) => {
               const isExpanded = expanded[i];
               const variant = pageBadgeVariants[note.page] || 'secondary';
+              const canSelectPatient =
+                showPatientColumn &&
+                typeof onSelectPatient === 'function' &&
+                note.patient_id != null;
 
               return (
                 <div
                   key={note.id || i}
                   className="rounded-card border border-border bg-surface transition-shadow hover:shadow-card-hover"
                 >
-                  <div
-                    className="p-4 cursor-pointer flex items-center justify-between"
-                    onClick={() => onToggleExpand(i)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5">
+                  <div className="p-4 flex items-center justify-between">
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => onToggleExpand(i)}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <Badge variant={variant} className="capitalize">
                           {note.page || 'general'}
                         </Badge>
@@ -74,6 +79,31 @@ export default function NotesList({
                             minute: '2-digit',
                           })}
                         </span>
+
+                        {/* ✅ Patient chip — clicking narrows the whole list to this patient */}
+                        {showPatientColumn && (
+                          <button
+                            type="button"
+                            disabled={!canSelectPatient}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (canSelectPatient) {
+                                onSelectPatient(
+                                  note.patient_id,
+                                  note.patient_name || note.patient_username,
+                                );
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1 text-caption rounded-pill bg-surface-raised px-2 py-0.5 ${
+                              canSelectPatient
+                                ? 'cursor-pointer hover:bg-brand-50 hover:text-brand-700'
+                                : ''
+                            }`}
+                          >
+                            <UserRound className="h-3 w-3" />
+                            {note.patient_name || note.patient_username || note.patient_id}
+                          </button>
+                        )}
                       </div>
                       <p className="text-body text-fg line-clamp-2">
                         {note.text?.substring(0, 150)}
@@ -116,17 +146,11 @@ export default function NotesList({
               onPageChange={(p) => onPageChange(p)}
             />
           </div>
-        ) : patientId ? (
-          <EmptyState
-            icon={FileText}
-            title="No notes found"
-            description="Try a different date range or create a new note"
-          />
         ) : (
           <EmptyState
             icon={FileText}
-            title="Enter a Patient ID to view notes"
-            description="Supports: Patient ID, Username, or Email"
+            title="No notes found"
+            description="Try adjusting your search or date range"
           />
         )}
       </CardContent>

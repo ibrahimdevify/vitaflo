@@ -1,4 +1,4 @@
-const { renderDocument, resultsTable, chartCanvas, fmtDate } = require('./reportTemplates/layout');
+const { renderDocument, resultsTable, chartCanvas, fmtDate } = require('./layout');
 
 function percentPredictedTrendChart(canvasId, rows) {
   const points = rows

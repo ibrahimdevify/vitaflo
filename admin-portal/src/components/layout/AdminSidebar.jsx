@@ -14,7 +14,7 @@
 //           <span className="text-base font-bold leading-tight block">
 //             Admin Portal
 //           </span>
-//           <span className="text-xs text-brand-400">VitalFlow Health</span>
+//           <span className="text-xs text-brand-400">VitalFlo Health</span>
 //         </div>
 //       </div>
 
@@ -42,7 +42,7 @@ export default function AdminSidebar({ items, onItemClick, onGlossaryClick }) {
           <span className="text-base font-bold leading-tight block">
             Admin Portal
           </span>
-          <span className="text-xs text-brand-400">VitalFlow Health</span>
+          <span className="text-xs text-brand-400">VitalFlo Health</span>
         </div>
       </div>
 

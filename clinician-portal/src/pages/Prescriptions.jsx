@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import PrescriptionsAddForm from "../components/prescriptions/PrescriptionsAddForm";
 import PrescriptionsList from "../components/prescriptions/PrescriptionsList";
@@ -8,11 +8,10 @@ import { patientsAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 export default function Prescriptions() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(""); // empty by default — optional filter
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [patientId, setPatientId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState({});
 
@@ -21,31 +20,31 @@ export default function Prescriptions() {
   const [totalRecords, setTotalRecords] = useState(0);
   const limit = 10;
 
-  const { user } = useAuth(); // ✅ Get logged-in user
+  const { user } = useAuth();
 
-  const [dateRange, setDateRange] = useState({
-    start: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
-      .toISOString()
-      .split("T")[0],
-    end: new Date().toISOString().split("T")[0],
-  });
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
-  const searchPrescriptions = async (pageNum = 1) => {
-    const query = search.trim();
-    if (!query) {
-      toast.error("Please enter a Patient Username");
-      return;
-    }
+  // ✅ empty by default — no date filter applied unless the user sets one
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+
+  // ✅ The ONLY fetch function in this file — always hits the list endpoint.
+  // No `id` param is ever sent, so it can never 400 with "id must be a
+  // positive integer". Per-patient detail is achieved via the `search`
+  // filter, not a different route.
+  const fetchList = async (pageNum = 1, overrides = {}) => {
+    const effectiveSearch = overrides.search ?? search;
+    const effectiveStart = overrides.start ?? dateRange.start;
+    const effectiveEnd = overrides.end ?? dateRange.end;
     try {
       setLoading(true);
-      setPatientId(query);
       setPage(pageNum);
 
-      const res = await patientsAPI.getPrescriptions(query, {
+      const res = await patientsAPI.getPrescriptionsList({
+        search: effectiveSearch || undefined,
+        start_date: effectiveStart || undefined,
+        end_date: effectiveEnd || undefined,
         page: pageNum,
         limit,
-        start_date: dateRange.start,
-        end_date: dateRange.end,
       });
 
       const data = res.data.data || [];
@@ -54,23 +53,42 @@ export default function Prescriptions() {
       setPrescriptions(data);
       setTotalPages(pagination.pages || 1);
       setTotalRecords(pagination.total || data.length);
-
-      if (data.length === 0) {
-        toast.info("No prescriptions found for this patient");
-      }
     } catch (err) {
       toast.error("Failed to load prescriptions");
       setPrescriptions([]);
+      setTotalRecords(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ Loads full clinic list, no filters, on mount
+  useEffect(() => {
+    fetchList(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSearch = (pageNum = 1) => {
+    setSelectedPatient(null);
+    fetchList(pageNum);
+  };
+
+  const handleSelectPatient = (patientId, patientLabel) => {
+    setSelectedPatient({ id: patientId, label: patientLabel });
+    setSearch(patientLabel || String(patientId));
+    fetchList(1, { search: patientLabel || String(patientId) });
+  };
+
   const handleSubmit = async (data) => {
+    if (!selectedPatient) {
+      toast.error("Select a patient first");
+      return;
+    }
     try {
       setSubmitting(true);
 
-      await patientsAPI.createPrescription(patientId, {
+      await patientsAPI.createPrescription(selectedPatient.id, {
         diagnosis: data.diagnosis.trim(),
         pharmacy_instruction: data.pharmacy_instruction?.trim() || "",
         medicines: data.medicines.map((m) => ({
@@ -84,7 +102,7 @@ export default function Prescriptions() {
       });
       toast.success("Prescription created successfully!");
       setShowForm(false);
-      searchPrescriptions(1);
+      fetchList(1, { search: selectedPatient.label });
     } catch (err) {
       toast.error(err.response?.data?.error || "Failed to create prescription");
     } finally {
@@ -96,6 +114,12 @@ export default function Prescriptions() {
     setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }));
   };
 
+  const distinctPatientIds = new Set(prescriptions.map((p) => p.patient_id));
+  const isSinglePatientView =
+    prescriptions.length > 0 && distinctPatientIds.size === 1;
+  const activePatientId =
+    selectedPatient?.id ?? (isSinglePatientView ? prescriptions[0].patient_id : null);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
@@ -103,7 +127,7 @@ export default function Prescriptions() {
           Prescriptions
         </h1>
         <p className="text-caption text-fg-muted mt-1">
-          Manage and track patient prescriptions
+          Manage and track prescriptions across your clinic's patients
         </p>
       </div>
 
@@ -113,21 +137,27 @@ export default function Prescriptions() {
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         loading={loading}
-        patientId={patientId}
-        onSearch={searchPrescriptions}
+        onSearch={handleSearch}
+        canCreate={Boolean(activePatientId)}
         onToggleForm={() => setShowForm(!showForm)}
         showForm={showForm}
       />
 
-      <PrescriptionsPatientBar
-        patientId={patientId}
-        dateRange={dateRange}
-        totalRecords={totalRecords}
-      />
+      {isSinglePatientView && (
+        <PrescriptionsPatientBar
+          patientId={
+            prescriptions[0].patient_name ||
+            prescriptions[0].patient_username ||
+            activePatientId
+          }
+          dateRange={dateRange}
+          totalRecords={totalRecords}
+        />
+      )}
 
-      {showForm && (
+      {showForm && activePatientId && (
         <PrescriptionsAddForm
-          patientId={patientId}
+          patientId={activePatientId}
           submitting={submitting}
           onSubmit={handleSubmit}
           onCancel={() => setShowForm(false)}
@@ -137,13 +167,14 @@ export default function Prescriptions() {
       <PrescriptionsList
         prescriptions={prescriptions}
         loading={loading}
-        patientId={patientId}
         page={page}
         totalPages={totalPages}
         totalRecords={totalRecords}
         expanded={expanded}
         onToggleExpand={toggleExpand}
-        onPageChange={(p) => searchPrescriptions(p)}
+        onPageChange={(p) => fetchList(p)}
+        showPatientColumn={!isSinglePatientView}
+        onSelectPatient={handleSelectPatient}
       />
     </div>
   );

@@ -91,7 +91,7 @@ router.post('/', authorize('technician', 'account_admin', 'clinician'), patientC
  *       200:
  *         description: Patient detail
  */
-router.get('/:id', patientController.getPatientById);
+
 router.get('/:id/report', patientReportController.getPatientReportPdf);
 
 router.get('/patients', patientController.listPatients);
@@ -200,7 +200,11 @@ router.put('/:id/attributes', authorize('technician', 'account_admin', 'clinicia
  *         description: Prescription created
  */
 
+router.get('/prescriptions', patientController.getPrescriptionsList);
 router.get('/:id/prescriptions', patientController.getPrescriptions);
 router.post('/:id/prescriptions', patientController.createPrescription);
+router.get('/:id', patientController.getPatientById);
+
+
 
 module.exports = router;

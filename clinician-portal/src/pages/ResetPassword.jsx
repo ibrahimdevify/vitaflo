@@ -85,7 +85,7 @@ export default function ResetPassword() {
         <div className="flex items-center gap-2.5">
           <Stethoscope className="h-6 w-6 text-brand-300" />
           <span className="text-sm font-semibold tracking-wide text-brand-100">
-            VitalFlow
+            VitalFlo
           </span>
         </div>
 
@@ -137,7 +137,7 @@ export default function ResetPassword() {
             <div className="rounded-full bg-brand-500/10 p-2">
               <Stethoscope className="h-5 w-5 text-brand-500" />
             </div>
-            <span className="text-sm font-semibold text-fg">VitalFlow</span>
+            <span className="text-sm font-semibold text-fg">VitalFlo</span>
           </div>
 
           {status === "success" ? (

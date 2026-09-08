@@ -9,8 +9,8 @@ export default function PrescriptionsSearch({
   dateRange,
   onDateRangeChange,
   loading,
-  patientId,
   onSearch,
+  canCreate = false,
   onToggleForm,
   showForm,
 }) {
@@ -26,7 +26,7 @@ export default function PrescriptionsSearch({
             <div className="relative flex-1 max-w-lg">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
               <Input
-                placeholder="Search by Patient Username..."
+                placeholder="Filter by Patient Username (optional)..."
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -35,9 +35,9 @@ export default function PrescriptionsSearch({
             </div>
             <Button onClick={() => onSearch(1)} disabled={loading}>
               <ClipboardList className="h-4 w-4 mr-2" />
-              {loading ? "Loading..." : "Load"}
+              {loading ? "Loading..." : "Filter"}
             </Button>
-            {patientId && (
+            {canCreate && (
               <Button
                 variant="outline"
                 onClick={onToggleForm}
@@ -87,7 +87,7 @@ export default function PrescriptionsSearch({
           </div>
         </div>
         <p className="text-caption text-fg-muted mt-2">
-          Search by Patient Username
+          Showing all clinic patients — filter by username to narrow down
         </p>
       </CardContent>
     </Card>

@@ -786,6 +786,101 @@ const getPrescriptions = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch prescriptions' });
   }
 };
+// GET /prescriptions
+// Lists prescriptions across ALL clinic patients (ut_id_fk: 4), paginated.
+// Optional filters: search (username/patient id), start_date, end_date, order.
+const getPrescriptionsList = async (req, res) => {
+  try {
+    const {
+      search,
+      start_date,
+      end_date,
+      page = 1,
+      limit = 10,
+      order = 'desc',
+    } = req.query;
+
+    const sortOrder = String(order).toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    // Base: only prescriptions for actual clinic patients
+    const patientFilter = { ut_id_fk: 4 };
+
+    if (search && search.trim()) {
+      const term = search.trim();
+      if (/^\d+$/.test(term)) {
+        patientFilter.user_id = parseInt(term);
+      } else {
+        patientFilter.OR = [
+          { email: term },
+          { phone: term },
+          { userName: term },
+        ];
+      }
+    }
+
+    const where = {
+      is_deleted: false,
+      patient: patientFilter, // ⚠️ adjust relation name — see note below
+    };
+
+    if (start_date || end_date) {
+      where.pr_date = {};
+      if (start_date) where.pr_date.gte = new Date(start_date);
+      if (end_date) where.pr_date.lte = new Date(end_date + 'T23:59:59Z');
+    }
+
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const limitNum = Math.max(parseInt(limit) || 10, 1);
+
+    const [prescriptions, total] = await Promise.all([
+      prisma.dc_ehr_prescriptions.findMany({
+        where,
+        include: {
+          doctor: { select: { user_id: true, f_name: true, l_name: true } },
+          medicines: true,
+          patient: { // ⚠️ same relation name as above
+            select: {
+              user_id: true,
+              f_name: true,
+              l_name: true,
+              userName: true,
+            },
+          },
+        },
+        orderBy: { pr_date: sortOrder },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+      }),
+      prisma.dc_ehr_prescriptions.count({ where }),
+    ]);
+
+    // Flatten patient info onto each row, since this list spans multiple patients
+    const data = prescriptions.map((p) => ({
+      ...p,
+      patient_id: p.patient?.user_id ?? p.patient_id_fk,
+      patient_name: p.patient
+        ? `${p.patient.f_name} ${p.patient.l_name}`.trim()
+        : null,
+      patient_username: p.patient?.userName || null,
+    }));
+
+    res.json({
+      data,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+      order: sortOrder,
+    });
+  } catch (error) {
+    console.error('Get prescriptions list error:', error);
+    res.status(500).json({ error: 'Failed to fetch prescriptions' });
+  }
+};
+
+
 
 const createPrescription = async (req, res) => {
   console.log('createPrescription req.body:', req.body);
@@ -883,7 +978,7 @@ const createPatient = async (req, res) => {
 
     const first_name = f_name || "";
     const last_name = l_name || "";
-    const userEmail = email || phone || `patient-${Date.now()}@vitalflow.com`;
+    const userEmail = email || phone || `patient-${Date.now()}@VitalFlo.com`;
     const userPhone = phone || `phone-${crypto.randomBytes(8).toString("hex")}`;
 
     // Check for existing user by email
@@ -1032,4 +1127,5 @@ module.exports = {
   createPatientGroup,
   getClinicians,
   listPatients,
+  getPrescriptionsList,
 };

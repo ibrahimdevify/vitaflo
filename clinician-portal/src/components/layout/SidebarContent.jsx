@@ -14,7 +14,7 @@ export default function SidebarContent({ items, onItemClick }) {
           <span className="text-base font-bold leading-tight block">
             Clinician Portal
           </span>
-          <span className="text-xs text-brand-400">VitalFlow Health</span>
+          <span className="text-xs text-brand-400">VitalFlo Health</span>
         </div>
       </div>
 

@@ -59,7 +59,7 @@ router.get('/:id', userController.getUserById);
  *         description: User created
  */
 router.post('/', authorize('technician', 'account_admin', 'clinician'), userController.createUser);
-router.put('/:id', authorize('technician', 'account_admin'), userController.updateUser);
+router.put('/:id', userController.updateUser);
 router.delete('/:id', authorize('technician', 'account_admin'), userController.deleteUser);
 
 module.exports = router;

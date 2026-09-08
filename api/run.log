@@ -6,10 +6,10 @@ Remaining to process: 3
 Batch size: 2, delay between batches: 60000ms
 Estimated time remaining: ~2 minute(s).
 ----------------------------------------------------
-[ERROR] user_id=2 email=doctor@vitalflow.com — SendGrid error: {"errors":[{"message":"The provided authorization grant is invalid, expired, or revoked","field":null,"help":null}]}
-[ERROR] user_id=1 email=admin@vitalflow.com — SendGrid error: {"errors":[{"message":"The provided authorization grant is invalid, expired, or revoked","field":null,"help":null}]}
+[ERROR] user_id=2 email=doctor@VitalFlo.com — SendGrid error: {"errors":[{"message":"The provided authorization grant is invalid, expired, or revoked","field":null,"help":null}]}
+[ERROR] user_id=1 email=admin@VitalFlo.com — SendGrid error: {"errors":[{"message":"The provided authorization grant is invalid, expired, or revoked","field":null,"help":null}]}
 Waiting 60000ms before next batch... (2/3 done)
-[ERROR] user_id=3 email=patient@vitalflow.com — SendGrid error: {"errors":[{"message":"The provided authorization grant is invalid, expired, or revoked","field":null,"help":null}]}
+[ERROR] user_id=3 email=patient@VitalFlo.com — SendGrid error: {"errors":[{"message":"The provided authorization grant is invalid, expired, or revoked","field":null,"help":null}]}
 ----------------------------------------------------
 This run summary: { sent: 0, skipped: 0, failed: 3 }
 Full running log: /Applications/projects/devifysolutions/vitaflo/api/sent-log.jsonl

@@ -8,6 +8,7 @@ router.use(authenticate);
 
 // Spirometry
 router.get('/spirometry/user/:user_id', ctrl.getSpirometryByUser);
+router.get('/spirometry', ctrl.getSpirometryList);
 router.get('/spirometry/observation/:observation_id/pdf', pdf.getSpirometryReportPDF);
 router.get('/spirometry/latest', ctrl.getSpirometryLatest);
 router.get('/spirometry/all', ctrl.getSpirometryAll);
@@ -27,6 +28,7 @@ router.get('/steps_observations', ctrl.getSteps);
 router.post('/steps_observations/sync', ctrl.syncSteps);
 
 // Notes
+router.get('/note-list', ctrl.getNotesList);
 router.get('/notes', ctrl.getNotes);
 router.post('/notes', ctrl.createNote);
 

@@ -10,6 +10,7 @@ import ReadOnly from '../shared/ReadOnly';
 const profileSchema = z.object({
   f_name: z.string().min(1, 'First name is required').max(50),
   l_name: z.string().min(1, 'Last name is required').max(50),
+  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
   phone: z.string().optional(),
 });
 
@@ -31,6 +32,7 @@ export default function ProfileEditForm({
     defaultValues: {
       f_name: profileData?.f_name || '',
       l_name: profileData?.l_name || '',
+      email: profileData?.email || '',
       phone: profileData?.phone || '',
     },
   });
@@ -87,6 +89,19 @@ export default function ProfileEditForm({
               </div>
               <div className="sm:col-span-2 space-y-1.5">
                 <label className="text-caption font-medium text-fg-muted">
+                  Email
+                </label>
+                <Input
+                  type="email"
+                  {...register('email')}
+                  placeholder="john.doe@example.com"
+                />
+                {errors.email && (
+                  <p className="text-xs text-danger">{errors.email.message}</p>
+                )}
+              </div>
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="text-caption font-medium text-fg-muted">
                   Phone number
                 </label>
                 <Input {...register('phone')} placeholder="+1 (555) 000-0000" />
@@ -117,6 +132,7 @@ export default function ProfileEditForm({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <ReadOnly label="First Name" value={profileData.f_name} />
             <ReadOnly label="Last Name" value={profileData.l_name} />
+            <ReadOnly label="Email" value={profileData.email} />
             <ReadOnly label="Phone" value={profileData.phone} />
           </div>
         )}

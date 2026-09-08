@@ -1,6 +1,7 @@
-
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   Calendar,
   FileText,
   Loader2,
@@ -29,6 +30,9 @@ export default function SpirometryTable({
   getLatestBlow,
   onViewReport,
   reportLoadingId,
+  order = 'desc',
+  onToggleOrder,
+  showPatientColumn = true,
 }) {
   // Loading state
   if (loading) {
@@ -90,8 +94,33 @@ export default function SpirometryTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Patient ID</TableHead>
+            {/* Date header — clickable to toggle sort order */}
+            <TableHead>
+              {typeof onToggleOrder === 'function' ? (
+                <button
+                  type="button"
+                  onClick={onToggleOrder}
+                  className="inline-flex items-center gap-1 cursor-pointer hover:text-fg transition-colors"
+                  title={`Sorted ${order === 'desc' ? 'newest first' : 'oldest first'} — click to reverse`}
+                >
+                  Date
+                  {order === 'desc' ? (
+                    <ArrowDown className="h-3 w-3" />
+                  ) : (
+                    <ArrowUp className="h-3 w-3" />
+                  )}
+                </button>
+              ) : (
+                'Date'
+              )}
+            </TableHead>
+
+            {showPatientColumn ? (
+              <TableHead>Patient</TableHead>
+            ) : (
+              <TableHead>Patient ID</TableHead>
+            )}
+
             <TableHead>FEV1 (L)</TableHead>
             <TableHead>FVC (L)</TableHead>
             <TableHead>PEFR</TableHead>
@@ -112,6 +141,7 @@ export default function SpirometryTable({
               observation?.user_id ??
               s?.user_id ??
               s?.userId ??
+              s?.patient_id ??
               null;
 
             // Support observation_id from different possible structures
@@ -137,20 +167,48 @@ export default function SpirometryTable({
                 {/* Date */}
                 <TableCell className="text-caption text-fg-muted whitespace-nowrap">
                   <Calendar className="h-3 w-3 inline mr-1.5" />
-
                   {formatDate(s?.dbdate ?? s?.date ?? s?.created_at)}
                 </TableCell>
 
-                {/* Patient ID */}
-                <TableCell>
-                  <div className="flex items-center gap-1.5">
-                    <UserRound className="h-3 w-3 text-fg-muted" />
-
-                    <span className="text-body font-mono text-fg">
-                      {userId ?? 'N/A'}
-                    </span>
-                  </div>
-                </TableCell>
+                {/* Patient — name (clinic-wide list) or plain ID (single-patient view) */}
+                {showPatientColumn ? (
+                  <TableCell>
+                    <button
+                      type="button"
+                      disabled={!canViewPatient}
+                      onClick={() =>
+                        canViewPatient &&
+                        onViewPatient(
+                          userId,
+                          s?.patient_name ?? s?.patient_username,
+                        )
+                      }
+                      className={`flex items-center gap-1.5 text-left ${
+                        canViewPatient
+                          ? 'cursor-pointer hover:text-brand-600'
+                          : ''
+                      }`}
+                      title={canViewPatient ? 'View this patient\u2019s trends' : undefined}
+                    >
+                      <UserRound className="h-3 w-3 text-fg-muted shrink-0" />
+                      <span className="text-body text-fg">
+                        {s?.patient_name ||
+                          s?.patient_username ||
+                          userId ||
+                          'N/A'}
+                      </span>
+                    </button>
+                  </TableCell>
+                ) : (
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <UserRound className="h-3 w-3 text-fg-muted" />
+                      <span className="text-body font-mono text-fg">
+                        {userId ?? 'N/A'}
+                      </span>
+                    </div>
+                  </TableCell>
+                )}
 
                 {/* FEV1 */}
                 <TableCell className="font-medium text-fg tabular-nums">
@@ -194,7 +252,12 @@ export default function SpirometryTable({
                       <button
                         type="button"
                         className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors"
-                        onClick={() => onViewPatient(userId)}
+                        onClick={() =>
+                          onViewPatient(
+                            userId,
+                            s?.patient_name ?? s?.patient_username,
+                          )
+                        }
                         title="View trends"
                       >
                         <TrendingUp className="h-4 w-4 text-brand-600" />

@@ -18,6 +18,7 @@ const Patients = lazy(() => import("./pages/Patients"));
 const Prescriptions = lazy(() => import("./pages/Prescriptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Spirometry = lazy(() => import("./pages/Spirometry"));
+const PDFViewer = lazy(() => import("./components/PDFViewer"));
 const Unauthorized = lazy(() => import("./pages/Unauthorized"));
 
 function ProtectedRoute({ children }) {
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/patients/add" element={<AddPatient />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/resources/:filename" element={<PDFViewer />} />
               <Route path="/forbidden" element={<Forbidden />} />
 
               <Route path="*" element={<NotFound />} />

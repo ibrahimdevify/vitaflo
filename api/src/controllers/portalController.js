@@ -141,6 +141,135 @@ const getSpirometryByUser = async (req, res) => {
   }
 };
 
+// GET /spirometry
+// Lists spirometry records across ALL clinic patients (ut_id_fk: 4), paginated.
+// Optional filters: search (username/email/phone/patient_id), start, end, order.
+const getSpirometryList = async (req, res) => {
+  try {
+    const {
+      search,
+      start,
+      end,
+      page = 1,
+      limit = 10,
+      order = 'desc',
+    } = req.query;
+
+    const sortOrder = String(order).toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    // Base: only records belonging to actual clinic patients (ut_id_fk: 4)
+    const observationUserFilter = { ut_id_fk: 4 };
+
+    // Optional patient filter (id, username, email, or phone)
+    if (search && search.trim()) {
+      const term = search.trim();
+      if (/^\d+$/.test(term)) {
+        observationUserFilter.user_id = parseInt(term);
+      } else {
+        observationUserFilter.OR = [
+          { email: term },
+          { phone: term },
+          { userName: term },
+        ];
+      }
+    }
+
+    const where = {
+      fvc: { not: null },
+      fev1: { not: null },
+      observation: {
+        user: observationUserFilter, // ⚠️ adjust relation name below
+      },
+    };
+
+    if (start || end) {
+      where.dbdate = {};
+      if (start) {
+        const startDate = new Date(start);
+        if (!isNaN(startDate.getTime())) where.dbdate.gte = startDate;
+      }
+      if (end) {
+        const endDate = new Date(end);
+        if (!isNaN(endDate.getTime())) where.dbdate.lte = endDate;
+      }
+      if (Object.keys(where.dbdate).length === 0) delete where.dbdate;
+    }
+
+    const total = await prisma.portal_spirometry.count({ where });
+
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const limitNum = Math.max(parseInt(limit) || 10, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const data = await prisma.portal_spirometry.findMany({
+      where,
+      orderBy: { dbdate: sortOrder },
+      skip,
+      take: limitNum,
+      include: {
+        observation: {
+          include: {
+            user: { // ⚠️ same relation name as above
+              select: {
+                user_id: true,
+                f_name: true,
+                l_name: true,
+                userName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        flows: true,
+        volumes: true,
+      },
+    });
+
+    const formattedData = data.map(s => ({
+      id: s.id,
+      dbdate: s.dbdate,
+      fvc: s.fvc,
+      fev1: s.fev1,
+      pefr: s.pefr,
+      fef2575: s.fef2575,
+      fev6: s.fev6,
+      fev1_perc: s.fev1_perc,
+      quality_message: s.quality_message,
+      symptom: s.symptom,
+      btps: s.btps,
+      temp_celsius: s.temp_celsius,
+      fev1_acceptability: s.fev1_acceptability,
+      fvc_acceptability: s.fvc_acceptability,
+      is_post_bronchodilator: s.observation?.is_post_bronchodilator || false,
+      height: s.observation?.height || null,
+      fev1_grade: s.observation?.fev1_grade || null,
+      fvc_grade: s.observation?.fvc_grade || null,
+      observation_id: s.observation_id,
+      flow_count: s.flows?.length || 0,
+      volume_count: s.volumes?.length || 0,
+      // patient info per row, since this list spans multiple patients
+      patient_id: s.observation?.user?.user_id || null,
+      patient_name: s.observation?.user
+        ? `${s.observation.user.f_name} ${s.observation.user.l_name}`.trim()
+        : null,
+      patient_username: s.observation?.user?.userName || null,
+    }));
+
+    res.json({
+      data: formattedData,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
+      order: sortOrder,
+    });
+  } catch (error) {
+    console.error('Get spirometry list error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 const getSpirometryLatest = async (req, res) => {
   try {
     const data = await prisma.$queryRaw`
@@ -365,6 +494,102 @@ const getNotes = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch notes" });
   }
 };
+// GET /notes
+// Lists notes across ALL clinic patients (ut_id_fk: 4), paginated.
+// Optional filters: search (username/email/patient id), start_date, end_date, order, page_filter.
+const getNotesList = async (req, res) => {
+  try {
+    const {
+      search,
+      start_date,
+      end_date,
+      page = 1,
+      limit = 10,
+      order = 'desc',
+      note_page, // optional: filter by note category (clinical/medication/diet/exercise/general)
+    } = req.query;
+
+    const sortOrder = String(order).toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    // Base: only notes belonging to actual clinic patients
+    const patientFilter = { ut_id_fk: 4 };
+
+    if (search && search.trim()) {
+      const term = search.trim();
+      if (/^\d+$/.test(term)) {
+        patientFilter.user_id = parseInt(term);
+      } else {
+        patientFilter.OR = [
+          { email: term },
+          { userName: term },
+        ];
+      }
+    }
+
+    const where = {
+      user: patientFilter, // ⚠️ adjust relation name — see note below
+    };
+
+    if (note_page) {
+      where.page = note_page;
+    }
+
+    if (start_date || end_date) {
+      where.dbdate = {};
+      if (start_date) where.dbdate.gte = new Date(start_date);
+      if (end_date) where.dbdate.lte = new Date(end_date + 'T23:59:59Z');
+    }
+
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const limitNum = Math.max(parseInt(limit) || 10, 1);
+
+    const [notes, total] = await Promise.all([
+      prisma.portal_notes.findMany({
+        where,
+        include: {
+          user: { // ⚠️ same relation name as above
+            select: {
+              user_id: true,
+              f_name: true,
+              l_name: true,
+              userName: true,
+            },
+          },
+        },
+        orderBy: { dbdate: sortOrder },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+      }),
+      prisma.portal_notes.count({ where }),
+    ]);
+
+    // Flatten patient info onto each row, since this list spans multiple patients
+    const data = notes.map((n) => ({
+      ...n,
+      patient_id: n.user?.user_id ?? n.user_id,
+      patient_name: n.user
+        ? `${n.user.f_name} ${n.user.l_name}`.trim()
+        : null,
+      patient_username: n.user?.userName || null,
+    }));
+
+    res.json({
+      data,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+      order: sortOrder,
+    });
+  } catch (error) {
+    console.error('Get notes list error:', error);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+};
+
+
 const createNote = async (req, res) => {
   try {
     const { user_id, text, page } = req.body;
@@ -678,5 +903,5 @@ module.exports = {
   getObservations, getHeartRate, syncHeartRate, getSteps, syncSteps,
   getNotes, createNote, getAirQuality,
   getDaysOfSpirometry, getSpirometryReadings,
-  getAlerts, createAlert, markAlertAsRead, markAllAlertsAsRead,
+  getAlerts, createAlert, markAlertAsRead, markAllAlertsAsRead,getSpirometryList,getNotesList,
 };

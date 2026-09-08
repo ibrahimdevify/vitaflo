@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, ClipboardList, Pill } from 'lucide-react';
+import { ChevronDown, ChevronUp, ClipboardList, Pill, UserRound } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import {
   Card,
@@ -21,13 +21,14 @@ import PrescriptionsListSkeleton from './PrescriptionsListSkeleton';
 export default function PrescriptionsList({
   prescriptions,
   loading,
-  patientId,
   page,
   totalPages,
   totalRecords,
   expanded,
   onToggleExpand,
   onPageChange,
+  showPatientColumn = true,
+  onSelectPatient,
 }) {
   return (
     <Card>
@@ -47,17 +48,22 @@ export default function PrescriptionsList({
           <div className="space-y-3">
             {prescriptions.map((p, i) => {
               const isExpanded = expanded[i];
+              const canSelectPatient =
+                showPatientColumn &&
+                typeof onSelectPatient === 'function' &&
+                p.patient_id != null;
+
               return (
                 <div
                   key={p.pr_id || i}
                   className="rounded-card border border-border bg-surface transition-shadow hover:shadow-card-hover"
                 >
-                  <div
-                    className="p-4 cursor-pointer flex items-center justify-between"
-                    onClick={() => onToggleExpand(i)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5">
+                  <div className="p-4 flex items-center justify-between">
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => onToggleExpand(i)}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className="text-body font-semibold text-fg">
                           {p.diagnosis}
                         </span>
@@ -68,6 +74,31 @@ export default function PrescriptionsList({
                             year: '2-digit',
                           })}
                         </Badge>
+
+                        {/* ✅ Patient chip — clicking narrows the whole list to this patient */}
+                        {showPatientColumn && (
+                          <button
+                            type="button"
+                            disabled={!canSelectPatient}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (canSelectPatient) {
+                                onSelectPatient(
+                                  p.patient_id,
+                                  p.patient_name || p.patient_username,
+                                );
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1 text-caption rounded-pill bg-surface-raised px-2 py-0.5 ${
+                              canSelectPatient
+                                ? 'cursor-pointer hover:bg-brand-50 hover:text-brand-700'
+                                : ''
+                            }`}
+                          >
+                            <UserRound className="h-3 w-3" />
+                            {p.patient_name || p.patient_username || p.patient_id}
+                          </button>
+                        )}
                       </div>
                       {p.pharmacy_instruction && (
                         <p className="text-caption text-fg-muted mb-2">
@@ -87,7 +118,10 @@ export default function PrescriptionsList({
                         ))}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 ml-4 shrink-0">
+                    <div
+                      className="flex items-center gap-3 ml-4 shrink-0 cursor-pointer"
+                      onClick={() => onToggleExpand(i)}
+                    >
                       {p.doctor && (
                         <span className="text-caption text-fg-muted hidden sm:block">
                           Dr. {p.doctor.f_name} {p.doctor.l_name}
@@ -159,17 +193,11 @@ export default function PrescriptionsList({
               onPageChange={onPageChange}
             />
           </div>
-        ) : patientId ? (
-          <EmptyState
-            icon={ClipboardList}
-            title="No prescriptions found"
-            description="Try a different date range or create a new one"
-          />
         ) : (
           <EmptyState
             icon={ClipboardList}
-            title="Enter a Patient ID to view prescriptions"
-            description="Supports: Patient ID, Username, or Email"
+            title="No prescriptions found"
+            description="Try adjusting your search or date range"
           />
         )}
       </CardContent>
