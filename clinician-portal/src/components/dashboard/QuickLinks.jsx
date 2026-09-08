@@ -1,4 +1,11 @@
-import { Bell, FileText, StickyNote, UserPlus, Users, Wind } from 'lucide-react';
+import {
+  Bell,
+  FileText,
+  StickyNote,
+  UserPlus,
+  Users,
+  Wind,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '../ui/card';
 
@@ -46,18 +53,29 @@ export default function QuickLinks() {
   return (
     <div className="mb-8">
       <h2 className="text-body font-semibold text-fg mb-3">Quick Links</h2>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {QUICK_LINKS.map(({ label, description, icon: Icon, to }) => (
-          <Link key={to} to={to} className="block">
-            <Card className="h-full transition-shadow hover:shadow-md">
-              <CardContent className="flex flex-col gap-2 p-4">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-(--radius-control) bg-brand-50 text-brand-600">
+          <Link key={to} to={to} className="group">
+            <Card className="h-full transition-all duration-200 hover:border-brand-200 hover:shadow-sm">
+              <CardContent className="relative flex items-center gap-3 p-3.5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-(--radius-control) bg-surface-100 text-fg-muted transition-all duration-200 group-hover:bg-brand-50 group-hover:text-brand-600">
                   <Icon className="h-5 w-5" />
                 </span>
-                <div>
-                  <p className="text-caption font-semibold text-fg">{label}</p>
-                  <p className="text-caption text-fg-muted">{description}</p>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-caption font-semibold text-fg">
+                    {label}
+                  </p>
+
+                  <p className="mt-0.5 truncate text-[11px] text-fg-muted">
+                    {description}
+                  </p>
                 </div>
+
+                <span className="text-fg-muted opacity-0 -translate-x-1 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+                  →
+                </span>
               </CardContent>
             </Card>
           </Link>

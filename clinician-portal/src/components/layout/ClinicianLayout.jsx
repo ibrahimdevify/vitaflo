@@ -36,7 +36,9 @@ export default function ClinicianLayout() {
   return (
     <div className="flex h-screen bg-surface">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-64 shrink-0">{sidebar}</aside>
+      <aside className="hidden lg:block w-64 shrink-0 scrollbar-none!">
+        {sidebar}
+      </aside>
 
       {/* Mobile Sidebar */}
       <MobileSidebar open={open} onOpenChange={setOpen}>
@@ -44,11 +46,16 @@ export default function ClinicianLayout() {
       </MobileSidebar>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-end px-6 py-2 bg-surface/80 backdrop-blur-sm">
+      <main
+        className="flex-1 overflow-auto"
+        style={{
+          scrollbarColor: '#9ca3af transparent',
+        }}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-end px-3 sm:px-6 py-2 bg-surface/80 backdrop-blur-sm">
           <ThemeToggle />
         </div>
-        <div className="p-6">
+        <div className="sm:p-6 p-3">
           {loading ? (
             <PageLoader />
           ) : (
