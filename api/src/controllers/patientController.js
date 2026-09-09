@@ -1,13 +1,20 @@
-const { PrismaClient } = require('@prisma/client');
-const { hashPassword } = require('../utils/password');
-const { generateUserName } = require('../utils/usernameGenerator');
-const patientService = require('../services/reportTemplates/patientService');
+const { PrismaClient } = require("@prisma/client");
+const { hashPassword } = require("../utils/password");
+const { generateUserName } = require("../utils/usernameGenerator");
+const patientService = require("../services/reportTemplates/patientService");
 const { ValidationError } = patientService;
-
 
 const prisma = new PrismaClient();
 
-const ALLOWED_TABS = ['patient-info', 'spirometry', 'analysis', 'session-comparison', 'reports', 'billing', 'alerts'];
+const ALLOWED_TABS = [
+  "patient-info",
+  "spirometry",
+  "analysis",
+  "session-comparison",
+  "reports",
+  "billing",
+  "alerts",
+];
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 // Get all patients with medical details
@@ -135,12 +142,12 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const getAllPatients = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 20, 
+    const {
+      page = 1,
+      limit = 20,
       search,
-      status, 
-      patient_group_id, 
+      status,
+      patient_group_id,
       assigned_clinician_id,
       // Filter fields
       first_name,
@@ -154,7 +161,7 @@ const getAllPatients = async (req, res) => {
       last_alert_from,
       last_alert_to,
       last_spirometry_from,
-      last_spirometry_to
+      last_spirometry_to,
     } = req.query;
 
     const where = { ut_id_fk: 4 }; // Only patients
@@ -179,13 +186,13 @@ const getAllPatients = async (req, res) => {
           {
             AND: [
               { f_name: { contains: nameParts[0] } },
-              { l_name: { contains: nameParts.slice(1).join(' ') } },
+              { l_name: { contains: nameParts.slice(1).join(" ") } },
             ],
           },
           {
             AND: [
               { f_name: { contains: nameParts[nameParts.length - 1] } },
-              { l_name: { contains: nameParts.slice(0, -1).join(' ') } },
+              { l_name: { contains: nameParts.slice(0, -1).join(" ") } },
             ],
           },
         );
@@ -207,7 +214,9 @@ const getAllPatients = async (req, res) => {
 
     // Assigned clinician filter
     if (assigned_clinician_id) {
-      patientDetailsWhere.assigned_clinician_id = parseInt(assigned_clinician_id);
+      patientDetailsWhere.assigned_clinician_id = parseInt(
+        assigned_clinician_id,
+      );
     }
 
     // Chart number filter
@@ -218,26 +227,26 @@ const getAllPatients = async (req, res) => {
     // Date of birth filter - Handle string-based DOB
     if (dob_from || dob_to) {
       let dobFilter = {};
-      
+
       if (dob_from) {
         // Convert date to string format that matches the stored format
         // Assuming DOB is stored as "YYYY-MM-DD" or similar format
         const fromDate = new Date(dob_from);
-        const fromDateString = fromDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-        
+        const fromDateString = fromDate.toISOString().split("T")[0]; // Format: YYYY-MM-DD
+
         // Use string comparison for DOB
         dobFilter.gte = fromDateString;
       }
-      
+
       if (dob_to) {
         const toDate = new Date(dob_to);
-        const toDateString = toDate.toISOString().split('T')[0];
+        const toDateString = toDate.toISOString().split("T")[0];
         dobFilter.lte = toDateString;
       }
-      
+
       if (Object.keys(dobFilter).length > 0) {
         patientDetailsWhere.attributes = {
-          dob: dobFilter
+          dob: dobFilter,
         };
       }
     }
@@ -259,8 +268,11 @@ const getAllPatients = async (req, res) => {
 
     // Assigned clinician name filter (through relation)
     if (clinician_name) {
-      const clinicianNameParts = clinician_name.trim().split(/\s+/).filter(Boolean);
-      
+      const clinicianNameParts = clinician_name
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
       if (clinicianNameParts.length > 1) {
         where.patient_details = {
           ...(where.patient_details || {}),
@@ -269,13 +281,24 @@ const getAllPatients = async (req, res) => {
               {
                 AND: [
                   { f_name: { contains: clinicianNameParts[0] } },
-                  { l_name: { contains: clinicianNameParts.slice(1).join(' ') } },
+                  {
+                    l_name: { contains: clinicianNameParts.slice(1).join(" ") },
+                  },
                 ],
               },
               {
                 AND: [
-                  { f_name: { contains: clinicianNameParts[clinicianNameParts.length - 1] } },
-                  { l_name: { contains: clinicianNameParts.slice(0, -1).join(' ') } },
+                  {
+                    f_name: {
+                      contains:
+                        clinicianNameParts[clinicianNameParts.length - 1],
+                    },
+                  },
+                  {
+                    l_name: {
+                      contains: clinicianNameParts.slice(0, -1).join(" "),
+                    },
+                  },
                 ],
               },
             ],
@@ -301,8 +324,12 @@ const getAllPatients = async (req, res) => {
           spirometries: {
             some: {
               dbdate: {
-                ...(spirometry_date_from && { gte: new Date(spirometry_date_from) }),
-                ...(spirometry_date_to && { lte: new Date(spirometry_date_to) }),
+                ...(spirometry_date_from && {
+                  gte: new Date(spirometry_date_from),
+                }),
+                ...(spirometry_date_to && {
+                  lte: new Date(spirometry_date_to),
+                }),
               },
             },
           },
@@ -317,8 +344,12 @@ const getAllPatients = async (req, res) => {
           spirometries: {
             some: {
               dbdate: {
-                ...(last_spirometry_from && { gte: new Date(last_spirometry_from) }),
-                ...(last_spirometry_to && { lte: new Date(last_spirometry_to) }),
+                ...(last_spirometry_from && {
+                  gte: new Date(last_spirometry_from),
+                }),
+                ...(last_spirometry_to && {
+                  lte: new Date(last_spirometry_to),
+                }),
               },
             },
           },
@@ -341,9 +372,9 @@ const getAllPatients = async (req, res) => {
     // 🔒 Clinicians only see their assigned patients
     // Admin (ut_id_fk=2) and Technician (ut_id_fk=1) see all
     if (req.user.ut_id_fk === 3) {
-      where.patient_details = { 
-        ...(where.patient_details || {}), 
-        assigned_clinician_id: req.user.user_id 
+      where.patient_details = {
+        ...(where.patient_details || {}),
+        assigned_clinician_id: req.user.user_id,
       };
     }
 
@@ -354,7 +385,7 @@ const getAllPatients = async (req, res) => {
         where,
         skip,
         take: parseInt(limit),
-        orderBy: { reg_date: 'desc' },
+        orderBy: { reg_date: "desc" },
         select: {
           user_id: true,
           f_name: true,
@@ -377,7 +408,9 @@ const getAllPatients = async (req, res) => {
               height: true,
               weight: true,
               patient_group: { select: { id: true, name: true } },
-              assigned_clinician: { select: { user_id: true, f_name: true, l_name: true } },
+              assigned_clinician: {
+                select: { user_id: true, f_name: true, l_name: true },
+              },
               attributes: {
                 select: {
                   id: true,
@@ -394,7 +427,7 @@ const getAllPatients = async (req, res) => {
           },
           // New fields for the enhanced view
           alerts: {
-            orderBy: { created: 'desc' },
+            orderBy: { created: "desc" },
             take: 1,
             select: {
               id: true,
@@ -404,7 +437,7 @@ const getAllPatients = async (req, res) => {
             },
           },
           observations: {
-            orderBy: { dbdate: 'desc' },
+            orderBy: { dbdate: "desc" },
             take: 1,
             select: {
               id: true,
@@ -424,7 +457,7 @@ const getAllPatients = async (req, res) => {
             },
           },
           portal_notes: {
-            orderBy: { dbdate: 'desc' },
+            orderBy: { dbdate: "desc" },
             take: 1,
             select: {
               id: true,
@@ -446,7 +479,7 @@ const getAllPatients = async (req, res) => {
     ]);
 
     // Format patients with all required fields
-    const formattedPatients = patients.map(p => {
+    const formattedPatients = patients.map((p) => {
       const latestAlert = p.alerts?.[0] || null;
       const latestObservation = p.observations?.[0] || null;
       const latestSpirometry = latestObservation?.spirometries?.[0] || null;
@@ -455,25 +488,31 @@ const getAllPatients = async (req, res) => {
       return {
         ...p,
         attributes: p.patient_details?.attributes || null,
-        last_alert: latestAlert ? {
-          message: latestAlert.message,
-          date: latestAlert.created,
-          is_read: latestAlert.is_read,
-        } : null,
-        last_spirometry: latestSpirometry ? {
-          date: latestSpirometry.dbdate || latestObservation.dbdate,
-          fvc: latestSpirometry.fvc,
-          fev1: latestSpirometry.fev1,
-          pefr: latestSpirometry.pefr,
-          fef2575: latestSpirometry.fef2575,
-          fev1_perc: latestSpirometry.fev1_perc,
-          quality_message: latestSpirometry.quality_message,
-        } : null,
-        last_note: latestNote ? {
-          text: latestNote.text,
-          date: latestNote.dbdate,
-          page: latestNote.page,
-        } : null,
+        last_alert: latestAlert
+          ? {
+              message: latestAlert.message,
+              date: latestAlert.created,
+              is_read: latestAlert.is_read,
+            }
+          : null,
+        last_spirometry: latestSpirometry
+          ? {
+              date: latestSpirometry.dbdate || latestObservation.dbdate,
+              fvc: latestSpirometry.fvc,
+              fev1: latestSpirometry.fev1,
+              pefr: latestSpirometry.pefr,
+              fef2575: latestSpirometry.fef2575,
+              fev1_perc: latestSpirometry.fev1_perc,
+              quality_message: latestSpirometry.quality_message,
+            }
+          : null,
+        last_note: latestNote
+          ? {
+              text: latestNote.text,
+              date: latestNote.dbdate,
+              page: latestNote.page,
+            }
+          : null,
         total_observations: p._count?.observations || 0,
         total_alerts: p._count?.alerts || 0,
       };
@@ -481,35 +520,37 @@ const getAllPatients = async (req, res) => {
 
     res.json({
       data: formattedPatients,
-      pagination: { 
-        page: parseInt(page), 
-        limit: parseInt(limit), 
-        total, 
-        pages: Math.ceil(total / parseInt(limit)) 
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
       },
       filters: {
         available_filters: [
-          'first_name',
-          'last_name',
-          'dob_from',
-          'dob_to',
-          'chart_no',
-          'clinician_name',
-          'spirometry_date_from',
-          'spirometry_date_to',
-          'last_alert_from',
-          'last_alert_to',
-          'last_spirometry_from',
-          'last_spirometry_to',
-          'status',
-          'patient_group_id',
-          'assigned_clinician_id',
+          "first_name",
+          "last_name",
+          "dob_from",
+          "dob_to",
+          "chart_no",
+          "clinician_name",
+          "spirometry_date_from",
+          "spirometry_date_to",
+          "last_alert_from",
+          "last_alert_to",
+          "last_spirometry_from",
+          "last_spirometry_to",
+          "status",
+          "patient_group_id",
+          "assigned_clinician_id",
         ],
       },
     });
   } catch (error) {
-    console.error('Get patients error:', error);
-    res.status(500).json({ error: 'Failed to fetch patients', details: error.message });
+    console.error("Get patients error:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch patients", details: error.message });
   }
 };
 // Get single patient with full medical details
@@ -520,10 +561,12 @@ function parsePositiveInt(value, fieldName) {
   }
   return parsed;
 }
- 
+
 function parseDateParam(value, fieldName) {
-  if (typeof value !== 'string' || !DATE_REGEX.test(value)) {
-    throw new ValidationError(`${fieldName} must be a valid date in YYYY-MM-DD format`);
+  if (typeof value !== "string" || !DATE_REGEX.test(value)) {
+    throw new ValidationError(
+      `${fieldName} must be a valid date in YYYY-MM-DD format`,
+    );
   }
   const parsed = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) {
@@ -531,86 +574,90 @@ function parseDateParam(value, fieldName) {
   }
   return parsed;
 }
- 
+
 function ensureRangeOrdered(startDate, endDate) {
   if (startDate > endDate) {
-    throw new ValidationError('startDate must be before or equal to endDate');
+    throw new ValidationError("startDate must be before or equal to endDate");
   }
 }
- 
+
 function buildTabParams(tab, userId, query) {
   switch (tab) {
-    case 'patient-info':
-    case 'alerts':
+    case "patient-info":
+    case "alerts":
       return { userId };
- 
-    case 'spirometry': {
+
+    case "spirometry": {
       if (!query.date || !DATE_REGEX.test(query.date)) {
-        throw new ValidationError('date (YYYY-MM-DD) is required for the spirometry tab');
+        throw new ValidationError(
+          "date (YYYY-MM-DD) is required for the spirometry tab",
+        );
       }
       return { userId, date: query.date };
     }
- 
-    case 'analysis': {
-      const startDate = parseDateParam(query.startDate, 'startDate');
-      const endDate = parseDateParam(query.endDate, 'endDate');
+
+    case "analysis": {
+      const startDate = parseDateParam(query.startDate, "startDate");
+      const endDate = parseDateParam(query.endDate, "endDate");
       ensureRangeOrdered(startDate, endDate);
-      return { userId, startDate, endDate, variable: query.variable || 'FEV1' };
+      return { userId, startDate, endDate, variable: query.variable || "FEV1" };
     }
- 
-    case 'session-comparison': {
-      const sessionId1 = parsePositiveInt(query.sessionId1, 'sessionId1');
-      const sessionId2 = parsePositiveInt(query.sessionId2, 'sessionId2');
+
+    case "session-comparison": {
+      const sessionId1 = parsePositiveInt(query.sessionId1, "sessionId1");
+      const sessionId2 = parsePositiveInt(query.sessionId2, "sessionId2");
       return { userId, sessionId1, sessionId2 };
     }
- 
-    case 'reports':
-    case 'billing': {
-      const startDate = parseDateParam(query.startDate, 'startDate');
-      const endDate = parseDateParam(query.endDate, 'endDate');
+
+    case "reports":
+    case "billing": {
+      const startDate = parseDateParam(query.startDate, "startDate");
+      const endDate = parseDateParam(query.endDate, "endDate");
       ensureRangeOrdered(startDate, endDate);
       return { userId, startDate, endDate };
     }
- 
+
     default:
       throw new ValidationError(`Unsupported tab: ${tab}`);
   }
 }
- 
+
 const getPatientById = async (req, res) => {
   try {
-    const userId = parsePositiveInt(req.params.id, 'id');
+    const userId = parsePositiveInt(req.params.id, "id");
     const tab = req.query.tab;
- 
+
     if (!ALLOWED_TABS.includes(tab)) {
-      return res.status(400).json({ error: `tab must be one of: ${ALLOWED_TABS.join(', ')}` });
+      return res
+        .status(400)
+        .json({ error: `tab must be one of: ${ALLOWED_TABS.join(", ")}` });
     }
- 
+
     const patient = await patientService.ensurePatientExists(userId);
     if (!patient) {
-      return res.status(404).json({ error: 'Patient not found' });
+      return res.status(404).json({ error: "Patient not found" });
     }
- 
+
     const params = buildTabParams(tab, userId, req.query);
     const data = await patientService.getPatientTabData(tab, params);
- 
+
     return res.json({ tab, data });
   } catch (error) {
     if (error instanceof ValidationError) {
       return res.status(400).json({ error: error.message });
     }
-    console.error('Get patient error:', error);
-    return res.status(500).json({ error: 'Failed to fetch patient data' });
+    console.error("Get patient error:", error);
+    return res.status(500).json({ error: "Failed to fetch patient data" });
   }
 };
- 
+
 const listPatients = async (req, res) => {
   try {
     const patients = await patientService.getPatientsList();
     return res.json({ data: patients });
   } catch (error) {
-    console.error('List patients error:', error);
-    return res.status(500).json({ error: 'Failed to fetch patients' });
+    console.error("List patients error:", error);
+    return res.status(500).json({ error: "Failed to fetch patients" });
   }
 };
 
@@ -619,9 +666,20 @@ const createAttributes = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      first_name, last_name, phone, dob, height, weight,
-      gender, ethnic_group, smoking, chart_number, account_type,
-      welcome_method, addresses, air_monitors,
+      first_name,
+      last_name,
+      phone,
+      dob,
+      height,
+      weight,
+      gender,
+      ethnic_group,
+      smoking,
+      chart_number,
+      account_type,
+      welcome_method,
+      addresses,
+      air_monitors,
     } = req.body;
 
     // Check patient exists
@@ -630,7 +688,7 @@ const createAttributes = async (req, res) => {
     });
 
     if (!patient) {
-      return res.status(404).json({ error: 'Patient not found' });
+      return res.status(404).json({ error: "Patient not found" });
     }
 
     // Check if attributes already exist
@@ -639,39 +697,45 @@ const createAttributes = async (req, res) => {
     });
 
     if (existing) {
-      return res.status(400).json({ error: 'Attributes already exist. Use update.' });
+      return res
+        .status(400)
+        .json({ error: "Attributes already exist. Use update." });
     }
 
     const attributes = await prisma.vf_attributes.create({
       data: {
-        first_name: first_name || patient.chart_no || '',
-        last_name: last_name || '',
+        first_name: first_name || patient.chart_no || "",
+        last_name: last_name || "",
         phone: phone || null,
-        dob: dob || '',
+        dob: dob || "",
         height: height || 0,
         weight: weight || null,
-        gender: gender || '',
-        ethnic_group: ethnic_group || '',
+        gender: gender || "",
+        ethnic_group: ethnic_group || "",
         smoking: smoking || false,
         chart_number: chart_number || patient.chart_no,
-        account_type: account_type || 'test',
-        welcome_method: welcome_method || 'text',
+        account_type: account_type || "test",
+        welcome_method: welcome_method || "text",
         pd_id: parseInt(id),
-        addresses: addresses ? {
-          create: addresses.map(a => ({
-            street: a.street || '',
-            city: a.city || '',
-            state: a.state || '',
-            zip: a.zip || '',
-          })),
-        } : undefined,
-        air_monitors: air_monitors ? {
-          create: air_monitors.map(am => ({
-            monitor_id: am.monitor_id || '',
-            label: am.label || '',
-            dev_id: am.dev_id || null,
-          })),
-        } : undefined,
+        addresses: addresses
+          ? {
+              create: addresses.map((a) => ({
+                street: a.street || "",
+                city: a.city || "",
+                state: a.state || "",
+                zip: a.zip || "",
+              })),
+            }
+          : undefined,
+        air_monitors: air_monitors
+          ? {
+              create: air_monitors.map((am) => ({
+                monitor_id: am.monitor_id || "",
+                label: am.label || "",
+                dev_id: am.dev_id || null,
+              })),
+            }
+          : undefined,
       },
       include: {
         addresses: true,
@@ -679,10 +743,12 @@ const createAttributes = async (req, res) => {
       },
     });
 
-    res.status(201).json({ message: 'Patient attributes created', data: attributes });
+    res
+      .status(201)
+      .json({ message: "Patient attributes created", data: attributes });
   } catch (error) {
-    console.error('Create attributes error:', error);
-    res.status(500).json({ error: 'Failed to create attributes' });
+    console.error("Create attributes error:", error);
+    res.status(500).json({ error: "Failed to create attributes" });
   }
 };
 
@@ -701,13 +767,13 @@ const updateAttributes = async (req, res) => {
       include: { addresses: true, air_monitors: true },
     });
 
-    res.json({ message: 'Attributes updated', data: attributes });
+    res.json({ message: "Attributes updated", data: attributes });
   } catch (error) {
-    console.error('Update attributes error:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Attributes not found' });
+    console.error("Update attributes error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "Attributes not found" });
     }
-    res.status(500).json({ error: 'Failed to update attributes' });
+    res.status(500).json({ error: "Failed to update attributes" });
   }
 };
 
@@ -755,7 +821,7 @@ const getPrescriptions = async (req, res) => {
     if (start_date || end_date) {
       where.pr_date = {};
       if (start_date) where.pr_date.gte = new Date(start_date);
-      if (end_date) where.pr_date.lte = new Date(end_date + 'T23:59:59Z');
+      if (end_date) where.pr_date.lte = new Date(end_date + "T23:59:59Z");
     }
 
     const [prescriptions, total] = await Promise.all([
@@ -765,7 +831,7 @@ const getPrescriptions = async (req, res) => {
           doctor: { select: { user_id: true, f_name: true, l_name: true } },
           medicines: true,
         },
-        orderBy: { pr_date: 'desc' },
+        orderBy: { pr_date: "desc" },
         skip: (parseInt(page) - 1) * parseInt(limit),
         take: parseInt(limit),
       }),
@@ -782,8 +848,8 @@ const getPrescriptions = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Get prescriptions error:', error);
-    res.status(500).json({ error: 'Failed to fetch prescriptions' });
+    console.error("Get prescriptions error:", error);
+    res.status(500).json({ error: "Failed to fetch prescriptions" });
   }
 };
 // GET /prescriptions
@@ -797,14 +863,18 @@ const getPrescriptionsList = async (req, res) => {
       end_date,
       page = 1,
       limit = 10,
-      order = 'desc',
+      order = "desc",
     } = req.query;
 
-    const sortOrder = String(order).toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const sortOrder = String(order).toLowerCase() === "asc" ? "asc" : "desc";
 
     // Base: only prescriptions for actual clinic patients
     const patientFilter = { ut_id_fk: 4 };
-
+    if (req.user.ut_id_fk === 3) {
+      patientFilter.patient_details = {
+        assigned_clinician_id: req.user.user_id,
+      };
+    }
     if (search && search.trim()) {
       const term = search.trim();
       if (/^\d+$/.test(term)) {
@@ -826,7 +896,7 @@ const getPrescriptionsList = async (req, res) => {
     if (start_date || end_date) {
       where.pr_date = {};
       if (start_date) where.pr_date.gte = new Date(start_date);
-      if (end_date) where.pr_date.lte = new Date(end_date + 'T23:59:59Z');
+      if (end_date) where.pr_date.lte = new Date(end_date + "T23:59:59Z");
     }
 
     const pageNum = Math.max(parseInt(page) || 1, 1);
@@ -838,7 +908,8 @@ const getPrescriptionsList = async (req, res) => {
         include: {
           doctor: { select: { user_id: true, f_name: true, l_name: true } },
           medicines: true,
-          patient: { // ⚠️ same relation name as above
+          patient: {
+            // ⚠️ same relation name as above
             select: {
               user_id: true,
               f_name: true,
@@ -875,15 +946,13 @@ const getPrescriptionsList = async (req, res) => {
       order: sortOrder,
     });
   } catch (error) {
-    console.error('Get prescriptions list error:', error);
-    res.status(500).json({ error: 'Failed to fetch prescriptions' });
+    console.error("Get prescriptions list error:", error);
+    res.status(500).json({ error: "Failed to fetch prescriptions" });
   }
 };
 
-
-
 const createPrescription = async (req, res) => {
-  console.log('createPrescription req.body:', req.body);
+  console.log("createPrescription req.body:", req.body);
   try {
     const { pharmacy_instruction, diagnosis, medicines } = req.body;
     const { id } = req.params;
@@ -906,32 +975,35 @@ const createPrescription = async (req, res) => {
       if (patient) {
         patientId = patient.user_id;
       } else {
-        return res.status(404).json({ error: 'Patient not found' });
+        return res.status(404).json({ error: "Patient not found" });
       }
     }
 
     if (!doctorId || isNaN(doctorId)) {
-      return res.status(400).json({ error: 'Doctor ID is required' });
+      return res.status(400).json({ error: "Doctor ID is required" });
     }
 
     const prescription = await prisma.dc_ehr_prescriptions.create({
       data: {
-        pharmacy_instruction: pharmacy_instruction || '',
-        diagnosis: diagnosis || '',
+        pharmacy_instruction: pharmacy_instruction || "",
+        diagnosis: diagnosis || "",
         patient_id_fk: patientId,
         doctor_id_fk: doctorId,
-        medicines: medicines && medicines.length > 0 ? {
-          create: medicines.map(m => ({
-            type: m.type || null,
-            drug: m.drug || 'N/A',
-            dosage: m.dosage || 'N/A',
-            frequency: m.frequency || 'N/A',
-            quantity: m.quantity || '1',
-            days: m.days || '1',
-            units: m.units || null,
-            direction: m.direction || 'N/A',
-          })),
-        } : undefined,
+        medicines:
+          medicines && medicines.length > 0
+            ? {
+                create: medicines.map((m) => ({
+                  type: m.type || null,
+                  drug: m.drug || "N/A",
+                  dosage: m.dosage || "N/A",
+                  frequency: m.frequency || "N/A",
+                  quantity: m.quantity || "1",
+                  days: m.days || "1",
+                  units: m.units || null,
+                  direction: m.direction || "N/A",
+                })),
+              }
+            : undefined,
       },
       include: {
         doctor: { select: { user_id: true, f_name: true, l_name: true } },
@@ -940,14 +1012,14 @@ const createPrescription = async (req, res) => {
     });
 
     res.status(201).json({
-      message: 'Prescription created',
-      data: prescription
+      message: "Prescription created",
+      data: prescription,
     });
   } catch (error) {
-    console.error('Create prescription error:', error);
+    console.error("Create prescription error:", error);
     res.status(500).json({
-      error: 'Failed to create prescription',
-      message: error.message
+      error: "Failed to create prescription",
+      message: error.message,
     });
   }
 };
@@ -962,7 +1034,7 @@ const getPatientGroups = async (req, res) => {
     });
     res.json({ data: groups });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch groups' });
+    res.status(500).json({ error: "Failed to fetch groups" });
   }
 };
 
@@ -971,38 +1043,68 @@ const createPatient = async (req, res) => {
   try {
     const body = req.body || {};
     const {
-      f_name, l_name, email, phone, password,
-      dob, chart_no, blood_group, height, weight, gender,
-      patient_group_id, assigned_clinician_id, status,
+      f_name,
+      l_name,
+      email,
+      phone,
+      password,
+      dob,
+      chart_no,
+      blood_group,
+      height,
+      weight,
+      gender,
+      patient_group_id,
+      assigned_clinician_id,
+      status,
     } = body;
 
     const first_name = f_name || "";
     const last_name = l_name || "";
-    const userEmail = email || phone || `patient-${Date.now()}@VitalFlo.com`;
+    const userEmail = email || phone || `patient-${Date.now()}@vitalflow.com`;
     const userPhone = phone || `phone-${crypto.randomBytes(8).toString("hex")}`;
 
     // Check for existing user by email
-    const existingEmail = await prisma.dc_users.findUnique({ where: { email: userEmail } });
+    const existingEmail = await prisma.dc_users.findUnique({
+      where: { email: userEmail },
+    });
     if (existingEmail) {
-      return res.status(409).json({ error: "User already exists", message: "A user with this email already exists", field: "email" });
+      return res
+        .status(409)
+        .json({
+          error: "User already exists",
+          message: "A user with this email already exists",
+          field: "email",
+        });
     }
 
     // Check for existing user by phone
-    const existingPhone = await prisma.dc_users.findUnique({ where: { phone: userPhone } });
+    const existingPhone = await prisma.dc_users.findUnique({
+      where: { phone: userPhone },
+    });
     if (existingPhone) {
-      return res.status(409).json({ error: "User already exists", message: "A user with this phone number already exists", field: "phone" });
+      return res
+        .status(409)
+        .json({
+          error: "User already exists",
+          message: "A user with this phone number already exists",
+          field: "phone",
+        });
     }
 
     const hashedPassword = await hashPassword(password || "TempPass123!");
 
-    let chartNo = chart_no || crypto.randomBytes(4).toString("hex").toUpperCase();
+    let chartNo =
+      chart_no || crypto.randomBytes(4).toString("hex").toUpperCase();
 
     // Generate username from email
     const userName = await generateUserName(userEmail);
 
     const heightValue = height ? parseFloat(height) : null;
     const weightValue = weight ? parseFloat(weight) : null;
-    const clinicianId = assigned_clinician_id ? parseInt(assigned_clinician_id) : null;
+    const clinicianId = assigned_clinician_id
+      ? parseInt(assigned_clinician_id)
+      : null;
     const groupId = patient_group_id ? parseInt(patient_group_id) : null;
 
     // Create user with patient_details AND attributes
@@ -1064,9 +1166,17 @@ const createPatient = async (req, res) => {
       let field = "field";
       if (targets.includes("email")) field = "email";
       else if (targets.includes("phone")) field = "phone";
-      return res.status(409).json({ error: "User already exists", message: `A user with this ${field} already exists`, field });
+      return res
+        .status(409)
+        .json({
+          error: "User already exists",
+          message: `A user with this ${field} already exists`,
+          field,
+        });
     }
-    res.status(400).json({ error: "Failed to create patient", message: error.message });
+    res
+      .status(400)
+      .json({ error: "Failed to create patient", message: error.message });
   }
 };
 

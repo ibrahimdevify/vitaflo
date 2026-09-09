@@ -42,7 +42,8 @@ router.get('/spirometry_readings', ctrl.getSpirometryReadings);
 // Alerts
 router.get("/alerts", ctrl.getAlerts);
 router.post("/alerts", ctrl.createAlert);
-router.put("/alerts/:alertId", ctrl.markAlertAsRead);
+
 router.put("/alerts/read-all", ctrl.markAllAlertsAsRead);
+router.put("/alerts/:alertId", ctrl.markAlertAsRead);
 
 module.exports = router;

@@ -48,10 +48,10 @@ async function seed() {
     console.log('Creating account/hospital...');
     const account = await prisma.vf_account.upsert({
         where: { id: 1 },
-        update: { name: 'VitalFlo Test Hospital' },
+        update: { name: 'VitalFlow Test Hospital' },
         create: {
             id: 1,
-            name: 'VitalFlo Test Hospital',
+            name: 'VitalFlow Test Hospital',
         },
     });
     console.log('✅ Account created');
@@ -78,12 +78,12 @@ async function seed() {
     console.log('Creating admin user...');
     const adminPassword = await bcrypt.hash('Admin@123456', 10);
     const admin = await prisma.dc_users.upsert({
-        where: { email: 'admin@VitalFlo.com' },
+        where: { email: 'admin@vitalflow.com' },
         update: { password: adminPassword, ut_id_fk: 2 },
         create: {
             f_name: 'System',
             l_name: 'Admin',
-            email: 'admin@VitalFlo.com',
+            email: 'admin@vitalflow.com',
             phone: '+1000000001',
             password: adminPassword,
             userName: 'admin',
@@ -92,18 +92,18 @@ async function seed() {
             is_availible: true,
         },
     });
-    console.log('✅ Admin: admin@VitalFlo.com / Admin@123456');
+    console.log('✅ Admin: admin@vitalflow.com / Admin@123456');
 
     // 6. Create Clinician User (Doctor)
     console.log('Creating clinician user...');
     const clinicianPassword = await bcrypt.hash('Doctor@123456', 10);
     const clinician = await prisma.dc_users.upsert({
-        where: { email: 'doctor@VitalFlo.com' },
+        where: { email: 'doctor@vitalflow.com' },
         update: { password: clinicianPassword, ut_id_fk: 3 },
         create: {
             f_name: 'Sarah',
             l_name: 'Johnson',
-            email: 'doctor@VitalFlo.com',
+            email: 'doctor@vitalflow.com',
             phone: '+1000000002',
             password: clinicianPassword,
             userName: 'sarahjohnson',
@@ -112,7 +112,7 @@ async function seed() {
             is_availible: true,
         },
     });
-    console.log('✅ Clinician: doctor@VitalFlo.com / Doctor@123456');
+    console.log('✅ Clinician: doctor@vitalflow.com / Doctor@123456');
     console.log('   Clinician ID:', clinician.user_id);
 
     // 7. Create Doctor Details for Clinician
@@ -161,12 +161,12 @@ async function seed() {
     console.log('Creating patient user...');
     const patientPassword = await bcrypt.hash('Patient@123', 10);
     const patient = await prisma.dc_users.upsert({
-        where: { email: 'patient@VitalFlo.com' },
+        where: { email: 'patient@vitalflow.com' },
         update: { password: patientPassword, ut_id_fk: 4 },
         create: {
             f_name: 'John',
             l_name: 'Doe',
-            email: 'patient@VitalFlo.com',
+            email: 'patient@vitalflow.com',
             phone: '+1000000003',
             password: patientPassword,
             userName: 'johndoe',
@@ -175,7 +175,7 @@ async function seed() {
             is_availible: true,
         },
     });
-    console.log('✅ Patient: patient@VitalFlo.com / Patient@123');
+    console.log('✅ Patient: patient@vitalflow.com / Patient@123');
     console.log('   Patient ID:', patient.user_id);
 
     // 9. Create Patient Details and Assign to Clinician
@@ -233,9 +233,9 @@ async function seed() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📋 Test Credentials:');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('  Admin:     admin@VitalFlo.com / Admin@123456');
-    console.log('  Clinician: doctor@VitalFlo.com / Doctor@123456');
-    console.log('  Patient:   patient@VitalFlo.com / Patient@123');
+    console.log('  Admin:     admin@vitalflow.com / Admin@123456');
+    console.log('  Clinician: doctor@vitalflow.com / Doctor@123456');
+    console.log('  Patient:   patient@vitalflow.com / Patient@123');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('  Patient is assigned to Clinician ✅');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

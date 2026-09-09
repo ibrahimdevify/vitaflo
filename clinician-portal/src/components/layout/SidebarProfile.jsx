@@ -1,4 +1,5 @@
 import { ChevronDown, LogOut, User } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import {
@@ -13,6 +14,8 @@ import { useAuth } from '../../context/AuthContext';
 export default function SidebarProfile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -24,7 +27,7 @@ export default function SidebarProfile() {
   return (
     <div className="p-3 pt-1">
       <div className="mx-2 mb-2 h-px bg-white/5" />
-      <DropdownMenu>
+      <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
         <DropdownMenuTrigger asChild>
           <div className="group w-full flex items-center gap-3 px-3 py-2.5 text-brand-100 hover:text-white hover:bg-white/5 rounded-xl transition-colors cursor-pointer data-[state=open]:bg-white/5">
             <Avatar className="h-9 w-9 ring-2 ring-white/10">
@@ -67,7 +70,10 @@ export default function SidebarProfile() {
           <DropdownMenuSeparator className="bg-border my-1" />
 
           <DropdownMenuItem
-            onClick={() => navigate('/profile')}
+            onClick={() => {
+              setIsDropdownOpen(false);
+              navigate('/profile');
+            }}
             className="rounded-control cursor-pointer px-2.5 py-2 text-fg focus:bg-surface-raised"
           >
             <User className="h-4 w-4 mr-2.5 text-fg-muted" />
@@ -75,7 +81,10 @@ export default function SidebarProfile() {
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            onClick={handleLogout}
+            onClick={() => {
+              setIsDropdownOpen(false);
+              setShowLogoutDialog(true);
+            }}
             className="text-danger focus:text-danger focus:bg-danger/10 rounded-control cursor-pointer px-2.5 py-2 mt-0.5"
           >
             <LogOut className="h-4 w-4 mr-2.5" />
@@ -83,6 +92,45 @@ export default function SidebarProfile() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Custom Confirmation Modal */}
+      {showLogoutDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowLogoutDialog(false)}
+          />
+          
+          {/* Modal Content */}
+          <div className="relative bg-surface border border-border rounded-card shadow-dropdown p-6 w-full max-w-md mx-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-fg mb-2">
+                Logout Confirmation
+              </h2>
+              <p className="text-sm text-fg-muted">
+                Are you sure you want to log out of your account? You will need to sign in again to access your dashboard.
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowLogoutDialog(false)}
+                className="px-4 py-2 text-sm font-medium text-fg bg-surface-raised hover:bg-surface-hover rounded-control transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 text-sm font-medium text-white bg-danger hover:bg-danger/90 rounded-control transition-colors flex items-center gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

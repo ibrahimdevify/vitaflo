@@ -159,6 +159,11 @@ const getSpirometryList = async (req, res) => {
 
     // Base: only records belonging to actual clinic patients (ut_id_fk: 4)
     const observationUserFilter = { ut_id_fk: 4 };
+    if (req.user.ut_id_fk === 3) {
+      observationUserFilter.patient_details = {
+        assigned_clinician_id: req.user.user_id,
+      };
+    }
 
     // Optional patient filter (id, username, email, or phone)
     if (search && search.trim()) {
@@ -513,6 +518,11 @@ const getNotesList = async (req, res) => {
 
     // Base: only notes belonging to actual clinic patients
     const patientFilter = { ut_id_fk: 4 };
+    if (req.user.ut_id_fk === 3) {
+      patientFilter.patient_details = {
+        assigned_clinician_id: req.user.user_id,
+      };
+    }
 
     if (search && search.trim()) {
       const term = search.trim();
@@ -807,6 +817,11 @@ const getAlerts = async (req, res) => {
     const { page = 1, limit = 10, search, is_read, start_date, end_date } = req.query;
     
     const where = {};
+     if (req.user.ut_id_fk === 3) {
+      where.user = {
+        patient_details: { assigned_clinician_id: req.user.user_id },
+      };
+    }
     
     if (search) {
       where.OR = [

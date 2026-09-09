@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Activity,
+  ArrowLeft,
   Eye,
   EyeOff,
   Loader2,
@@ -12,19 +13,29 @@ import {
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useAuth } from '../context/AuthContext';
+import { authAPI } from '../services/api';
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Email or phone is required'),
   password: z.string().min(1, 'Password is required'),
 });
 
+// ✅ Clinician-only, email required
+const forgotPasswordSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Enter a valid email'),
+});
+
 export default function Login() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [mode, setMode] = useState('login'); // 'login' | 'forgot'
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -37,6 +48,16 @@ export default function Login() {
     defaultValues: { username: '', password: '' },
   });
 
+  const {
+    register: registerForgot,
+    handleSubmit: handleSubmitForgot,
+    formState: { errors: forgotErrors, isSubmitting: forgotSubmitting },
+    reset: resetForgotForm,
+  } = useForm({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: '' },
+  });
+
   const onSubmit = async (data) => {
     setError('');
     try {
@@ -45,6 +66,37 @@ export default function Login() {
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
     }
+  };
+
+  // ✅ Calls POST /forgot-password — clinician-only, email required.
+  // Backend looks the user up by email and emails a reset link if found.
+  const onSubmitForgot = async (data) => {
+    setForgotError('');
+    setForgotSuccess('');
+    try {
+      const res = await authAPI.forgotPassword({
+        userType: 'clinician',
+        email: data.email,
+        forgotUsername: false,
+      });
+      setForgotSuccess(
+        res.data?.message || 'If an account exists, a reset link has been sent to your email.',
+      );
+      toast.success('Reset link sent — check your email');
+    } catch (err) {
+      setForgotError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          'Something went wrong. Please try again.',
+      );
+    }
+  };
+
+  const backToLogin = () => {
+    setMode('login');
+    setForgotError('');
+    setForgotSuccess('');
+    resetForgotForm();
   };
 
   const loading = isSubmitting;
@@ -56,7 +108,7 @@ export default function Login() {
         <div className="flex items-center gap-2.5">
           <Stethoscope className="h-6 w-6 text-brand-300" />
           <span className="text-sm font-semibold tracking-wide text-brand-100">
-            VitalFlo
+            VitalFlow
           </span>
         </div>
 
@@ -108,98 +160,187 @@ export default function Login() {
             <div className="rounded-full bg-brand-500/10 p-2">
               <Stethoscope className="h-5 w-5 text-brand-500" />
             </div>
-            <span className="text-sm font-semibold text-fg">VitalFlo</span>
+            <span className="text-sm font-semibold text-fg">VitalFlow</span>
           </div>
 
-          <h2 className="text-2xl font-bold tracking-tight text-fg">
-            Clinician Portal
-          </h2>
-          <p className="mt-1.5 text-sm text-fg-muted">
-            Sign in to manage your patients
-          </p>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="username"
-                className="text-xs font-medium text-fg-muted"
-              >
-                Email or phone
-              </label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="doctor@VitalFlo.com"
-                  {...register('username')}
-                  className="h-11 pl-10"
-                  autoComplete="username"
-                />
-              </div>
-              {errors.username && (
-                <p className="text-xs text-danger">{errors.username.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <label
-                htmlFor="password"
-                className="text-xs font-medium text-fg-muted"
-              >
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••••"
-                  {...register('password')}
-                  className="h-11 pl-10 pr-10"
-                  autoComplete="current-password"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg-muted/90 transition-colors cursor-pointer"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-xs text-danger">{errors.password.message}</p>
-              )}
-            </div>
-
-            {error && (
-              <p className="text-sm text-danger" role="alert">
-                {error}
+          {mode === 'login' ? (
+            <>
+              <h2 className="text-2xl font-bold tracking-tight text-fg">
+                Clinician Portal
+              </h2>
+              <p className="mt-1.5 text-sm text-fg-muted">
+                Sign in to manage your patients
               </p>
-            )}
 
-            <Button
-              type="submit"
-              className="h-11 w-full bg-brand-600 text-white hover:bg-brand-700"
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Signing in...
-                </span>
+              <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="username"
+                    className="text-xs font-medium text-fg-muted"
+                  >
+                    Email or phone
+                  </label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="doctor@vitalflow.com"
+                      {...register('username')}
+                      className="h-11 pl-10"
+                      autoComplete="username"
+                    />
+                  </div>
+                  {errors.username && (
+                    <p className="text-xs text-danger">{errors.username.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="password"
+                      className="text-xs font-medium text-fg-muted"
+                    >
+                      Password
+                    </label>
+                    {/* ✅ Forgot password trigger */}
+                    <button
+                      type="button"
+                      onClick={() => setMode('forgot')}
+                      className="text-xs font-medium text-brand-600 hover:text-brand-700 cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••••"
+                      {...register('password')}
+                      className="h-11 pl-10 pr-10"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg-muted/90 transition-colors cursor-pointer"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <p className="text-xs text-danger">{errors.password.message}</p>
+                  )}
+                </div>
+
+                {error && (
+                  <p className="text-sm text-danger" role="alert">
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="h-11 w-full bg-brand-600 text-white hover:bg-brand-700"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Signing in...
+                    </span>
+                  ) : (
+                    'Sign In'
+                  )}
+                </Button>
+              </form>
+            </>
+          ) : (
+            <>
+              {/* ✅ Forgot password panel */}
+              <button
+                type="button"
+                onClick={backToLogin}
+                className="mb-4 flex items-center gap-1.5 text-xs font-medium text-fg-muted hover:text-fg cursor-pointer"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to sign in
+              </button>
+
+              <h2 className="text-2xl font-bold tracking-tight text-fg">
+                Reset your password
+              </h2>
+              <p className="mt-1.5 text-sm text-fg-muted">
+                Enter your email and we'll send you a reset link
+              </p>
+
+              {forgotSuccess ? (
+                <div className="mt-8 rounded-card border border-success/30 bg-success/10 p-4 text-sm text-fg">
+                  {forgotSuccess}
+                </div>
               ) : (
-                'Sign In'
+                <form
+                  onSubmit={handleSubmitForgot(onSubmitForgot)}
+                  className="mt-8 space-y-4"
+                >
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="forgot-email"
+                      className="text-xs font-medium text-fg-muted"
+                    >
+                      Email
+                    </label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
+                      <Input
+                        id="forgot-email"
+                        type="text"
+                        placeholder="doctor@vitalflow.com"
+                        {...registerForgot('email')}
+                        className="h-11 pl-10"
+                        autoComplete="email"
+                      />
+                    </div>
+                    {forgotErrors.email && (
+                      <p className="text-xs text-danger">
+                        {forgotErrors.email.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {forgotError && (
+                    <p className="text-sm text-danger" role="alert">
+                      {forgotError}
+                    </p>
+                  )}
+
+                  <Button
+                    type="submit"
+                    className="h-11 w-full bg-brand-600 text-white hover:bg-brand-700"
+                    disabled={forgotSubmitting}
+                  >
+                    {forgotSubmitting ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending...
+                      </span>
+                    ) : (
+                      'Send reset link'
+                    )}
+                  </Button>
+                </form>
               )}
-            </Button>
-          </form>
+            </>
+          )}
 
           <p className="mt-8 flex items-center justify-center gap-1.5 text-xs text-fg-muted lg:hidden">
             <Activity className="h-3.5 w-3.5" />

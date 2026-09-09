@@ -1,7 +1,7 @@
 /**
  * reset-non-clinician-passwords.js
  * 
- * Instantly resets passwords for ALL non-clinician users (except admin@VitalFlo.com)
+ * Instantly resets passwords for ALL non-clinician users (except admin@vitalflow.com)
  * No email sending, no rate limiting - processes all users immediately
  * Only updates users with ut_id_fk != 3 (non-clinicians)
  * 
@@ -22,7 +22,7 @@ const prisma = new PrismaClient();
 // Configuration
 const APPLY = process.argv.includes('--apply');
 const FRESH_START = process.argv.includes('--fresh');
-const ADMIN_EMAIL = 'admin@VitalFlo.com';
+const ADMIN_EMAIL = 'admin@vitalflow.com';
 const CLINICIAN_TYPE_ID = 3;
 
 // File paths

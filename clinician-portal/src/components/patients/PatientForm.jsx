@@ -105,7 +105,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
         l_name: data.l_name,
         email:
           data.email ||
-          `${data.f_name.toLowerCase()}.${data.l_name.toLowerCase()}@VitalFlo.com`,
+          `${data.f_name.toLowerCase()}.${data.l_name.toLowerCase()}@vitalflow.com`,
         phone: data.phone,
         password: data.password || 'TempPass123!',
         dob: data.dob,

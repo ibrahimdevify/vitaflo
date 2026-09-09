@@ -5,6 +5,10 @@ const { generateAccessToken } = require('../utils/token');
 const jwt = require('jsonwebtoken');
 const { generateUserName } = require('../utils/usernameGenerator');
 const roleService = require('../services/roleService');
+const { forgotPassword, confirmReset } = require('./auth/passwordReset');
+// ⚠️ Adjust this path if passwordReset.js lives somewhere else — it needs
+// to resolve to the file with the real forgotPassword/confirmReset logic
+// (the one requiring '../../utils/password' and '../../utils/emailService').
 
 const prisma = new PrismaClient();
 
@@ -12,11 +16,11 @@ const prisma = new PrismaClient();
 const login = async (req, res) => {
   try {
     const { username, password } = req.body;
- 
+
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
- 
+
     // Find user by email or phone
     const user = await prisma.dc_users.findFirst({
       where: {
@@ -30,27 +34,27 @@ const login = async (req, res) => {
         user_status: true,
       },
     });
- 
+
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
- 
+
     // Check password
     const validPassword = await comparePassword(password, user.password);
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
- 
+
     // Check if user is active
     if (user.user_status.name !== 'active') {
       return res.status(403).json({ error: 'Account is not active' });
     }
- 
+
     // Generate tokens
     const jwtToken = generateToken(user);
     const refreshToken = generateRefreshToken(user);
     const accessToken = generateAccessToken();
- 
+
     // Store session
     await prisma.vf_session.create({
       data: {
@@ -59,7 +63,7 @@ const login = async (req, res) => {
         last_action: new Date(),
       },
     });
- 
+
     // Get user type specific data
     let userData = {
       user_id: user.user_id,
@@ -71,7 +75,7 @@ const login = async (req, res) => {
       ut_id_fk: user.ut_id_fk,
       is_guardian: user.is_guardian,
     };
- 
+
     // Get type-specific details
     if (user.ut_id_fk === 3) {
       // Clinician
@@ -86,14 +90,14 @@ const login = async (req, res) => {
       });
       userData.patient_details = patient;
     }
- 
+
     // Module permissions for this user's role — lets the frontend decide which
     // nav items to show and which routes to guard, without a separate round trip.
     // Every module in dc_modules comes back (isView/isWriteable default to false
     // for modules with no dc_module_roles row yet), so the client never has to
     // guess whether "missing" means "denied" or "not loaded".
     const modules = (await roleService.getRolePermissions(user.ut_id_fk)) || [];
- 
+
     res.json({
       message: 'Login successful',
       access_token: accessToken,
@@ -292,113 +296,6 @@ const refresh = async (req, res) => {
   }
 };
 
-// Forgot password
-const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await prisma.dc_users.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Create reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    await prisma.vf_reset_password_token.create({
-      data: {
-        user_id: user.user_id,
-        contact_method: 'email',
-        contact: email,
-        ip_address: req.ip,
-        user_agent: req.headers['user-agent'] || '',
-      },
-    });
-
-    // In production, send email with reset link
-    res.json({
-      message: 'Password reset link sent to your email',
-      reset_token: resetToken, // Remove in production!
-    });
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({ error: 'Failed to process request' });
-  }
-};
-
-// Reset password
-
-const RESET_TOKEN_SECRET = process.env.RESET_TOKEN_SECRET;
-
-const resetPassword = async (req, res) => {
-  try {
-    if (!RESET_TOKEN_SECRET) {
-      throw new Error('RESET_TOKEN_SECRET is not set');
-    }
-
-    const { token, password } = req.body;
-
-    if (!token || !password) {
-      return res.status(400).json({ error: 'Token and new password are required' });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-
-    let payload;
-    try {
-      payload = jwt.verify(token, RESET_TOKEN_SECRET);
-    } catch (err) {
-      // Covers both expired (TokenExpiredError) and tampered/invalid
-      // (JsonWebTokenError) tokens with the same generic message, so we
-      // don't leak which case it was.
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
-    }
-
-    if (payload.purpose !== 'password_reset' || !payload.user_id) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
-    }
-
-    const user = await prisma.dc_users.findUnique({
-      where: { user_id: payload.user_id },
-      select: { user_id: true },
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
-    }
-
-    const hashedPassword = await hashPassword(password);
-
-    await prisma.dc_users.update({
-      where: { user_id: user.user_id },
-      data: { password: hashedPassword },
-    });
-
-    // Mark the most recent unused audit row for this user as used, so it's
-    // visible in vf_reset_password_token that a reset actually completed.
-    // (We don't match by token since we never stored one — the JWT itself
-    // is the source of truth for validity.)
-    const latestRecord = await prisma.vf_reset_password_token.findFirst({
-      where: { user_id: user.user_id, used: false },
-      orderBy: { created: 'desc' },
-    });
-
-    if (latestRecord) {
-      await prisma.vf_reset_password_token.update({
-        where: { id: latestRecord.id },
-        data: { used: true },
-      });
-    }
-
-    res.json({ message: 'Password reset successful' });
-  } catch (error) {
-    console.error('Reset password error:', error);
-    res.status(500).json({ error: 'Password reset failed' });
-  }
-};
-
-
 // Change password
 const changePassword = async (req, res) => {
   try {
@@ -433,7 +330,7 @@ module.exports = {
   me,
   logout,
   refresh,
-  forgotPassword,
-  resetPassword,
+  forgotPassword,             // delegated to controllers/auth/passwordReset.js
+  resetPassword: confirmReset, // delegated — same route name, real implementation
   changePassword,
 };
