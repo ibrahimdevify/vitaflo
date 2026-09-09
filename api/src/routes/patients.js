@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const patientController = require('../controllers/patientController');
+const patientDetailController = require('../controllers/patientDetailsController');
 const patientReportController = require('../controllers/patientReportController');
 const { authenticate, authorize } = require('../middleware/auth');
 
@@ -203,7 +204,7 @@ router.put('/:id/attributes', authorize('technician', 'account_admin', 'clinicia
 router.get('/prescriptions', patientController.getPrescriptionsList);
 router.get('/:id/prescriptions', patientController.getPrescriptions);
 router.post('/:id/prescriptions', patientController.createPrescription);
-router.get('/:id', patientController.getPatientById);
+router.get('/:id', patientDetailController.getPatientById);
 
 
 

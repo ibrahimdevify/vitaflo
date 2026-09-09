@@ -255,7 +255,7 @@ export default function SpirometryTable({
                         onClick={() =>
                           onViewPatient(
                             userId,
-                            s?.patient_name ?? s?.patient_username,
+                            s?.patient_username ?? s?.patient_name,
                           )
                         }
                         title="View trends"

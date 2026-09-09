@@ -1,4 +1,4 @@
-const { renderDocument, chartCanvas, fmtDate, fmt } = require('./layout');
+const { renderDocument, chartCanvas, fmtDate, fmt, rangeLabel } = require('./layout');
 
 function trendLineChart(canvasId, trendPoints, label, color) {
   return `
@@ -64,6 +64,7 @@ function buildAnalysisHtml(data, meta = {}) {
   const bodyHtml = `
     <div class="patient-strip">
       <div><span class="label">Variable</span><span class="value">${data.variable}</span></div>
+      <div><span class="label">Range</span><span class="value">${rangeLabel(data.trend[0]?.date, data.trend[data.trend.length - 1]?.date, meta.isAllTime)}</span></div>
       <div><span class="label">Most Recent</span><span class="value">${fmt(data.mostRecent)}</span></div>
       <div><span class="label">Data Points</span><span class="value">${data.trend.length}</span></div>
     </div>

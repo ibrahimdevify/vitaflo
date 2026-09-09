@@ -182,7 +182,6 @@ const getSpirometryReportPDF = async (req, res) => {
     }, { logoDataUri: getLogoDataUri() });
     browser = await puppeteer.launch({
       headless: 'new',
-      channel: 'chrome',
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     const page = await browser.newPage();

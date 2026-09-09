@@ -1,4 +1,4 @@
-const { renderDocument, chartCanvas, fmtDate } = require('./layout');
+const { renderDocument, chartCanvas, fmtDate, rangeLabel } = require('./layout');
 
 function dailyReadingsChart(canvasId, dailyReadings) {
   return `
@@ -25,7 +25,7 @@ function dailyReadingsChart(canvasId, dailyReadings) {
 function buildBillingHtml(data, meta = {}) {
   if (!data || data.dailyReadings.length === 0) {
     return renderDocument({
-      title: `Billing — ${fmtDate(data ? data.startDate : null)} to ${fmtDate(data ? data.endDate : null)}`,
+      title: `Billing — ${rangeLabel(data?.startDate, data?.endDate, meta.isAllTime)}`,
       meta,
       bodyHtml: '<div class="card"><p class="empty-state">No readings recorded in this date range.</p></div>',
     });
@@ -57,7 +57,7 @@ function buildBillingHtml(data, meta = {}) {
     </div>`;
 
   return renderDocument({
-    title: `Billing — ${fmtDate(data.startDate)} to ${fmtDate(data.endDate)}`,
+    title: `Billing — ${rangeLabel(data.startDate, data.endDate, meta.isAllTime)}`,
     meta,
     bodyHtml,
     chartInitScripts: [dailyReadingsChart('dailyReadingsChart', data.dailyReadings)],

@@ -56,7 +56,7 @@ export default function Login() {
         <div className="flex items-center gap-2.5">
           <Stethoscope className="h-6 w-6 text-brand-300" />
           <span className="text-sm font-semibold tracking-wide text-brand-100">
-            VitalFlo
+            VitalFlow
           </span>
         </div>
 
@@ -108,7 +108,7 @@ export default function Login() {
               <Stethoscope className="h-5 w-5 text-brand-500" />
             </div>
             <span className="text-sm font-semibold text-fg">
-              VitalFlo Admin
+              VitalFlow Admin
             </span>
           </div>
 
@@ -132,7 +132,7 @@ export default function Login() {
                 <Input
                   id="username"
                   type="text"
-                  placeholder="admin@VitalFlo.com"
+                  placeholder="admin@vitalflow.com"
                   {...register('username')}
                   className="h-11 pl-10"
                   autoComplete="username"

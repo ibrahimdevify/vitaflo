@@ -52,7 +52,7 @@ export default function PatientDetail() {
 
   // Params actually used for the currently-loaded tabData — kept in sync so
   // the download button always requests the same slice of data the user is
-  // looking at (same date / date range / session ids).
+  // looking at (same date range / session ids / page).
   const [currentParams, setCurrentParams] = useState({});
   const [downloading, setDownloading] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -112,30 +112,22 @@ export default function PatientDetail() {
     [id]
   );
 
+  /**
+   * Initial params sent when a tab is first opened (or re-opened).
+   *
+   * Only Session Comparison needs client-side gating (it waits for the user
+   * to enter two session ids — there's nothing sensible to load until then).
+   * Every other tab is loaded with no filter at all: the backend returns the
+   * patient's full history, page 1, for spirometry / analysis / reports /
+   * billing / alerts when no startDate/endDate is passed — so the client
+   * must NOT invent a date range or a single `date` param, or it would
+   * silently override that "show everything by default" behavior.
+   */
   const getDefaultParamsForTab = (tab) => {
-    const toISODate = (d) => d.toISOString().split('T')[0];
-    const today = new Date();
-
-    switch (tab) {
-      case 'spirometry':
-        return { date: toISODate(today) };
-
-      case 'analysis':
-      case 'reports':
-      case 'billing': {
-        const startDate = new Date(today);
-        startDate.setDate(startDate.getDate() - 30);
-        return { startDate: toISODate(startDate), endDate: toISODate(today) };
-      }
-
-      case 'session-comparison':
-        return null; // waits for user to pick sessions
-
-      case 'patient-info':
-      case 'alerts':
-      default:
-        return {};
+    if (tab === 'session-comparison') {
+      return null; // waits for user to pick sessions
     }
+    return {};
   };
 
   useEffect(() => {
@@ -176,6 +168,12 @@ export default function PatientDetail() {
   const handleDownloadReport = async () => {
     if (!id) return;
 
+    // NOTE: patientsAPI.getPatientReportPdf calls a PDF export endpoint that
+    // hasn't been built on the backend yet (only the JSON tab endpoints from
+    // patientController.getPatientById exist so far). This will 404/error
+    // until that endpoint is added — left in place since removing the
+    // button wasn't requested, but flagging it so it isn't mistaken for a
+    // working feature.
     try {
       setDownloading(true);
       const res = await patientsAPI.getPatientReportPdf(

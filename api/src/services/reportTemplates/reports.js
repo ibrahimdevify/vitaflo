@@ -1,4 +1,4 @@
-const { renderDocument, resultsTable, chartCanvas, fmtDate } = require('./layout');
+const { renderDocument, resultsTable, chartCanvas, fmtDate, rangeLabel } = require('./layout');
 
 function percentPredictedTrendChart(canvasId, rows) {
   const points = rows
@@ -41,7 +41,7 @@ function percentPredictedTrendChart(canvasId, rows) {
 function buildReportsHtml(data, meta = {}) {
   if (!data || data.rows.length === 0) {
     return renderDocument({
-      title: `Reports — ${fmtDate(data ? data.startDate : null)} to ${fmtDate(data ? data.endDate : null)}`,
+      title: `Reports — ${rangeLabel(data?.startDate, data?.endDate, meta.isAllTime)}`,
       meta,
       bodyHtml: '<div class="card"><p class="empty-state">No observations recorded in this date range.</p></div>',
     });
@@ -67,7 +67,7 @@ function buildReportsHtml(data, meta = {}) {
     ${perDateTables}`;
 
   return renderDocument({
-    title: `Reports — ${fmtDate(data.startDate)} to ${fmtDate(data.endDate)}`,
+    title: `Reports — ${rangeLabel(data.startDate, data.endDate, meta.isAllTime)}`,
     meta,
     bodyHtml,
     chartInitScripts,

@@ -12,10 +12,20 @@ export default function AnalysisTab({ data, onRefetch }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Only reject a *mismatched* pair (one filled, one empty). Both empty is
+  // valid — it means "no filter", which the backend treats as full history.
   const handleGo = () => {
-    if (!startDate || !endDate) return;
-    onRefetch({ startDate, endDate, variable });
+    if ((startDate && !endDate) || (!startDate && endDate)) return;
+    onRefetch({ startDate: startDate || undefined, endDate: endDate || undefined, variable });
   };
+
+  const handleClear = () => {
+    setStartDate('');
+    setEndDate('');
+    onRefetch({ variable });
+  };
+
+  const hasActiveFilter = Boolean(data?.startDate && data?.endDate);
 
   return (
     <div className="space-y-6">
@@ -53,7 +63,19 @@ export default function AnalysisTab({ data, onRefetch }) {
         <Button onClick={handleGo}>
           Go <ArrowRight />
         </Button>
+        {hasActiveFilter && (
+          <Button variant="outline" onClick={handleClear}>
+            Clear
+          </Button>
+        )}
       </div>
+
+      {!hasActiveFilter && (
+        <p className="text-xs text-fg-muted">
+          Showing the patient's full history. Set a date range above to filter.
+        </p>
+      )}
+
       <div className="space-y-6">
         {/* Most Recent */}
         <div className="rounded-(--radius-card) border border-border bg-surface-raised px-5 py-4">
