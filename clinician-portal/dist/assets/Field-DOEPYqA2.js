@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-Dkmf5kXK.js";import{w as t}from"./index-C5-xXKqr.js";var n=e();function r({label:e,error:r,children:i,className:a}){return(0,n.jsxs)(`div`,{className:t(`flex flex-col gap-2`,a),children:[(0,n.jsx)(`label`,{className:`block text-sm font-medium text-fg`,children:e}),i,r&&(0,n.jsx)(`p`,{className:`text-xs text-red-500`,children:r})]})}export{r as t};

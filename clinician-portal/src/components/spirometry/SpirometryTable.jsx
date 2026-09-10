@@ -180,7 +180,7 @@ export default function SpirometryTable({
                         canViewPatient &&
                         onViewPatient(
                           userId,
-                          s?.patient_name ?? s?.patient_username,
+                          s?.patient_username ?? s?.patient_name,
                         )
                       }
                       className={`flex items-center gap-1.5 text-left ${

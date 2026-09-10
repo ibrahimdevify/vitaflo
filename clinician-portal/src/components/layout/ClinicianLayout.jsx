@@ -15,7 +15,7 @@ import PageLoader from '../ui/PageLoader';
 import MobileSidebar from './MobileSidebar';
 import SidebarContent from './SidebarContent';
 
-const menuItems = [
+const baseMenuItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/patients', icon: Users, label: 'My Patients' },
   { path: '/spirometry', icon: Activity, label: 'Spirometry' },
@@ -23,11 +23,16 @@ const menuItems = [
   { path: '/notes', icon: FileText, label: 'Notes' },
   { path: '/alerts', icon: Bell, label: 'Alerts' },
   { path: '/profile', icon: UserRound, label: 'Profile' },
+  { path: '/users', icon: UserRound, label: 'Users', requiredUtId: 6 },
 ];
 
 export default function ClinicianLayout() {
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
   const [open, setOpen] = useState(false);
+
+  const menuItems = baseMenuItems.filter(
+    (item) => !item.requiredUtId || user?.ut_id_fk === item.requiredUtId
+  );
 
   const sidebar = (
     <SidebarContent items={menuItems} onItemClick={() => setOpen(false)} />

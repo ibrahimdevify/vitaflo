@@ -38,6 +38,8 @@ model dc_users {
   assigned_patients     dc_patient_details[]             @relation("AssignedClinician")
   prescriptions_doctor  dc_ehr_prescriptions[]           @relation("DoctorPrescription")
   prescriptions_patient dc_ehr_prescriptions[]           @relation("PatientPrescription")
+  managed_clinicians    dc_clinician_assignments[]       @relation("ClinicianAdminAssignments")
+  clinician_admin_link  dc_clinician_assignments?        @relation("ClinicianAssignments")
   reset_tokens          vf_reset_password_token[]
   observations          portal_observation[]
   heart_rates           portal_heart_rate_observations[]
@@ -48,6 +50,18 @@ model dc_users {
   predicted_values      portal_predicted_value[]
 
   @@map("dc_users")
+}
+
+model dc_clinician_assignments {
+  ca_id              Int      @id @default(autoincrement())
+  clinician_admin_id Int
+  clinician_id       Int      @unique // a clinician belongs to exactly one admin
+  created_date       DateTime @default(now())
+
+  clinician_admin dc_users @relation("ClinicianAdminAssignments", fields: [clinician_admin_id], references: [user_id])
+  clinician       dc_users @relation("ClinicianAssignments", fields: [clinician_id], references: [user_id])
+
+  @@map("dc_clinician_assignments")
 }
 
 model dc_user_type {

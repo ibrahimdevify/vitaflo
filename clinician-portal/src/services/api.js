@@ -26,6 +26,7 @@ export const authAPI = {
 
 export const usersAPI = {
   getAll: (params) => api.get('/users', { params }),
+  getAllClinicians: (params) => api.get('/users/clinicians', { params }),
   getById: (id) => api.get(`/users/${id}`),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
@@ -33,6 +34,7 @@ export const usersAPI = {
   getTypes: () => api.get('/users/types'),
   getStatuses: () => api.get('/users/statuses'),
 };
+
 export const pdfApis = {
   getAll: (params) => api.get('/resources', { params }),
   getResourcePdf: (filename) => api.get(`/resources/${filename}`, { responseType: 'blob' }),
@@ -49,6 +51,11 @@ export const patientsAPI = {
         ...params,
       },
     }),
+      updatePatient: (id, data) =>
+    api.patch(`/patients/${id}`, data),
+
+  deletePatient: (id) =>
+    api.delete(`/patients/${id}`),
   getPatientReportPdf(id, tab, params = {}) {
     return api.get(`/patients/${id}/report`, {
       params: { tab, ...params, download: 1 },
@@ -78,8 +85,10 @@ export const patientsAPI = {
 };
 
 export const cliniciansAPI = {
-  getAll: (params) => api.get('/clinicians', { params }),
+  getAllClinicians: (params) => api.get('/clinicians', { params }),
   getById: (id) => api.get(`/clinicians/${id}`),
+  create: (data) => api.post('/clinicians', data),
+  update: (id, data) => api.put(`/clinicians/${id}`, data),
   getOverview: () => api.get('/clinicians/overview'),
   getPatients: (id) => api.get(`/clinicians/${id}/patients`),
   assignPatient: (id, data) => api.post(`/clinicians/${id}/patients`, data),

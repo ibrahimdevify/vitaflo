@@ -164,7 +164,10 @@ const getAllPatients = async (req, res) => {
       last_spirometry_to,
     } = req.query;
 
-    const where = { ut_id_fk: 4 }; // Only patients
+    const where = {
+  ut_id_fk: 4,
+  us_id_fk: 1,
+};
 
     // Search across multiple fields
     if (search) {

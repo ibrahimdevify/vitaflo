@@ -205,6 +205,8 @@ router.get('/prescriptions', patientController.getPrescriptionsList);
 router.get('/:id/prescriptions', patientController.getPrescriptions);
 router.post('/:id/prescriptions', patientController.createPrescription);
 router.get('/:id', patientDetailController.getPatientById);
+router.patch('/:id', patientDetailController.updatePatient);
+router.delete('/:id', patientDetailController.deletePatient);
 
 
 

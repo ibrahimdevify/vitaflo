@@ -11,6 +11,8 @@ async function main() {
       { name: 'account_admin' },
       { name: 'clinician' },
       { name: 'patient' },
+      { name: 'account_admin' },
+      { name: 'clinician_users' },
     ],
     skipDuplicates: true,
   });

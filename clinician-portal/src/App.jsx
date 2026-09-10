@@ -9,6 +9,7 @@ import ResetPassword from "./pages/ResetPassword";
 
 const Alerts = lazy(() => import("./pages/Alerts"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Users = lazy(() => import('./pages/Users'));
 const AddPatient = lazy(() => import("./pages/AddPatient"));
 const PatientDetail = lazy(() => import("./pages/PatientDetail"));
 const Forbidden = lazy(() => import("./pages/Forbidden"));
@@ -31,6 +32,18 @@ function ProtectedRoute({ children }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  return children;
+}
+
+function RequireRole({ role, children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return children;
+
+  if (user?.ut_id_fk !== role) {
+    return <Navigate to="/forbidden" replace />;
+  }
 
   return children;
 }
@@ -68,7 +81,14 @@ export default function App() {
               <Route path="/notes" element={<Notes />} />
               <Route path="/spirometry" element={<Spirometry />} />
               <Route path="/prescriptions" element={<Prescriptions />} />
-              <Route path="/notes" element={<Notes />} />
+              <Route
+                path="/users"
+                element={
+                  <RequireRole role={6}>
+                    <Users />
+                  </RequireRole>
+                }
+              />
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/patients/add" element={<AddPatient />} />
               <Route path="/profile" element={<Profile />} />
