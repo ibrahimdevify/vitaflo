@@ -1,46 +1,82 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
 const getSystemStats = async (req, res) => {
   try {
     const [
-      totalUsers, totalPatients, totalClinicians, totalPrescriptions,
-      activePatients, unverifiedPatients, usersByType, patientsByStatus,
-      recentRegistrations, prescriptionsThisMonth, recentPrescriptions,
+      totalUsers,
+      totalPatients,
+      totalClinicians,
+      totalPrescriptions,
+      activePatients,
+      unverifiedPatients,
+      usersByType,
+      patientsByStatus,
+      recentRegistrations,
+      prescriptionsThisMonth,
+      recentPrescriptions,
     ] = await Promise.all([
       prisma.dc_users.count(),
       prisma.dc_users.count({ where: { ut_id_fk: 4 } }),
       prisma.dc_users.count({ where: { ut_id_fk: 3 } }),
       prisma.dc_ehr_prescriptions.count({ where: { is_deleted: false } }),
-      prisma.dc_patient_details.count({ where: { status: 'active' } }),
-      prisma.dc_patient_details.count({ where: { status: 'unverified' } }),
-      prisma.dc_users.groupBy({ by: ['ut_id_fk'], _count: { user_id: true } }),
-      prisma.dc_patient_details.groupBy({ by: ['status'], _count: { pd_id: true } }),
+      prisma.dc_patient_details.count({ where: { status: "active" } }),
+      prisma.dc_patient_details.count({ where: { status: "unverified" } }),
+      prisma.dc_users.groupBy({ by: ["ut_id_fk"], _count: { user_id: true } }),
+      prisma.dc_patient_details.groupBy({
+        by: ["status"],
+        _count: { pd_id: true },
+      }),
       prisma.dc_users.findMany({
-        where: { reg_date: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
-        select: { user_id: true, f_name: true, l_name: true, email: true, ut_id_fk: true, reg_date: true, userName: true },
-        orderBy: { reg_date: 'desc' }, take: 10,
+        where: {
+          reg_date: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+        select: {
+          user_id: true,
+          f_name: true,
+          l_name: true,
+          email: true,
+          ut_id_fk: true,
+          reg_date: true,
+          userName: true,
+        },
+        orderBy: { reg_date: "desc" },
+        take: 10,
       }),
       prisma.dc_ehr_prescriptions.count({
         where: {
-          pr_date: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+          pr_date: {
+            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+          },
           is_deleted: false,
         },
       }),
       prisma.dc_ehr_prescriptions.findMany({
         where: { is_deleted: false },
         include: {
-          patient: { select: { user_id: true, f_name: true, l_name: true, userName: true } },
+          patient: {
+            select: {
+              user_id: true,
+              f_name: true,
+              l_name: true,
+              userName: true,
+            },
+          },
           doctor: { select: { user_id: true, f_name: true, l_name: true } },
           medicines: { where: { is_deleted: false } },
         },
-        orderBy: { pr_date: 'desc' },
+        orderBy: { pr_date: "desc" },
         take: 10,
       }),
     ]);
 
-    const userTypeMap = { 1: 'technician', 2: 'account_admin', 3: 'clinician', 4: 'patient' };
+    const userTypeMap = {
+      1: "technician",
+      2: "account_admin",
+      3: "clinician",
+      4: "patient",
+    };
 
     res.json({
       data: {
@@ -51,17 +87,20 @@ const getSystemStats = async (req, res) => {
           total_prescriptions: totalPrescriptions,
           active_patients: activePatients,
           unverified_patients: unverifiedPatients,
-          prescriptions_this_month: prescriptionsThisMonth
+          prescriptions_this_month: prescriptionsThisMonth,
         },
-        users_by_type: usersByType.map(u => ({ type: userTypeMap[u.ut_id_fk] || 'unknown', count: u._count.user_id })),
+        users_by_type: usersByType.map((u) => ({
+          type: userTypeMap[u.ut_id_fk] || "unknown",
+          count: u._count.user_id,
+        })),
         patients_by_status: patientsByStatus,
         recent_registrations: recentRegistrations,
         recent_prescriptions: recentPrescriptions,
       },
     });
   } catch (error) {
-    console.error('Stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    console.error("Stats error:", error);
+    res.status(500).json({ error: "Failed to fetch stats" });
   }
 };
 
@@ -69,26 +108,64 @@ const getClinicianDashboard = async (req, res) => {
   try {
     const clinicianId = req.user.user_id;
 
-    const [myPatients, activeMyPatients, unverifiedMyPatients, recentPrescriptions, myPatientsList] = await Promise.all([
-      prisma.dc_patient_details.count({ where: { assigned_clinician_id: clinicianId } }),
-      prisma.dc_patient_details.count({ where: { assigned_clinician_id: clinicianId, status: 'active' } }),
-      prisma.dc_patient_details.count({ where: { assigned_clinician_id: clinicianId, status: 'unverified' } }),
+    const [
+      myPatients,
+      activeMyPatients,
+      unverifiedMyPatients,
+      recentPrescriptions,
+      myPatientsList,
+    ] = await Promise.all([
+      prisma.dc_patient_details.count({
+        where: { assigned_clinician_id: clinicianId },
+        user: { us_id_fk: 1 },
+       
+      }),
+      prisma.dc_patient_details.count({
+        where: { assigned_clinician_id: clinicianId, status: "active" },
+      }),
+      prisma.dc_patient_details.count({
+        where: { assigned_clinician_id: clinicianId, status: "unverified" },
+      }),
       prisma.dc_ehr_prescriptions.findMany({
         where: { doctor_id_fk: clinicianId, is_deleted: false },
+        patient: { us_id_fk: 1 },
         include: {
-          patient: { select: { user_id: true, f_name: true, l_name: true, userName: true } },
+          patient: {
+            select: {
+              user_id: true,
+              f_name: true,
+              l_name: true,
+              userName: true,
+            },
+          },
           doctor: { select: { f_name: true, l_name: true } },
-          medicines: { where: { is_deleted: false }, take: 2 }
+          medicines: { where: { is_deleted: false }, take: 2 },
         },
-        orderBy: { pr_date: 'desc' }, take: 5,
+        orderBy: { pr_date: "desc" },
+        take: 5,
       }),
       prisma.dc_users.findMany({
-        where: { ut_id_fk: 4, patient_details: { assigned_clinician_id: clinicianId } },
-        select: {
-          user_id: true, f_name: true, l_name: true, email: true, userName: true,
-          patient_details: { select: { chart_no: true, status: true, attributes: { select: { dob: true, gender: true } } } }
+        where: {
+          ut_id_fk: 4,
+          us_id_fk: 1,
+          patient_details: { assigned_clinician_id: clinicianId },
         },
-        orderBy: { reg_date: 'desc' }, take: 10,
+        select: {
+          user_id: true,
+          f_name: true,
+          l_name: true,
+          email: true,
+          userName: true,
+          patient_details: {
+            select: {
+              chart_no: true,
+              status: true,
+              attributes: { select: { dob: true, gender: true } },
+            },
+          },
+        },
+        orderBy: { reg_date: "desc" },
+        take: 10,
       }),
     ]);
 
@@ -97,41 +174,50 @@ const getClinicianDashboard = async (req, res) => {
         counts: {
           total_patients: myPatients,
           active_patients: activeMyPatients,
-          unverified_patients: unverifiedMyPatients
+          unverified_patients: unverifiedMyPatients,
         },
         recent_prescriptions: recentPrescriptions,
-        my_patients: myPatientsList
-      }
+        my_patients: myPatientsList,
+      },
     });
   } catch (error) {
-    console.error('Dashboard error:', error);
-    res.status(500).json({ error: 'Failed to fetch dashboard' });
+    console.error("Dashboard error:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard" });
   }
 };
 
 const getPatientStats = async (req, res) => {
   try {
     const { id } = req.params;
-    const [totalPrescriptions, latestPrescription, attributes] = await Promise.all([
-      prisma.dc_ehr_prescriptions.count({ where: { patient_id_fk: parseInt(id), is_deleted: false } }),
-      prisma.dc_ehr_prescriptions.findFirst({
-        where: { patient_id_fk: parseInt(id), is_deleted: false },
-        include: {
-          doctor: { select: { f_name: true, l_name: true } },
-          medicines: { where: { is_deleted: false } }
-        },
-        orderBy: { pr_date: 'desc' }
-      }),
-      prisma.vf_attributes.findFirst({
-        where: { patient: { user_id_fk: parseInt(id) } },
-        include: { air_monitors: { include: { device: true } } }
-      }),
-    ]);
+    const [totalPrescriptions, latestPrescription, attributes] =
+      await Promise.all([
+        prisma.dc_ehr_prescriptions.count({
+          where: { patient_id_fk: parseInt(id), is_deleted: false },
+        }),
+        prisma.dc_ehr_prescriptions.findFirst({
+          where: { patient_id_fk: parseInt(id), is_deleted: false },
+          include: {
+            doctor: { select: { f_name: true, l_name: true } },
+            medicines: { where: { is_deleted: false } },
+          },
+          orderBy: { pr_date: "desc" },
+        }),
+        prisma.vf_attributes.findFirst({
+          where: { patient: { user_id_fk: parseInt(id) } },
+          include: { air_monitors: { include: { device: true } } },
+        }),
+      ]);
 
-    res.json({ data: { total_prescriptions: totalPrescriptions, latest_prescription: latestPrescription, attributes } });
+    res.json({
+      data: {
+        total_prescriptions: totalPrescriptions,
+        latest_prescription: latestPrescription,
+        attributes,
+      },
+    });
   } catch (error) {
-    console.error('Patient stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch patient stats' });
+    console.error("Patient stats error:", error);
+    res.status(500).json({ error: "Failed to fetch patient stats" });
   }
 };
 
