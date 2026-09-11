@@ -1,1 +1,0 @@
-import{E as e}from"./index-D5X2VSaD.js";var t=e();function n({label:e,error:n,children:r}){return(0,t.jsxs)(`div`,{children:[(0,t.jsx)(`label`,{className:`text-caption font-medium text-fg-muted mb-1.5 block`,children:e}),r,n&&(0,t.jsx)(`p`,{className:`text-caption text-danger mt-1`,children:n})]})}export{n as t};
