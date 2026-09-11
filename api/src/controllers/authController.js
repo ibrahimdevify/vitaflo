@@ -15,7 +15,7 @@ const prisma = new PrismaClient();
 // Login
 const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password,portal } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
@@ -38,9 +38,21 @@ const login = async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    if(user.ut_id_fk !== 3 && user.ut_id_fk !== 6 && user.ut_id_fk !== 2) {
-      return res.status(403).json({ error: 'Access denied for this user type' });
-    }
+    if (portal === 'admin') {
+  // Admin portal: only user type 2
+  if (user.ut_id_fk !== 2) {
+    return res.status(403).json({
+      error: 'Access denied. Admin users only.'
+    });
+  }
+} else {
+  // Clinician portal: only user types 3 and 6
+  if (user.ut_id_fk !== 3 && user.ut_id_fk !== 6) {
+    return res.status(403).json({
+      error: 'Access denied. Clinician users only.'
+    });
+  }
+}
     // Check password
     const validPassword = await comparePassword(password, user.password);
     if (!validPassword) {
