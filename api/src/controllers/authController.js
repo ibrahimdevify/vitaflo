@@ -38,7 +38,7 @@ const login = async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    if(user.ut_id_fk !== 3 && user.ut_id_fk !== 6) {
+    if(user.ut_id_fk !== 3 && user.ut_id_fk !== 6 && user.ut_id_fk !== 2) {
       return res.status(403).json({ error: 'Access denied for this user type' });
     }
     // Check password
