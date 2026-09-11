@@ -38,7 +38,9 @@ const login = async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
+    if(user.ut_id_fk !== 3 && user.ut_id_fk !== 6) {
+      return res.status(403).json({ error: 'Access denied for this user type' });
+    }
     // Check password
     const validPassword = await comparePassword(password, user.password);
     if (!validPassword) {
@@ -77,7 +79,7 @@ const login = async (req, res) => {
     };
 
     // Get type-specific details
-    if (user.ut_id_fk === 3) {
+    if (user.ut_id_fk === 3 || user.ut_id_fk === 6) {
       // Clinician
       const doctor = await prisma.dc_doctor_details.findUnique({
         where: { user_id_fk: user.user_id },
