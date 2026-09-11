@@ -116,19 +116,31 @@ const getClinicianDashboard = async (req, res) => {
       myPatientsList,
     ] = await Promise.all([
       prisma.dc_patient_details.count({
-        where: { assigned_clinician_id: clinicianId },
-        user: { us_id_fk: 1 },
-       
+        where: {
+          assigned_clinician_id: clinicianId,
+          user: { us_id_fk: 1 }, // only active patient accounts
+        },
       }),
       prisma.dc_patient_details.count({
-        where: { assigned_clinician_id: clinicianId, status: "active" },
+        where: {
+          assigned_clinician_id: clinicianId,
+          status: "active",
+          user: { us_id_fk: 1 },
+        },
       }),
       prisma.dc_patient_details.count({
-        where: { assigned_clinician_id: clinicianId, status: "unverified" },
+        where: {
+          assigned_clinician_id: clinicianId,
+          status: "unverified",
+          user: { us_id_fk: 1 },
+        },
       }),
       prisma.dc_ehr_prescriptions.findMany({
-        where: { doctor_id_fk: clinicianId, is_deleted: false },
-        patient: { us_id_fk: 1 },
+        where: {
+          doctor_id_fk: clinicianId,
+          is_deleted: false,
+          patient: { us_id_fk: 1 }, // only prescriptions for active patients
+        },
         include: {
           patient: {
             select: {
@@ -185,6 +197,8 @@ const getClinicianDashboard = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch dashboard" });
   }
 };
+
+
 
 const getPatientStats = async (req, res) => {
   try {

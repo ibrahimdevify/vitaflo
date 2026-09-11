@@ -40,7 +40,7 @@ export default function Login() {
   const onSubmit = async (data) => {
     setError('');
     try {
-      await login(data.username, data.password);
+      await login(data.username, data.password,"admin");
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
