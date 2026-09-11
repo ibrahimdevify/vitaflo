@@ -80,7 +80,7 @@ async function countObservations(userId, startDate, endDate) {
  * includeCurves controls whether flow/volume points are loaded per test —
  * keep it false for lightweight list views (Reports) and true where charts render (Spirometry).
  */
-async function findObservationsPage(userId, { startDate, endDate, skip = 0, take, includeCurves = false }) {
+async function findObservationsPage(userId, { startDate, endDate, skip, take, includeCurves = false }) {
   return prisma.portal_observation.findMany({
     where: { user_id: userId, ...buildOptionalDateFilter('dbdate', startDate, endDate) },
     include: {
@@ -112,13 +112,6 @@ async function findPredictedValues(userId, variables) {
   return prisma.portal_predicted_value.findMany({
     where: { user_id: userId, variable: { in: variables } },
     orderBy: { created: 'desc' },
-  });
-}
-
-async function findSpirometryTrends(userId, startDate, endDate) {
-  return prisma.portal_spirometry_trends.findMany({
-    where: { user_id: userId, ...buildOptionalDateFilter('dbdate', startDate, endDate) },
-    orderBy: { dbdate: 'asc' },
   });
 }
 
@@ -155,7 +148,6 @@ module.exports = {
   findObservationsByIds,
   findObservationsInRange,
   findPredictedValues,
-  findSpirometryTrends,
   findIndoorAirQuality,
   countAlerts,
   findAlertsPage,

@@ -79,6 +79,7 @@ const authorize = (...roles) => {
       account_admin: 2,
       clinician: 3,
       patient: 4,
+      clinician_admin: 6,
     };
 
     const userRole = Object.keys(userTypeMap).find(

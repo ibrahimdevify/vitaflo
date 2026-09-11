@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const clinicianUserController = require('../controllers/clinicianUserController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 router.use(authenticate);
@@ -60,9 +59,7 @@ router.get('/:id', userController.getUserById);
  *       201:
  *         description: User created
  */
-router.get('/clinicians', clinicianUserController.getAllClinicians);
-router.post('/clinicians', clinicianUserController.createClinicianUser);
-router.put('/clinicians/:id', clinicianUserController.updateClinicianUser);
+
 
 router.post('/', authorize('technician', 'account_admin', 'clinician'), userController.createUser);
 

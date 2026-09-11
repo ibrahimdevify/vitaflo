@@ -117,28 +117,7 @@ export default function UserForm({ onSubmit, onCancel, initialData }) {
             </Field>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-            <label className="flex items-center gap-2 text-body text-fg cursor-pointer">
-              <input type="checkbox" {...register('is_guardian')} />
-              Guardian account
-            </label>
-            <label className="flex items-center gap-2 text-body text-fg cursor-pointer">
-              <input type="checkbox" {...register('is_rpm_allow')} />
-              RPM allowed
-            </label>
-            {isEditing && (
-              <>
-                <label className="flex items-center gap-2 text-body text-fg cursor-pointer">
-                  <input type="checkbox" {...register('is_availible')} />
-                  Available
-                </label>
-                <label className="flex items-center gap-2 text-body text-fg cursor-pointer">
-                  <input type="checkbox" {...register('is_profile_completed')} />
-                  Profile completed
-                </label>
-              </>
-            )}
-          </div>
+          
 
           <div className="flex gap-2 pt-2 border-t border-border mt-6">
             <Button type="submit" disabled={isSubmitting} className="gap-1.5">

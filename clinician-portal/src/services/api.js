@@ -85,10 +85,10 @@ export const patientsAPI = {
 };
 
 export const cliniciansAPI = {
-  getAllClinicians: (params) => api.get('/clinicians', { params }),
+  getAllClinicians: (params) => api.get('/clinician-users', { params }),
   getById: (id) => api.get(`/clinicians/${id}`),
-  create: (data) => api.post('/clinicians', data),
-  update: (id, data) => api.put(`/clinicians/${id}`, data),
+  create: (data) => api.post('/clinician-users', data),
+  update: (id, data) => api.put(`/clinician-users/${id}`, data),
   getOverview: () => api.get('/clinicians/overview'),
   getPatients: (id) => api.get(`/clinicians/${id}/patients`),
   assignPatient: (id, data) => api.post(`/clinicians/${id}/patients`, data),

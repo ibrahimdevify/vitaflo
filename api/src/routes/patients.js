@@ -72,7 +72,7 @@ router.get('/clinicians/list', patientController.getClinicians);
  *         description: Patients list
  */
 router.get('/', patientController.getAllPatients);
-router.post('/', authorize('technician', 'account_admin', 'clinician'), patientController.createPatient);
+router.post('/', authorize('technician', 'account_admin', 'clinician','clinician_admin'), patientController.createPatient);
 
 /**
  * @swagger

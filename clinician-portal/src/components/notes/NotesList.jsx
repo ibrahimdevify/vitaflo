@@ -90,7 +90,7 @@ export default function NotesList({
                               if (canSelectPatient) {
                                 onSelectPatient(
                                   note.patient_id,
-                                  note.patient_name || note.patient_username,
+                                  note.patient_username || note.patient_name,
                                 );
                               }
                             }}

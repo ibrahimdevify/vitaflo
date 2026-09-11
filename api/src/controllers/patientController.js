@@ -3,7 +3,7 @@ const { hashPassword } = require("../utils/password");
 const { generateUserName } = require("../utils/usernameGenerator");
 const patientService = require("../services/reportTemplates/patientService");
 const { ValidationError } = patientService;
-
+const { getVisibleClinicianIds } = require("../helpers/visible_clinician");
 const prisma = new PrismaClient();
 
 const ALLOWED_TABS = [
@@ -165,9 +165,9 @@ const getAllPatients = async (req, res) => {
     } = req.query;
 
     const where = {
-  ut_id_fk: 4,
-  us_id_fk: 1,
-};
+      ut_id_fk: 4,
+      us_id_fk: 1,
+    };
 
     // Search across multiple fields
     if (search) {
@@ -183,7 +183,6 @@ const getAllPatients = async (req, res) => {
         { patient_details: { chart_no: { contains: searchTerm } } },
       ];
 
-      // Handle "First Last" style full-name search across two fields
       if (nameParts.length > 1) {
         where.OR.push(
           {
@@ -205,39 +204,35 @@ const getAllPatients = async (req, res) => {
     // Build patient_details where clause
     let patientDetailsWhere = {};
 
-    // Status filter
     if (status) {
       patientDetailsWhere.status = status;
     }
 
-    // Patient group filter
     if (patient_group_id) {
       patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
     }
 
-    // Assigned clinician filter
+    // NOTE: assigned_clinician_id query param is still allowed as an
+    // additional narrowing filter (e.g. admin picking one clinician
+    // on their team from a dropdown), but it no longer does the
+    // security scoping by itself — that's handled below via
+    // getVisibleClinicianIds, combined with an AND.
     if (assigned_clinician_id) {
       patientDetailsWhere.assigned_clinician_id = parseInt(
         assigned_clinician_id,
       );
     }
 
-    // Chart number filter
     if (chart_no) {
       patientDetailsWhere.chart_no = { contains: chart_no };
     }
 
-    // Date of birth filter - Handle string-based DOB
     if (dob_from || dob_to) {
       let dobFilter = {};
 
       if (dob_from) {
-        // Convert date to string format that matches the stored format
-        // Assuming DOB is stored as "YYYY-MM-DD" or similar format
         const fromDate = new Date(dob_from);
-        const fromDateString = fromDate.toISOString().split("T")[0]; // Format: YYYY-MM-DD
-
-        // Use string comparison for DOB
+        const fromDateString = fromDate.toISOString().split("T")[0];
         dobFilter.gte = fromDateString;
       }
 
@@ -254,22 +249,18 @@ const getAllPatients = async (req, res) => {
       }
     }
 
-    // Apply patient details where if exists
     if (Object.keys(patientDetailsWhere).length > 0) {
       where.patient_details = patientDetailsWhere;
     }
 
-    // First name filter
     if (first_name) {
       where.f_name = { contains: first_name };
     }
 
-    // Last name filter
     if (last_name) {
       where.l_name = { contains: last_name };
     }
 
-    // Assigned clinician name filter (through relation)
     if (clinician_name) {
       const clinicianNameParts = clinician_name
         .trim()
@@ -320,7 +311,6 @@ const getAllPatients = async (req, res) => {
       }
     }
 
-    // Spirometry date filters (through observations)
     if (spirometry_date_from || spirometry_date_to) {
       where.observations = {
         some: {
@@ -340,7 +330,6 @@ const getAllPatients = async (req, res) => {
       };
     }
 
-    // Last spirometry date filters (through observations)
     if (last_spirometry_from || last_spirometry_to) {
       where.observations = {
         some: {
@@ -360,7 +349,6 @@ const getAllPatients = async (req, res) => {
       };
     }
 
-    // Last alert filters
     if (last_alert_from || last_alert_to) {
       where.alerts = {
         some: {
@@ -372,12 +360,31 @@ const getAllPatients = async (req, res) => {
       };
     }
 
-    // 🔒 Clinicians only see their assigned patients
-    // Admin (ut_id_fk=2) and Technician (ut_id_fk=1) see all
-    if (req.user.ut_id_fk === 3) {
+    // 🔒 Visibility scoping (replaces the old "clinician-only" check):
+    //   - clinician_admin (ut_id_fk=6): sees patients across every
+    //     clinician they manage
+    //   - clinician (ut_id_fk=3) with an admin: sees patients across
+    //     their whole team (every clinician sharing that same admin)
+    //   - clinician (ut_id_fk=3) with no admin: sees only their own
+    //     assigned patients
+    //   - anyone else (e.g. technician/admin roles not covered above):
+    //     unchanged — no clinician-based restriction applied here
+    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
+      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+      if (visibleClinicianIds.length === 0) {
+        // No team / no self-assignment resolvable — return no results
+        // rather than accidentally falling through to "see everything".
+        return res.json({
+          data: [],
+          pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
+          filters: { available_filters: [] },
+        });
+      }
+
       where.patient_details = {
         ...(where.patient_details || {}),
-        assigned_clinician_id: req.user.user_id,
+        assigned_clinician_id: { in: visibleClinicianIds },
       };
     }
 
@@ -428,7 +435,6 @@ const getAllPatients = async (req, res) => {
               },
             },
           },
-          // New fields for the enhanced view
           alerts: {
             orderBy: { created: "desc" },
             take: 1,
@@ -469,7 +475,6 @@ const getAllPatients = async (req, res) => {
               page: true,
             },
           },
-          // Count total observations
           _count: {
             select: {
               observations: true,
@@ -481,7 +486,6 @@ const getAllPatients = async (req, res) => {
       prisma.dc_users.count({ where }),
     ]);
 
-    // Format patients with all required fields
     const formattedPatients = patients.map((p) => {
       const latestAlert = p.alerts?.[0] || null;
       const latestObservation = p.observations?.[0] || null;
@@ -858,6 +862,8 @@ const getPrescriptions = async (req, res) => {
 // GET /prescriptions
 // Lists prescriptions across ALL clinic patients (ut_id_fk: 4), paginated.
 // Optional filters: search (username/patient id), start_date, end_date, order.
+
+
 const getPrescriptionsList = async (req, res) => {
   try {
     const {
@@ -873,11 +879,32 @@ const getPrescriptionsList = async (req, res) => {
 
     // Base: only prescriptions for actual clinic patients
     const patientFilter = { ut_id_fk: 4 };
-    if (req.user.ut_id_fk === 3) {
+
+    // 🔒 Visibility scoping via shared helper — same rule as
+    // getAllPatients / getSpirometryList: clinicians (ut_id_fk=3) and
+    // clinician_admins (ut_id_fk=6) only see patients assigned
+    // directly to their own user_id.
+    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
+      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+      if (visibleClinicianIds.length === 0) {
+        return res.json({
+          data: [],
+          pagination: {
+            page: Math.max(parseInt(page) || 1, 1),
+            limit: Math.max(parseInt(limit) || 10, 1),
+            total: 0,
+            pages: 0,
+          },
+          order: sortOrder,
+        });
+      }
+
       patientFilter.patient_details = {
-        assigned_clinician_id: req.user.user_id,
+        assigned_clinician_id: { in: visibleClinicianIds },
       };
     }
+
     if (search && search.trim()) {
       const term = search.trim();
       if (/^\d+$/.test(term)) {
@@ -953,6 +980,8 @@ const getPrescriptionsList = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch prescriptions" });
   }
 };
+
+
 
 const createPrescription = async (req, res) => {
   console.log("createPrescription req.body:", req.body);
@@ -1072,13 +1101,11 @@ const createPatient = async (req, res) => {
       where: { email: userEmail },
     });
     if (existingEmail) {
-      return res
-        .status(409)
-        .json({
-          error: "User already exists",
-          message: "A user with this email already exists",
-          field: "email",
-        });
+      return res.status(409).json({
+        error: "User already exists",
+        message: "A user with this email already exists",
+        field: "email",
+      });
     }
 
     // Check for existing user by phone
@@ -1086,13 +1113,11 @@ const createPatient = async (req, res) => {
       where: { phone: userPhone },
     });
     if (existingPhone) {
-      return res
-        .status(409)
-        .json({
-          error: "User already exists",
-          message: "A user with this phone number already exists",
-          field: "phone",
-        });
+      return res.status(409).json({
+        error: "User already exists",
+        message: "A user with this phone number already exists",
+        field: "phone",
+      });
     }
 
     const hashedPassword = await hashPassword(password || "TempPass123!");
@@ -1169,13 +1194,11 @@ const createPatient = async (req, res) => {
       let field = "field";
       if (targets.includes("email")) field = "email";
       else if (targets.includes("phone")) field = "phone";
-      return res
-        .status(409)
-        .json({
-          error: "User already exists",
-          message: `A user with this ${field} already exists`,
-          field,
-        });
+      return res.status(409).json({
+        error: "User already exists",
+        message: `A user with this ${field} already exists`,
+        field,
+      });
     }
     res
       .status(400)

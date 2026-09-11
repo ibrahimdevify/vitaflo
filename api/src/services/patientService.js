@@ -6,12 +6,16 @@ class ValidationError extends Error {}
 // FET is intentionally excluded: no field for it anywhere in the schema.
 const SPIROMETRY_VARIABLES = ['FEV1', 'FVC', 'FEV1/FVC', 'FEF2575', 'FEV6'];
 
-const TREND_VARIABLE_FIELDS = {
+// Analysis tab's trend is computed live from portal_observation/portal_spirometry (via
+// pickBestSpirometryValues below) rather than read from portal_spirometry_trends — that table's
+// units/population were never verified and portal_predicted_value turned out to be a real-but-empty
+// table on this same schema, so preferring the source we've already confirmed and fixed the scaling for.
+const ANALYSIS_VARIABLE_TO_BEST_FIELD = {
   FEV1: 'fev1',
   FVC: 'fvc',
   PEFR: 'pefr',
   FEF2575: 'fef2575',
-  'FEV1/FVC': 'fev1_perc',
+  'FEV1/FVC': 'fev1FvcRatio',
 };
 
 function calculateAge(dobValue) {
@@ -51,14 +55,49 @@ function buildVariableRow(label, observedValue, predictedMap) {
 }
 
 /** ATS convention: best FEV1, best FVC, etc. are each the max across all trials in the session. */
+// portal_spirometry stores fev1/fvc/fev6/pefr/fef2575 scaled by 100 of their true value
+// (confirmed against raw rows: e.g. fev1=299.0000009536743 -> 2.99 L, a normal clinical value;
+// the float noise is itself evidence these were written as an integer x100 through a float column).
+const RAW_SPIROMETRY_SCALE_FACTOR = 100;
+
+function normalizeSpirometryValue(rawValue) {
+  if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) return null;
+  return Math.round((rawValue / RAW_SPIROMETRY_SCALE_FACTOR) * 100) / 100;
+}
+
+/**
+ * Builds the Flow/Volume and Volume/Time chart series for a set of spirometry tests.
+ *
+ * portal_flow.value (flow) and portal_flow.volume are stored x100, same as portal_spirometry
+ * (confirmed: early-curve flow ~139-216 -> 1.39-2.16 L/s rising toward this session's ~6.09 L/s
+ * peak; volume ~5-20 -> 0.05-0.20 L trending toward this session's ~2.99 L FVC).
+ * portal_volume.volume/time are already true liters/seconds — do NOT divide these by 100
+ * (0.05-0.86 L and negative pre-trigger seconds are realistic real values on their own).
+ */
+function buildChartSeries(spirometries) {
+  return {
+    flowVolumeSeries: spirometries.map((s, i) => ({
+      testLabel: `Test ${i + 1}`,
+      points: s.flows.map((f) => ({
+        volume: normalizeSpirometryValue(f.volume) ?? f.volume,
+        flow: normalizeSpirometryValue(f.value) ?? f.value,
+      })),
+    })),
+    volumeTimeSeries: spirometries.map((s, i) => ({
+      testLabel: `Test ${i + 1}`,
+      points: s.volumes.map((v) => ({ time: v.time, volume: v.volume })),
+    })),
+  };
+}
+
 function pickBestSpirometryValues(spirometries) {
   const fields = ['fev1', 'fvc', 'pefr', 'fef2575', 'fev6'];
   const best = {};
 
   for (const field of fields) {
     const values = spirometries
-      .map((s) => s[field])
-      .filter((v) => typeof v === 'number' && !Number.isNaN(v));
+      .map((s) => normalizeSpirometryValue(s[field]))
+      .filter((v) => v !== null);
     best[field] = values.length > 0 ? Math.max(...values) : null;
   }
 
@@ -160,14 +199,7 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
       date: observation.dbdate,
       testsCount: observation.spirometries.length,
       results: buildResultRows(best, predictedMap),
-      flowVolumeSeries: observation.spirometries.map((s, i) => ({
-        testLabel: `Test ${i + 1}`,
-        points: s.flows.map((f) => ({ volume: f.volume, flow: f.value })),
-      })),
-      volumeTimeSeries: observation.spirometries.map((s, i) => ({
-        testLabel: `Test ${i + 1}`,
-        points: s.volumes.map((v) => ({ time: v.time, volume: v.volume })),
-      })),
+      ...buildChartSeries(observation.spirometries),
     };
   });
 
@@ -181,18 +213,21 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
 
 /** No default filter: with no startDate/endDate, returns the patient's entire trend/air-quality history. */
 async function getAnalysisTab(userId, startDate, endDate, variable) {
-  const trendField = TREND_VARIABLE_FIELDS[variable];
-  if (!trendField) {
-    throw new ValidationError(`variable must be one of: ${Object.keys(TREND_VARIABLE_FIELDS).join(', ')}`);
+  const bestField = ANALYSIS_VARIABLE_TO_BEST_FIELD[variable];
+  if (!bestField) {
+    throw new ValidationError(`variable must be one of: ${Object.keys(ANALYSIS_VARIABLE_TO_BEST_FIELD).join(', ')}`);
   }
 
-  const [trends, airQuality] = await Promise.all([
-    patientRepository.findSpirometryTrends(userId, startDate, endDate),
+  const [observations, airQuality] = await Promise.all([
+    patientRepository.findObservationsInRange(userId, startDate, endDate),
     patientRepository.findIndoorAirQuality(userId, startDate, endDate),
   ]);
 
-  const trendPoints = trends
-    .map((t) => ({ date: t.dbdate, value: t[trendField] }))
+  const trendPoints = observations
+    .map((observation) => {
+      const best = pickBestSpirometryValues(observation.spirometries);
+      return { date: observation.dbdate, value: best[bestField] };
+    })
     .filter((point) => point.value !== null && point.value !== undefined);
 
   return {
@@ -233,14 +268,7 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
       date: observation.dbdate,
       isPostBronchodilator: observation.is_post_bronchodilator,
       results: buildResultRows(best, predictedMap),
-      flowVolumeSeries: observation.spirometries.map((s, i) => ({
-        testLabel: `Test ${i + 1}`,
-        points: s.flows.map((f) => ({ volume: f.volume, flow: f.value })),
-      })),
-      volumeTimeSeries: observation.spirometries.map((s, i) => ({
-        testLabel: `Test ${i + 1}`,
-        points: s.volumes.map((v) => ({ time: v.time, volume: v.volume })),
-      })),
+      ...buildChartSeries(observation.spirometries),
     };
   };
 

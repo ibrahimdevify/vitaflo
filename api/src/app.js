@@ -29,6 +29,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // ============ WEB API ROUTES (Existing) ============
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/clinician-users', require('./routes/clinician_users'));
 app.use('/api', require('./routes/extended'));
 app.use('/api/patients', require('./routes/patients'));
 app.use('/api/clinicians', require('./routes/clinicians'));

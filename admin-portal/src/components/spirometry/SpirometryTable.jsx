@@ -91,7 +91,6 @@ export default function SpirometryTable({
         <TableHeader>
           <TableRow>
             <TableHead>Date</TableHead>
-            <TableHead>Patient ID</TableHead>
             <TableHead>FEV1 (L)</TableHead>
             <TableHead>FVC (L)</TableHead>
             <TableHead>PEFR</TableHead>
@@ -142,15 +141,7 @@ export default function SpirometryTable({
                 </TableCell>
 
                 {/* Patient ID */}
-                <TableCell>
-                  <div className="flex items-center gap-1.5">
-                    <UserRound className="h-3 w-3 text-fg-muted" />
-
-                    <span className="text-body font-mono text-fg">
-                      {userId ?? 'N/A'}
-                    </span>
-                  </div>
-                </TableCell>
+              
 
                 {/* FEV1 */}
                 <TableCell className="font-medium text-fg tabular-nums">

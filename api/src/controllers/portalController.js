@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { getVisibleClinicianIds } = require("../helpers/visible_clinician");
 
 // Helper: resolve user ID from string (id, email, phone)
 const resolveUserId = async (identifier) => {
@@ -144,6 +145,7 @@ const getSpirometryByUser = async (req, res) => {
 // GET /spirometry
 // Lists spirometry records across ALL clinic patients (ut_id_fk: 4), paginated.
 // Optional filters: search (username/email/phone/patient_id), start, end, order.
+
 const getSpirometryList = async (req, res) => {
   try {
     const {
@@ -159,9 +161,26 @@ const getSpirometryList = async (req, res) => {
 
     // Base: only records belonging to actual clinic patients (ut_id_fk: 4)
     const observationUserFilter = { ut_id_fk: 4 };
-    if (req.user.ut_id_fk === 3) {
+
+    // 🔒 Visibility scoping via shared helper — same rule as getAllPatients:
+    // clinicians (ut_id_fk=3) and clinician_admins (ut_id_fk=6) only see
+    // patients assigned directly to their own user_id.
+    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
+      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+      if (visibleClinicianIds.length === 0) {
+        return res.json({
+          data: [],
+          total: 0,
+          page: Math.max(parseInt(page) || 1, 1),
+          limit: Math.max(parseInt(limit) || 10, 1),
+          pages: 0,
+          order: sortOrder,
+        });
+      }
+
       observationUserFilter.patient_details = {
-        assigned_clinician_id: req.user.user_id,
+        assigned_clinician_id: { in: visibleClinicianIds },
       };
     }
 
@@ -252,7 +271,6 @@ const getSpirometryList = async (req, res) => {
       observation_id: s.observation_id,
       flow_count: s.flows?.length || 0,
       volume_count: s.volumes?.length || 0,
-      // patient info per row, since this list spans multiple patients
       patient_id: s.observation?.user?.user_id || null,
       patient_name: s.observation?.user
         ? `${s.observation.user.f_name} ${s.observation.user.l_name}`.trim()
@@ -273,6 +291,8 @@ const getSpirometryList = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
 
 
 const getSpirometryLatest = async (req, res) => {
@@ -502,6 +522,8 @@ const getNotes = async (req, res) => {
 // GET /notes
 // Lists notes across ALL clinic patients (ut_id_fk: 4), paginated.
 // Optional filters: search (username/email/patient id), start_date, end_date, order, page_filter.
+
+
 const getNotesList = async (req, res) => {
   try {
     const {
@@ -518,9 +540,29 @@ const getNotesList = async (req, res) => {
 
     // Base: only notes belonging to actual clinic patients
     const patientFilter = { ut_id_fk: 4 };
-    if (req.user.ut_id_fk === 3) {
+
+    // 🔒 Visibility scoping via shared helper — same rule as
+    // getAllPatients / getSpirometryList / getPrescriptionsList:
+    // clinicians (ut_id_fk=3) and clinician_admins (ut_id_fk=6) only
+    // see patients assigned directly to their own user_id.
+    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
+      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+      if (visibleClinicianIds.length === 0) {
+        return res.json({
+          data: [],
+          pagination: {
+            page: Math.max(parseInt(page) || 1, 1),
+            limit: Math.max(parseInt(limit) || 10, 1),
+            total: 0,
+            pages: 0,
+          },
+          order: sortOrder,
+        });
+      }
+
       patientFilter.patient_details = {
-        assigned_clinician_id: req.user.user_id,
+        assigned_clinician_id: { in: visibleClinicianIds },
       };
     }
 
@@ -598,6 +640,8 @@ const getNotesList = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch notes' });
   }
 };
+
+
 
 
 const createNote = async (req, res) => {
@@ -812,17 +856,40 @@ const createAlert = async (req, res) => {
 };
 
 // Get alerts with pagination
+
+
 const getAlerts = async (req, res) => {
   try {
     const { page = 1, limit = 10, search, is_read, start_date, end_date } = req.query;
-    
+
     const where = {};
-     if (req.user.ut_id_fk === 3) {
+
+    // 🔒 Visibility scoping via shared helper — same rule as
+    // getAllPatients / getSpirometryList / getPrescriptionsList / getNotesList:
+    // clinicians (ut_id_fk=3) and clinician_admins (ut_id_fk=6) only
+    // see alerts for patients assigned directly to their own user_id.
+    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
+      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+      if (visibleClinicianIds.length === 0) {
+        return res.json({
+          data: [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: 0,
+            pages: 0,
+          },
+        });
+      }
+
       where.user = {
-        patient_details: { assigned_clinician_id: req.user.user_id },
+        patient_details: {
+          assigned_clinician_id: { in: visibleClinicianIds },
+        },
       };
     }
-    
+
     if (search) {
       where.OR = [
         { message: { contains: search } },
@@ -831,17 +898,17 @@ const getAlerts = async (req, res) => {
         { user: { userName: { contains: search } } },
       ];
     }
-    
+
     if (is_read !== undefined && is_read !== "") {
       where.is_read = is_read === "true";
     }
-    
+
     if (start_date || end_date) {
       where.created = {};
       if (start_date) where.created.gte = new Date(start_date);
       if (end_date) where.created.lte = new Date(end_date + "T23:59:59Z");
     }
-    
+
     const [alerts, total] = await Promise.all([
       prisma.portal_alert.findMany({
         where,
@@ -862,7 +929,7 @@ const getAlerts = async (req, res) => {
       }),
       prisma.portal_alert.count({ where }),
     ]);
-    
+
     res.json({
       data: alerts,
       pagination: {
@@ -877,6 +944,8 @@ const getAlerts = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch alerts" });
   }
 };
+
+
 
 // Mark single alert as read
 const markAlertAsRead = async (req, res) => {
