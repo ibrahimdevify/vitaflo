@@ -54,33 +54,61 @@ function buildVariableRow(label, observedValue, predictedMap) {
   };
 }
 
-/** ATS convention: best FEV1, best FVC, etc. are each the max across all trials in the session. */
-// portal_spirometry stores fev1/fvc/fev6/pefr/fef2575 scaled by 100 of their true value
-// (confirmed against raw rows: e.g. fev1=299.0000009536743 -> 2.99 L, a normal clinical value;
-// the float noise is itself evidence these were written as an integer x100 through a float column).
+/**
+ * portal_spirometry's fev1/fvc/fev6/pefr/fef2575 are NOT consistently scaled across all rows.
+ * Confirmed by direct comparison of two real patients' raw data:
+ *   - Melody Trinh, 2026-05-27: fev1=299.0000009536743 -> genuinely x100 (true value 2.99 L)
+ *   - vickiestrickland95, 2026-09-08: fev1=1.06 -> already a correct, real value, NOT scaled
+ * Both rows live in the exact same columns with no schema field distinguishing which is which,
+ * so a single "always divide by 100" rule is wrong for roughly half of what we've seen so far.
+ *
+ * Fix: a physiologically-grounded per-value threshold. These are single already-aggregated
+ * summary numbers per test (not raw curve samples), so there's no risk of a "continuum" —
+ * either a session's peak/total is above what's ever plausible for a real human (-> x100,
+ * divide it), or it's within plausible range already (-> leave it alone).
+ *
+ * THIS IS A HEURISTIC, NOT A CONFIRMED RULE. The thresholds below are generous upper bounds on
+ * real adult spirometry values, not derived from this data source. Please have someone clinical
+ * sanity-check them (or better: find an actual discriminator in the old app / import pipeline)
+ * before leaning on this for real clinical decisions.
+ */
 const RAW_SPIROMETRY_SCALE_FACTOR = 100;
+const VOLUME_FIELD_SCALE_THRESHOLD = 12; // liters — FEV1/FVC/FEV6 essentially never exceed this in a real adult
+const FLOW_FIELD_SCALE_THRESHOLD = 25; // L/s — PEFR/FEF25-75 essentially never exceed this
 
-function normalizeSpirometryValue(rawValue) {
+const SPIROMETRY_FIELD_THRESHOLDS = {
+  fev1: VOLUME_FIELD_SCALE_THRESHOLD,
+  fvc: VOLUME_FIELD_SCALE_THRESHOLD,
+  fev6: VOLUME_FIELD_SCALE_THRESHOLD,
+  pefr: FLOW_FIELD_SCALE_THRESHOLD,
+  fef2575: FLOW_FIELD_SCALE_THRESHOLD,
+};
+
+function normalizeSpirometryValue(rawValue, threshold) {
   if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) return null;
-  return Math.round((rawValue / RAW_SPIROMETRY_SCALE_FACTOR) * 100) / 100;
+  const scaled = rawValue > threshold ? rawValue / RAW_SPIROMETRY_SCALE_FACTOR : rawValue;
+  return Math.round(scaled * 100) / 100;
 }
 
 /**
- * Builds the Flow/Volume and Volume/Time chart series for a set of spirometry tests.
+ * Flow/Volume and Volume/Time chart series.
  *
- * portal_flow.value (flow) and portal_flow.volume are stored x100, same as portal_spirometry
- * (confirmed: early-curve flow ~139-216 -> 1.39-2.16 L/s rising toward this session's ~6.09 L/s
- * peak; volume ~5-20 -> 0.05-0.20 L trending toward this session's ~2.99 L FVC).
- * portal_volume.volume/time are already true liters/seconds — do NOT divide these by 100
- * (0.05-0.86 L and negative pre-trigger seconds are realistic real values on their own).
+ * IMPORTANT: unlike the summary fields above, portal_flow's points are a continuous curve
+ * (many samples per test, rising from ~0 to a peak) — a per-point magnitude threshold would
+ * scale only the high-magnitude points near the peak and leave low-magnitude early-curve points
+ * alone, producing a broken, partially-scaled curve within a single test. That per-test scaling
+ * decision has NOT been verified for this data source yet, so this still applies the old blanket
+ * /100 rule pending a raw portal_flow check against a confirmed-unscaled session (same way we
+ * caught the portal_spirometry issue) — do not treat this half of the chart as trustworthy yet.
+ * portal_volume.volume/time are left alone — separately confirmed already correct.
  */
 function buildChartSeries(spirometries) {
   return {
     flowVolumeSeries: spirometries.map((s, i) => ({
       testLabel: `Test ${i + 1}`,
       points: s.flows.map((f) => ({
-        volume: normalizeSpirometryValue(f.volume) ?? f.volume,
-        flow: normalizeSpirometryValue(f.value) ?? f.value,
+        volume: normalizeSpirometryValue(f.volume, VOLUME_FIELD_SCALE_THRESHOLD) ?? f.volume,
+        flow: normalizeSpirometryValue(f.value, FLOW_FIELD_SCALE_THRESHOLD) ?? f.value,
       })),
     })),
     volumeTimeSeries: spirometries.map((s, i) => ({
@@ -96,7 +124,7 @@ function pickBestSpirometryValues(spirometries) {
 
   for (const field of fields) {
     const values = spirometries
-      .map((s) => normalizeSpirometryValue(s[field]))
+      .map((s) => normalizeSpirometryValue(s[field], SPIROMETRY_FIELD_THRESHOLDS[field]))
       .filter((v) => v !== null);
     best[field] = values.length > 0 ? Math.max(...values) : null;
   }
