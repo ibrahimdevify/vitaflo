@@ -418,4 +418,6 @@ module.exports = {
   ensurePatientExists,
   getPatientsList,
   getPatientTabData,
+  normalizeSpirometryValue,
+  SPIROMETRY_FIELD_THRESHOLDS,
 };

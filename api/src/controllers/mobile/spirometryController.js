@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const { normalizeSpirometryValue, SPIROMETRY_FIELD_THRESHOLDS } = require('../../services/patientService');
 
 // Build answer choices helper
 const buildChoices = (opts) =>
@@ -242,44 +243,104 @@ const syncSpirometryPlus = async (req, res) => {
   }
 };
 
+// const getSpirometryByUser = async (req, res) => {
+//   try {
+//     const { user_id } = req.params;
+//     const { start, end } = req.query;
+//     const where = { user_id: parseInt(user_id) };
+//     if (start || end) {
+//       where.dbdate = {};
+//       if (start) where.dbdate.gte = new Date(start);
+//       if (end) where.dbdate.lte = new Date(end);
+//     }
+//     const patient = await prisma.dc_users.findUnique({
+//       where: { user_id: parseInt(patient_id) },
+//       include: { patient_details: { include: { attributes: true } } },
+//     });
+//     const attr = patient?.patient_details?.attributes;
+
+//     const observations = await prisma.portal_observation.findMany({
+//       where,
+//       include: { spirometries: true },
+//       orderBy: { dbdate: "desc" },
+//     });
+//     res.json(
+//       observations.flatMap((obs) =>
+//         obs.spirometries.map((sp) => ({
+//           dbdate: obs.dbdate,
+//           fev1: sp.fev1,
+//           fvc: sp.fvc,
+//           pefr: sp.pefr,
+//           fev1_fvc_ratio: sp.fev1 && sp.fvc ? (sp.fev1 / sp.fvc) * 100 : null,
+//           fef2575: sp.fef2575,
+//           fev1_perc: sp.fev1_perc,
+//         })),
+//       ),
+//     );
+//   } catch (error) {
+//     res.status(500).json({ error: "Failed to fetch spirometry" });
+//   }
+// };
+
+ 
 const getSpirometryByUser = async (req, res) => {
   try {
     const { user_id } = req.params;
+    const parsedUserId = parseInt(user_id, 10);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'user_id must be a positive integer' });
+    }
+ 
+    // Date filter — unchanged from the original: gte/lte applied only for whichever of
+    // start/end was actually provided.
     const { start, end } = req.query;
-    const where = { user_id: parseInt(user_id) };
+    const where = { user_id: parsedUserId };
     if (start || end) {
       where.dbdate = {};
       if (start) where.dbdate.gte = new Date(start);
       if (end) where.dbdate.lte = new Date(end);
     }
-    const patient = await prisma.dc_users.findUnique({
-      where: { user_id: parseInt(patient_id) },
-      include: { patient_details: { include: { attributes: true } } },
-    });
-    const attr = patient?.patient_details?.attributes;
-
+ 
     const observations = await prisma.portal_observation.findMany({
       where,
       include: { spirometries: true },
-      orderBy: { dbdate: "desc" },
+      orderBy: { dbdate: 'desc' },
     });
-    res.json(
-      observations.flatMap((obs) =>
-        obs.spirometries.map((sp) => ({
+ 
+    // Response shape — unchanged from the original: one flat row per individual test
+    // (not "best of session"), same keys, same field names.
+    const rows = observations.flatMap((obs) =>
+      obs.spirometries.map((sp) => {
+        // Values are corrected here the same way the Spirometry tab corrects them: some
+        // sessions in this table are stored x100, some aren't, with no column saying which
+        // (see patientService.js normalizeSpirometryValue for the full explanation/caveats).
+        const fev1 = normalizeSpirometryValue(sp.fev1, SPIROMETRY_FIELD_THRESHOLDS.fev1);
+        const fvc = normalizeSpirometryValue(sp.fvc, SPIROMETRY_FIELD_THRESHOLDS.fvc);
+        const pefr = normalizeSpirometryValue(sp.pefr, SPIROMETRY_FIELD_THRESHOLDS.pefr);
+        const fef2575 = normalizeSpirometryValue(sp.fef2575, SPIROMETRY_FIELD_THRESHOLDS.fef2575);
+ 
+        return {
           dbdate: obs.dbdate,
-          fev1: sp.fev1,
-          fvc: sp.fvc,
-          pefr: sp.pefr,
-          fev1_fvc_ratio: sp.fev1 && sp.fvc ? (sp.fev1 / sp.fvc) * 100 : null,
-          fef2575: sp.fef2575,
+          fev1,
+          fvc,
+          pefr,
+          fev1_fvc_ratio:
+            fev1 !== null && fvc !== null && fvc !== 0
+              ? Number(((fev1 / fvc) * 100).toFixed(2))
+              : null,
+          fef2575,
           fev1_perc: sp.fev1_perc,
-        })),
-      ),
+        };
+      })
     );
+ 
+    res.json(rows);
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch spirometry" });
+    console.error('Get spirometry by user error:', error);
+    res.status(500).json({ error: 'Failed to fetch spirometry' });
   }
 };
+
 
 const getPredictedValues = async (req, res) => {
   try {
