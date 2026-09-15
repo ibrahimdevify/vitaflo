@@ -3,21 +3,19 @@ const patientRepository = require('../repositories/patientRepository');
 class ValidationError extends Error {}
 
 // Display labels used throughout this service/response, mapped to the ACTUAL
-// variable strings the migration wrote into portal_predicted_value.
-// FIX: this previously queried for ['FEV1','FVC','FEV1/FVC','FEF2575','FEV6']
-// directly, but 08_predicted_values.js (the migration step that populates this
-// table) writes lowercase, no-slash names — 'fev1','fvc','fev1fvc','fef2575' —
-// and never writes 'fev6' at all (the source system has no GLI columns for
-// it). The mismatch meant findPredictedValues always returned zero rows,
-// silently nulling out predicted/lln/zScore/percentPredicted everywhere,
-// even once real migrated data exists in that table.
+// variable strings stored in portal_predicted_value. Confirmed directly
+// against real production rows: 'FEV1', 'FVC', 'FEV1/FVC', 'FEF25-75'
+// (uppercase, with a slash and a hyphen respectively — NOT lowercase/
+// concatenated). The migration's 08_predicted_values.js now writes this
+// exact format too, so no translation layer is needed beyond FEF2575's
+// display label differing slightly from its stored name (hyphen vs none).
 const VARIABLE_LABEL_TO_STORED = {
-  FEV1: 'fev1',
-  FVC: 'fvc',
-  'FEV1/FVC': 'fev1fvc',
-  FEF2575: 'fef2575',
-  // FEV6 intentionally omitted — no stored predicted data exists for it,
-  // same as before; buildVariableRow's fallback still returns nulls for it.
+  FEV1: 'FEV1',
+  FVC: 'FVC',
+  'FEV1/FVC': 'FEV1/FVC',
+  FEF2575: 'FEF25-75',
+  // FEV6 intentionally omitted — no stored predicted data exists for it;
+  // buildVariableRow's fallback still returns nulls for it.
 };
 
 // The actual DB-side variable strings to query for.
@@ -414,4 +412,4 @@ module.exports = {
   ensurePatientExists,
   getPatientsList,
   getPatientTabData,
-};
+}; 
