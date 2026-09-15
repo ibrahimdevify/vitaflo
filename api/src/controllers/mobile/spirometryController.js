@@ -149,10 +149,19 @@ const syncSpirometryPlus = async (req, res) => {
               height: attributes.height || undefined,
               weight: attributes.weight || undefined,
             },
+            // FIX: vf_attributes.dob is a required (non-nullable) column with
+            // no default. The original create block omitted it entirely,
+            // which throws a Prisma "missing required field" error the
+            // first time a patient's attributes row doesn't exist yet
+            // (i.e. any patient who hasn't already got a vf_attributes row
+            // from the migration or elsewhere). Defaulting to "" keeps this
+            // endpoint from crashing; the app should prompt the patient to
+            // fill in a real DOB later if this placeholder is still present.
             create: {
               pd_id: patient.pd_id,
               first_name: "",
               last_name: "",
+              dob: attributes.dob || "",
               height: attributes.height,
               weight: attributes.weight,
             },
@@ -252,8 +261,12 @@ const getSpirometryByUser = async (req, res) => {
       if (start) where.dbdate.gte = new Date(start);
       if (end) where.dbdate.lte = new Date(end);
     }
+    // FIX: this previously referenced `patient_id`, which is never defined
+    // in this function's scope (only `user_id` is destructured from
+    // req.params) — every call to this endpoint threw a ReferenceError
+    // before it ever reached the actual query below.
     const patient = await prisma.dc_users.findUnique({
-      where: { user_id: parseInt(patient_id) },
+      where: { user_id: parseInt(user_id) },
       include: { patient_details: { include: { attributes: true } } },
     });
     const attr = patient?.patient_details?.attributes;
@@ -263,6 +276,7 @@ const getSpirometryByUser = async (req, res) => {
       include: { spirometries: true },
       orderBy: { dbdate: "desc" },
     });
+    // Response shape unchanged: same fields as before.
     res.json(
       observations.flatMap((obs) =>
         obs.spirometries.map((sp) => ({
@@ -281,6 +295,23 @@ const getSpirometryByUser = async (req, res) => {
   }
 };
 
+// FIX: this previously returned entirely hardcoded, gender-based guesses and
+// never touched the database. The migration populated real GLI predicted
+// values (portal_predicted_value) for every historical spirometry test, so
+// this now reads the patient's actual most recent predicted values for
+// fev1 / fvc / fev1fvc / fef2575 from that table, and only falls back to
+// the old hardcoded estimate for a variable if no real row exists yet
+// (e.g. a brand-new patient with no spirometry history). The JSON response
+// shape/keys are UNCHANGED from the original — including the duplicated
+// `fev1Fvc` / `fev1fvc` keys, since some existing client code may rely on
+// either casing.
+//
+// NOTE: `pefr` and `fev6` are NOT covered by portal_predicted_value (the
+// source system's GLI export only ever computed fev1, fvc, fev1fvc, and
+// fef2575 — see 08_predicted_values.js from the migration). Those two
+// still use the original hardcoded gender-based estimate, since there is
+// no real predicted data to fall back on. Flagging this so it doesn't get
+// mistaken for a real predicted value later.
 const getPredictedValues = async (req, res) => {
   try {
     const userId = parseInt(req.params.user_id);
@@ -298,22 +329,47 @@ const getPredictedValues = async (req, res) => {
     const pefrPred = gender === "M" ? 550.0 : 420.0;
     const fef2575Pred = gender === "M" ? 4.5 : 3.5;
 
+    // Pull real predicted values for this patient, most recent per variable.
+    const predictedRows = await prisma.portal_predicted_value.findMany({
+      where: {
+        user_id: userId,
+        variable: { in: ["fev1", "fvc", "fev1fvc", "fef2575"] },
+      },
+      orderBy: { created: "desc" },
+    });
+    const latestByVariable = {};
+    for (const row of predictedRows) {
+      if (!latestByVariable[row.variable]) latestByVariable[row.variable] = row;
+    }
+
+    const toResponseShape = (row, fallbackNormal, lowFactor, highFactor) => {
+      if (row) {
+        return {
+          normal: row.predicted != null ? parseFloat(row.predicted.toFixed(2)) : null,
+          lowerLimitOfNormal: row.lln != null ? parseFloat(row.lln.toFixed(2)) : null,
+          upperLimitOfNormal: row.uln != null ? parseFloat(row.uln.toFixed(2)) : null,
+          percentPredicted:
+            row.percent_predicted != null ? parseFloat(row.percent_predicted.toFixed(1)) : 100.0,
+          zScore: row.z_score != null ? parseFloat(row.z_score.toFixed(2)) : 0.0,
+        };
+      }
+      // Fallback to the original hardcoded estimate when no real data exists yet.
+      return {
+        normal: parseFloat(fallbackNormal.toFixed(1)),
+        lowerLimitOfNormal: parseFloat((fallbackNormal * lowFactor).toFixed(2)),
+        upperLimitOfNormal: parseFloat((fallbackNormal * highFactor).toFixed(2)),
+        percentPredicted: 100.0,
+        zScore: 0.0,
+      };
+    };
+
+    const fev1fvcShape = toResponseShape(latestByVariable.fev1fvc, 0.83, 0.84, 1.14);
+
     // Force all values as proper floats for Dart strict typing
     res.json({
-      fev1: {
-        normal: parseFloat(fev1Pred.toFixed(1)),
-        lowerLimitOfNormal: parseFloat((fev1Pred * 0.8).toFixed(2)),
-        upperLimitOfNormal: parseFloat((fev1Pred * 1.2).toFixed(2)),
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
-      fvc: {
-        normal: parseFloat(fvcPred.toFixed(1)),
-        lowerLimitOfNormal: parseFloat((fvcPred * 0.8).toFixed(2)),
-        upperLimitOfNormal: parseFloat((fvcPred * 1.2).toFixed(2)),
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
+      fev1: toResponseShape(latestByVariable.fev1, fev1Pred, 0.8, 1.2),
+      fvc: toResponseShape(latestByVariable.fvc, fvcPred, 0.8, 1.2),
+      // No source data for pefr — unchanged hardcoded estimate.
       pefr: {
         normal: parseFloat(pefrPred.toFixed(1)),
         lowerLimitOfNormal: parseFloat((pefrPred * 0.8).toFixed(1)),
@@ -321,6 +377,7 @@ const getPredictedValues = async (req, res) => {
         percentPredicted: 100.0,
         zScore: 0.0,
       },
+      // No source data for fev6 — unchanged hardcoded estimate.
       fev6: {
         normal: parseFloat((fvcPred * 0.95).toFixed(1)),
         lowerLimitOfNormal: parseFloat((fvcPred * 0.76).toFixed(2)),
@@ -328,27 +385,9 @@ const getPredictedValues = async (req, res) => {
         percentPredicted: 100.0,
         zScore: 0.0,
       },
-      fev1Fvc: {
-        normal: 0.83,
-        lowerLimitOfNormal: 0.7,
-        upperLimitOfNormal: 0.95,
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
-      fev1fvc: {
-        normal: 0.83,
-        lowerLimitOfNormal: 0.7,
-        upperLimitOfNormal: 0.95,
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
-      fef2575: {
-        normal: parseFloat(fef2575Pred.toFixed(1)),
-        lowerLimitOfNormal: parseFloat((fef2575Pred * 0.6).toFixed(2)),
-        upperLimitOfNormal: parseFloat((fef2575Pred * 1.4).toFixed(2)),
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
+      fev1Fvc: fev1fvcShape,
+      fev1fvc: fev1fvcShape,
+      fef2575: toResponseShape(latestByVariable.fef2575, fef2575Pred, 0.6, 1.4),
     });
   } catch (error) {
     console.error("Get predicted error:", error);
@@ -682,6 +721,12 @@ const getResults = async (req, res) => {
         if (sp.flows && sp.flows.length > 0) {
           hasFlows = true;
           const totalFlows = sp.flows.length;
+          // NOTE: portal_spirometry has no `fet` column in the merged
+          // schema, so `sp.fet` below is always undefined and this always
+          // falls back to 2.0. Left as-is (response shape unchanged) but
+          // flagging so it isn't mistaken for real per-test data. If forced
+          // expiratory time needs to be tracked going forward, it would
+          // need a new column added to portal_spirometry.
           const fetS = sp.fet || 2.0;
           sp.flows.forEach((f, i) => {
             // Recalculate time if stored as 0 (backward compat)
@@ -689,6 +734,10 @@ const getResults = async (req, res) => {
               f.time > 0
                 ? parseFloat(f.time)
                 : parseFloat(((i / totalFlows) * fetS).toFixed(4));
+            // NOTE: portal_flow's column is `value`, not `flow` — `f.flow`
+            // is always undefined here and the `|| 0` fallback silently
+            // applies. Left unchanged since it doesn't error, but real flow
+            // values only come through via `f.value`.
             const flowVal = parseFloat(f.value || f.flow || 0);
             const volVal = parseFloat(f.volume || 0);
             const point = { time: timeVal, flow: flowVal, volume: volVal };
