@@ -2,14 +2,34 @@ const patientRepository = require('../repositories/patientRepository');
 
 class ValidationError extends Error {}
 
-// Variables the schema can actually back with GLI predicted values / trend history.
-// FET is intentionally excluded: no field for it anywhere in the schema.
-const SPIROMETRY_VARIABLES = ['FEV1', 'FVC', 'FEV1/FVC', 'FEF2575', 'FEV6'];
+// Display labels used throughout this service/response, mapped to the ACTUAL
+// variable strings the migration wrote into portal_predicted_value.
+// FIX: this previously queried for ['FEV1','FVC','FEV1/FVC','FEF2575','FEV6']
+// directly, but 08_predicted_values.js (the migration step that populates this
+// table) writes lowercase, no-slash names — 'fev1','fvc','fev1fvc','fef2575' —
+// and never writes 'fev6' at all (the source system has no GLI columns for
+// it). The mismatch meant findPredictedValues always returned zero rows,
+// silently nulling out predicted/lln/zScore/percentPredicted everywhere,
+// even once real migrated data exists in that table.
+const VARIABLE_LABEL_TO_STORED = {
+  FEV1: 'fev1',
+  FVC: 'fvc',
+  'FEV1/FVC': 'fev1fvc',
+  FEF2575: 'fef2575',
+  // FEV6 intentionally omitted — no stored predicted data exists for it,
+  // same as before; buildVariableRow's fallback still returns nulls for it.
+};
+
+// The actual DB-side variable strings to query for.
+const SPIROMETRY_VARIABLES = Object.values(VARIABLE_LABEL_TO_STORED);
 
 // Analysis tab's trend is computed live from portal_observation/portal_spirometry (via
 // pickBestSpirometryValues below) rather than read from portal_spirometry_trends — that table's
-// units/population were never verified and portal_predicted_value turned out to be a real-but-empty
-// table on this same schema, so preferring the source we've already confirmed and fixed the scaling for.
+// units/population were never verified. (Earlier note here said portal_predicted_value was
+// "real-but-empty" — that was checked before the migration's predicted_values step had finished
+// running; the casing bug above meant even a fully-populated table would have looked empty to
+// any query using the old label-cased variable names. Worth re-verifying row counts now that
+// both the migration and this casing fix are in place.)
 const ANALYSIS_VARIABLE_TO_BEST_FIELD = {
   FEV1: 'fev1',
   FVC: 'fvc',
@@ -42,8 +62,12 @@ function buildPredictedMap(predictedValues) {
   return map;
 }
 
+// FIX: predictedMap is keyed by the DB's stored variable string (e.g. 'fev1'),
+// but this function is always called with the display label (e.g. 'FEV1').
+// Translate the label through VARIABLE_LABEL_TO_STORED before looking it up.
 function buildVariableRow(label, observedValue, predictedMap) {
-  const predicted = predictedMap.get(label) || null;
+  const storedKey = VARIABLE_LABEL_TO_STORED[label];
+  const predicted = (storedKey && predictedMap.get(storedKey)) || null;
   return {
     variable: label,
     observed: observedValue ?? null,
