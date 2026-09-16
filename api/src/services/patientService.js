@@ -1,6 +1,7 @@
 const patientRepository = require('../repositories/patientRepository');
-
+const calculatePredictedValues = require('../helpers/spirometry').calculatePredictedValues;
 class ValidationError extends Error {}
+
 
 // Display labels used throughout this service/response, mapped to the ACTUAL
 // variable strings stored in portal_predicted_value. Confirmed directly
@@ -17,43 +18,7 @@ const VARIABLE_LABEL_TO_STORED = {
   // FEV6 intentionally omitted — no stored predicted data exists for it;
   // buildVariableRow's fallback still returns nulls for it.
 };
-function calculatePredictedValues(observedValue) {
-  if (
-    observedValue === null ||
-    observedValue === undefined ||
-    Number.isNaN(Number(observedValue))
-  ) {
-    return {
-      predicted: null,
-      lln: null,
-      zScore: null,
-      percentPredicted: null,
-    };
-  }
 
-  const value = Number(observedValue);
-
-  if (value <= 0) {
-    return {
-      predicted: null,
-      lln: null,
-      zScore: null,
-      percentPredicted: null,
-    };
-  }
-
-  const predicted = Number((value / 0.85).toFixed(2));
-  const lln = Number((value * 0.8).toFixed(2));
-  const zScore = 0.1;
-  const percentPredicted = Number(((value / predicted) * 100).toFixed(2));
-
-  return {
-    predicted,
-    lln,
-    zScore,
-    percentPredicted,
-  };
-}
 // The actual DB-side variable strings to query for.
 const SPIROMETRY_VARIABLES = Object.values(VARIABLE_LABEL_TO_STORED);
 
