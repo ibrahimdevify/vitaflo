@@ -1,7 +1,7 @@
 const patientRepository = require('../repositories/patientRepository');
-const { calculatePredictedValues, normalizeSpirometry,
-  buildPredictedSpirometry,
-  pickBestSpirometry, } = require('../helpers/spirometry');
+const {
+  calculatePredictedValues,
+} = require('../helpers/spirometry');
 class ValidationError extends Error {}
 
 // Display labels used throughout this service/response, mapped to the ACTUAL
@@ -253,70 +253,47 @@ async function getSpirometryTab(
     }),
   ]);
 
-  const rows = observations.map(
-  (observation) => {
+  const rows = observations.map((observation) => {
     const spirometries =
       observation.spirometries || [];
 
-    const normalizedSpirometries =
-      spirometries.map(
-        normalizeSpirometry
-      );
-
+    /*
+     * IMPORTANT:
+     * Keep the existing response format.
+     *
+     * results MUST be an ARRAY because the frontend does:
+     *
+     * e.results.map(...)
+     */
     const best =
-      pickBestSpirometry(
+      pickBestSpirometryValues(
         spirometries
       );
 
-    const predicted =
-      best
-        ? buildPredictedSpirometry(best)
-        : null;
-
     return {
-      observationId:
-        observation.id,
+      observationId: observation.id,
 
-      date:
-        observation.dbdate,
+      date: observation.dbdate,
 
       testsCount:
         spirometries.length,
 
-      results: best
-        ? {
-            fev1: best.fev1,
-            fvc: best.fvc,
-
-            fev1_fvc_ratio:
-              best.fev1_fvc_ratio,
-
-            fef2575:
-              best.fef2575,
-
-            fev6:
-              best.fev6,
-
-            pefr:
-              best.pefr,
-
-            fev1_perc:
-              best.fev1_perc,
-
-            predicted,
-          }
-        : null,
+      // MUST remain an array
+      results:
+        buildResultRows(best),
 
       ...buildChartSeries(
-        normalizedSpirometries
+        spirometries
       ),
     };
-  }
-);
+  });
 
   return {
-    startDate: startDate || null,
-    endDate: endDate || null,
+    startDate:
+      startDate || null,
+
+    endDate:
+      endDate || null,
 
     pagination: buildPagination(
       page,
