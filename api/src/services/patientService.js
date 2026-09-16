@@ -1,5 +1,7 @@
 const patientRepository = require('../repositories/patientRepository');
-const { calculatePredictedValues } = require('../helpers/spirometry');
+const { calculatePredictedValues, normalizeSpirometry,
+  buildPredictedSpirometry,
+  pickBestSpirometry, } = require('../helpers/spirometry');
 class ValidationError extends Error {}
 
 // Display labels used throughout this service/response, mapped to the ACTUAL
@@ -251,23 +253,66 @@ async function getSpirometryTab(
     }),
   ]);
 
-  const rows = observations.map((observation) => {
-    const best = pickBestSpirometryValues(
-      observation.spirometries
-    );
+  const rows = observations.map(
+  (observation) => {
+    const spirometries =
+      observation.spirometries || [];
+
+    const normalizedSpirometries =
+      spirometries.map(
+        normalizeSpirometry
+      );
+
+    const best =
+      pickBestSpirometry(
+        spirometries
+      );
+
+    const predicted =
+      best
+        ? buildPredictedSpirometry(best)
+        : null;
 
     return {
-      observationId: observation.id,
-      date: observation.dbdate,
-      testsCount: observation.spirometries.length,
+      observationId:
+        observation.id,
 
-      results: buildResultRows(best),
+      date:
+        observation.dbdate,
+
+      testsCount:
+        spirometries.length,
+
+      results: best
+        ? {
+            fev1: best.fev1,
+            fvc: best.fvc,
+
+            fev1_fvc_ratio:
+              best.fev1_fvc_ratio,
+
+            fef2575:
+              best.fef2575,
+
+            fev6:
+              best.fev6,
+
+            pefr:
+              best.pefr,
+
+            fev1_perc:
+              best.fev1_perc,
+
+            predicted,
+          }
+        : null,
 
       ...buildChartSeries(
-        observation.spirometries
+        normalizedSpirometries
       ),
     };
-  });
+  }
+);
 
   return {
     startDate: startDate || null,
@@ -365,8 +410,8 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
     return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, 0), rows: [] };
   }
 
-  const predictedValues = await patientRepository.findPredictedValues(userId, SPIROMETRY_VARIABLES);
-  const predictedMap = buildPredictedMap(predictedValues);
+
+
 
   const rows = observations.map((observation) => {
     const best = pickBestSpirometryValues(observation.spirometries);
