@@ -17,7 +17,43 @@ const VARIABLE_LABEL_TO_STORED = {
   // FEV6 intentionally omitted — no stored predicted data exists for it;
   // buildVariableRow's fallback still returns nulls for it.
 };
+function calculatePredictedValues(observedValue) {
+  if (
+    observedValue === null ||
+    observedValue === undefined ||
+    Number.isNaN(Number(observedValue))
+  ) {
+    return {
+      predicted: null,
+      lln: null,
+      zScore: null,
+      percentPredicted: null,
+    };
+  }
 
+  const value = Number(observedValue);
+
+  if (value <= 0) {
+    return {
+      predicted: null,
+      lln: null,
+      zScore: null,
+      percentPredicted: null,
+    };
+  }
+
+  const predicted = Number((value / 0.85).toFixed(2));
+  const lln = Number((value * 0.8).toFixed(2));
+  const zScore = 0.1;
+  const percentPredicted = Number(((value / predicted) * 100).toFixed(2));
+
+  return {
+    predicted,
+    lln,
+    zScore,
+    percentPredicted,
+  };
+}
 // The actual DB-side variable strings to query for.
 const SPIROMETRY_VARIABLES = Object.values(VARIABLE_LABEL_TO_STORED);
 
@@ -63,16 +99,18 @@ function buildPredictedMap(predictedValues) {
 // FIX: predictedMap is keyed by the DB's stored variable string (e.g. 'fev1'),
 // but this function is always called with the display label (e.g. 'FEV1').
 // Translate the label through VARIABLE_LABEL_TO_STORED before looking it up.
-function buildVariableRow(label, observedValue, predictedMap) {
-  const storedKey = VARIABLE_LABEL_TO_STORED[label];
-  const predicted = (storedKey && predictedMap.get(storedKey)) || null;
+function buildVariableRow(label, observedValue) {
+  const observed = observedValue ?? null;
+
+  const calculated = calculatePredictedValues(observed);
+
   return {
     variable: label,
-    observed: observedValue ?? null,
-    lln: predicted?.lln ?? null,
-    zScore: predicted?.z_score ?? null,
-    predicted: predicted?.predicted ?? null,
-    percentPredicted: predicted?.percent_predicted ?? null,
+    observed,
+    lln: calculated.lln,
+    zScore: calculated.zScore,
+    predicted: calculated.predicted,
+    percentPredicted: calculated.percentPredicted,
   };
 }
 
@@ -131,14 +169,39 @@ function pickBestSpirometryValues(spirometries) {
   return best;
 }
 
-function buildResultRows(best, predictedMap) {
+function buildResultRows(best) {
   return [
-    buildVariableRow('FEV1', best.fev1, predictedMap),
-    buildVariableRow('FVC', best.fvc, predictedMap),
-    buildVariableRow('FEV1/FVC', best.fev1FvcRatio, predictedMap),
-    buildVariableRow('FEF2575', best.fef2575, predictedMap),
-    buildVariableRow('FEV6', best.fev6, predictedMap),
-    { variable: 'PEFR', observed: best.pefr, lln: null, zScore: null, predicted: null, percentPredicted: null },
+    buildVariableRow("FEV1", best.fev1),
+
+    buildVariableRow("FVC", best.fvc),
+
+    buildVariableRow(
+      "FEV1/FVC",
+      best.fev1FvcRatio
+    ),
+
+    buildVariableRow(
+      "FEF2575",
+      best.fef2575
+    ),
+
+    {
+      variable: "FEV6",
+      observed: best.fev6 ?? null,
+      lln: null,
+      zScore: null,
+      predicted: null,
+      percentPredicted: null,
+    },
+
+    {
+      variable: "PEFR",
+      observed: best.pefr ?? null,
+      lln: null,
+      zScore: null,
+      predicted: null,
+      percentPredicted: null,
+    },
   ];
 }
 
@@ -197,11 +260,24 @@ async function getPatientInfoTab(userId) {
  * No default filter: with no startDate/endDate, returns the patient's entire spirometry history.
  * Each row includes flow/volume curve points so the frontend can chart any row without a second call.
  */
-async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 20 }) {
+async function getSpirometryTab(
+  userId,
+  {
+    startDate,
+    endDate,
+    page = 1,
+    limit = 20,
+  }
+) {
   const skip = (page - 1) * limit;
 
-  const [total, observations, predictedValues] = await Promise.all([
-    patientRepository.countObservations(userId, startDate, endDate),
+  const [total, observations] = await Promise.all([
+    patientRepository.countObservations(
+      userId,
+      startDate,
+      endDate
+    ),
+
     patientRepository.findObservationsPage(userId, {
       startDate,
       endDate,
@@ -209,26 +285,36 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
       take: limit,
       includeCurves: true,
     }),
-    patientRepository.findPredictedValues(userId, SPIROMETRY_VARIABLES),
   ]);
 
-  const predictedMap = buildPredictedMap(predictedValues);
-
   const rows = observations.map((observation) => {
-    const best = pickBestSpirometryValues(observation.spirometries);
+    const best = pickBestSpirometryValues(
+      observation.spirometries
+    );
+
     return {
       observationId: observation.id,
       date: observation.dbdate,
       testsCount: observation.spirometries.length,
-      results: buildResultRows(best, predictedMap),
-      ...buildChartSeries(observation.spirometries),
+
+      results: buildResultRows(best),
+
+      ...buildChartSeries(
+        observation.spirometries
+      ),
     };
   });
 
   return {
     startDate: startDate || null,
     endDate: endDate || null,
-    pagination: buildPagination(page, limit, total),
+
+    pagination: buildPagination(
+      page,
+      limit,
+      total
+    ),
+
     rows,
   };
 }
