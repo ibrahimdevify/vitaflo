@@ -1,7 +1,6 @@
 const patientRepository = require('../repositories/patientRepository');
-const calculatePredictedValues = require('../helpers/spirometry');
+const { calculatePredictedValues } = require('../helpers/spirometry');
 class ValidationError extends Error {}
-
 
 // Display labels used throughout this service/response, mapped to the ACTUAL
 // variable strings stored in portal_predicted_value. Confirmed directly

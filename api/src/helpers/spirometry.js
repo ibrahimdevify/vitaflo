@@ -1,4 +1,4 @@
-export function calculatePredictedValues(observedValue) {
+function calculatePredictedValues(observedValue) {
   if (
     observedValue === null ||
     observedValue === undefined ||
@@ -35,3 +35,5 @@ export function calculatePredictedValues(observedValue) {
     percentPredicted,
   };
 }
+
+module.exports = { calculatePredictedValues };
