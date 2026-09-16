@@ -1,5 +1,5 @@
 const patientRepository = require('../repositories/patientRepository');
-const calculatePredictedValues = require('../helpers/spirometry').calculatePredictedValues;
+const calculatePredictedValues = require('../helpers/spirometry');
 class ValidationError extends Error {}
 
 
