@@ -13,8 +13,8 @@ model dc_users {
   f_name                      String   @db.VarChar(255)
   l_name                      String   @db.VarChar(255)
   userName                    String?  @unique @db.VarChar(100)
-  email                       String   @unique @db.VarChar(255)
-  phone                       String   @unique @db.VarChar(255)
+  email                       String   @db.VarChar(255)
+  phone                       String   @db.VarChar(255)
   password                    String   @db.VarChar(255)
   profile_pic                 String   @default("profile_pics/default.jpeg") @db.VarChar(255)
   us_id_fk                    Int

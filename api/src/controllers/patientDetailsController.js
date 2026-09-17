@@ -392,6 +392,17 @@ const updatePatient = async (req, res) => {
     }
 
     if (phone !== undefined) {
+      // FIX: vf_attributes.phone is VarChar(20) — much shorter than
+      // dc_users.phone (VarChar(255)). A phone value that's valid for
+      // dc_users can still be too long for vf_attributes and throw a raw
+      // Prisma P2000 error mid-transaction. Validate up front with a clear
+      // message instead.
+      if (phone.length > 20) {
+        throw new ValidateError(
+          "phone",
+          `phone must be at most 20 characters long for vf_attributes (currently ${phone.length})`
+        );
+      }
       attributesData.phone = phone;
     }
 
@@ -426,102 +437,115 @@ const updatePatient = async (req, res) => {
     |--------------------------------------------------------------------------
     */
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Get patient first
-      const patient = await tx.dc_patient_details.findUnique({
-        where: {
-          user_id_fk: userId,
-        },
-        include: {
-          attributes: true,
-          user: {
-            include: {
-              user_details: true,
-            },
-          },
-        },
-      });
-
-      if (!patient) {
-        throw new Error("PATIENT_NOT_FOUND");
-      }
-
-      // Update user
-      let updatedUser = patient.user;
-
-      if (Object.keys(userData).length > 0) {
-        updatedUser = await tx.dc_users.update({
-          where: {
-            user_id: userId,
-          },
-          data: userData,
-        });
-      }
-
-      // Update user details.
-      // dc_user_details has NOT NULL columns (gender_id_fk,
-      // martial_status_fk, city_id_fk) that this endpoint's callers
-      // (e.g. the patient-info edit form) never collect or send. So we
-      // only ever `update` an existing row with whatever fields were
-      // provided — we never try to create one here, since a create
-      // would require values (gender/marital status/city) this endpoint
-      // has no way to get. If the row doesn't exist yet, that part of
-      // the request is skipped (not failed) and flagged in the response
-      // so the caller knows those fields weren't saved.
-      let updatedUserDetails = patient.user.user_details;
-      let userDetailsSkipped = false;
-
-      if (Object.keys(userDetailsData).length > 0) {
-        if (patient.user.user_details) {
-          updatedUserDetails = await tx.dc_user_details.update({
-            where: {
-              user_id_fk: userId,
-            },
-            data: userDetailsData,
-          });
-        } else {
-          userDetailsSkipped = true;
-        }
-      }
-
-      // Update patient details
-      let updatedPatient = patient;
-
-      if (Object.keys(patientData).length > 0) {
-        updatedPatient = await tx.dc_patient_details.update({
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // Get patient first
+        const patient = await tx.dc_patient_details.findUnique({
           where: {
             user_id_fk: userId,
           },
-          data: patientData,
+          include: {
+            attributes: true,
+            user: {
+              include: {
+                user_details: true,
+              },
+            },
+          },
         });
-      }
 
-      // Update vf_attributes
-      let updatedAttributes = patient.attributes;
-
-      if (Object.keys(attributesData).length > 0) {
-        if (!patient.attributes) {
-          // Previously this silently skipped the update with no feedback.
-          // Better to fail loudly than lose data the caller thought was saved.
-          throw new Error("ATTRIBUTES_NOT_FOUND");
+        if (!patient) {
+          throw new Error("PATIENT_NOT_FOUND");
         }
 
-        updatedAttributes = await tx.vf_attributes.update({
-          where: {
-            pd_id: patient.pd_id,
-          },
-          data: attributesData,
-        });
-      }
+        // Update user
+        let updatedUser = patient.user;
 
-      return {
-        user: updatedUser,
-        userDetails: updatedUserDetails,
-        userDetailsSkipped,
-        patient: updatedPatient,
-        attributes: updatedAttributes,
-      };
-    });
+        if (Object.keys(userData).length > 0) {
+          updatedUser = await tx.dc_users.update({
+            where: {
+              user_id: userId,
+            },
+            data: userData,
+          });
+        }
+
+        // Update user details.
+        // dc_user_details has NOT NULL columns (gender_id_fk,
+        // martial_status_fk, city_id_fk) that this endpoint's callers
+        // (e.g. the patient-info edit form) never collect or send. So we
+        // only ever `update` an existing row with whatever fields were
+        // provided — we never try to create one here, since a create
+        // would require values (gender/marital status/city) this endpoint
+        // has no way to get. If the row doesn't exist yet, that part of
+        // the request is skipped (not failed) and flagged in the response
+        // so the caller knows those fields weren't saved.
+        let updatedUserDetails = patient.user.user_details;
+        let userDetailsSkipped = false;
+
+        if (Object.keys(userDetailsData).length > 0) {
+          if (patient.user.user_details) {
+            updatedUserDetails = await tx.dc_user_details.update({
+              where: {
+                user_id_fk: userId,
+              },
+              data: userDetailsData,
+            });
+          } else {
+            userDetailsSkipped = true;
+          }
+        }
+
+        // Update patient details
+        let updatedPatient = patient;
+
+        if (Object.keys(patientData).length > 0) {
+          updatedPatient = await tx.dc_patient_details.update({
+            where: {
+              user_id_fk: userId,
+            },
+            data: patientData,
+          });
+        }
+
+        // Update vf_attributes
+        let updatedAttributes = patient.attributes;
+
+        if (Object.keys(attributesData).length > 0) {
+          if (!patient.attributes) {
+            // Previously this silently skipped the update with no feedback.
+            // Better to fail loudly than lose data the caller thought was saved.
+            throw new Error("ATTRIBUTES_NOT_FOUND");
+          }
+
+          updatedAttributes = await tx.vf_attributes.update({
+            where: {
+              pd_id: patient.pd_id,
+            },
+            data: attributesData,
+          });
+        }
+
+        return {
+          user: updatedUser,
+          userDetails: updatedUserDetails,
+          userDetailsSkipped,
+          patient: updatedPatient,
+          attributes: updatedAttributes,
+        };
+      },
+      {
+        // FIX: Prisma's default interactive-transaction timeout is 5000ms.
+        // This transaction runs up to 5 sequential queries (patient lookup +
+        // up to 4 updates), and over a higher-latency connection (e.g. this
+        // API running locally while the database is remote, reached via an
+        // SSH tunnel) the round-trips alone can exceed that default — as
+        // seen in production (P2028, "5018 ms passed since the start of
+        // the transaction"). 20s gives real headroom without masking a
+        // genuinely stuck query forever.
+        timeout: 20000,
+      }
+    );
 
     // Never return password
     const { password: _password, ...safeUser } = result.user;
@@ -568,11 +592,32 @@ const updatePatient = async (req, res) => {
       });
     }
 
+    // Prisma transaction timeout — surface a clear, actionable message
+    // rather than a generic 500.
+    if (error.code === "P2028") {
+      return res.status(504).json({
+        error: "Update timed out. Please try again.",
+      });
+    }
+
+    // Value too long for the target column (e.g. vf_attributes.phone is
+    // VarChar(20), shorter than dc_users.phone's VarChar(255)).
+    if (error.code === "P2000") {
+      return res.status(400).json({
+        error: `Value too long for column "${error.meta?.column_name}" on ${error.meta?.modelName}`,
+        field: error.meta?.column_name,
+      });
+    }
+
     return res.status(500).json({
       error: "Failed to update patient",
     });
   }
 };
+
+
+
+
 
 
 const deletePatient = async (req, res) => {
