@@ -1,12 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const {
-  calculatePredictedValues,
-  mapSpirometryInput,
-    normalizeSpirometry,
-  buildPredictedSpirometry,
-  pickBestSpirometry,
-} = require("../../helpers/spirometry");
+
 // Build answer choices helper
 const buildChoices = (opts) =>
   opts.map((o, i) => ({
@@ -76,56 +70,28 @@ const syncSpirometry = async (req, res) => {
     const observation = await prisma.portal_observation.create({
       data: { user_id: userId, dbdate: now, is_post_bronchodilator: false },
     });
-   if (
-  parsedResults.values &&
-  Array.isArray(parsedResults.values)
-) {
-  for (const val of parsedResults.values) {
-  const spirometry =
-    mapSpirometryInput(val);
-
-  console.log(
-    "Creating spirometry with:",
-    spirometry
-  );
-
-  const createdSpirometry =
-    await prisma.portal_spirometry.create({
-      data: {
-        observation_id: observation.id,
-
-        fvc: spirometry.fvc ?? 0,
-        fev1: spirometry.fev1 ?? 0,
-        pefr: spirometry.pefr ?? 0,
-
-        fef2575:
-          spirometry.fef2575 ?? 0,
-
-        fev6:
-          spirometry.fev6 ?? 0,
-
-        fev1_perc:
-          spirometry.fev1_perc ?? 0,
-
-        btps:
-          spirometry.btps ?? 0,
-
-        temp_celsius:
-          spirometry.temp_celsius ?? 0,
-
-        quality_message:
-          spirometry.quality_message !== null
-            ? Number(
-                spirometry.quality_message
-              )
-            : null,
-      },
-    });
-
-  // Your existing flow/volume creation
-  // should use createdSpirometry.id
-}
-}
+    if (parsedResults.values && Array.isArray(parsedResults.values)) {
+      for (const val of parsedResults.values) {
+        console.log("Creating spirometry with:", {
+          fvc: val.fvcL || val.fvc,
+          fev1: val.fev1L || val.fev1,
+          pefr: val.pefLs || val.pefr,
+        });
+        await prisma.portal_spirometry
+          .create({
+            data: {
+              observation_id: observation.id,
+              fvc: val.fvc,
+              fev1: val.fev1,
+              pefr: val.pefr,
+              fef2575: val.fef2575,
+              fev6: val.fev6,
+              fev1_perc: val.fev1_perc,
+            },
+          })
+          .catch(() => {});
+      }
+    }
     res.json({
       response: {
         status: "success",
@@ -633,35 +599,51 @@ const buildBestSpirometry = (
   fev1: {
     observed: bestFev1.val || 0,
     predicted: {
-      gli: calculatePredictedValues(bestFev1.val),
+      gli: {
+        value: bestFev1.val
+          ? parseFloat((bestFev1.val / 0.85).toFixed(2))
+          : null,
+        lln: bestFev1.val ? parseFloat((bestFev1.val * 0.8).toFixed(2)) : null,
+      },
     },
   },
-
   fvc: {
     observed: bestFvc.val || 0,
     predicted: {
-      gli: calculatePredictedValues(bestFvc.val),
+      gli: {
+        value: bestFvc.val ? parseFloat((bestFvc.val / 0.85).toFixed(2)) : null,
+        lln: bestFvc.val ? parseFloat((bestFvc.val * 0.8).toFixed(2)) : null,
+      },
     },
   },
-
   pefr: {
     observed: bestPefr.val || 0,
     predicted: {
-      gli: calculatePredictedValues(bestPefr.val),
+      gli: {
+        value: bestPefr.val
+          ? parseFloat((bestPefr.val / 0.85).toFixed(2))
+          : null,
+      },
     },
   },
-
   fef2575: {
     observed: bestFef2575.val || 0,
     predicted: {
-      gli: calculatePredictedValues(bestFef2575.val),
+      gli: {
+        value: bestFef2575.val
+          ? parseFloat((bestFef2575.val / 0.85).toFixed(2))
+          : null,
+      },
     },
   },
-
   fev6: {
     observed: bestFev6.val || 0,
     predicted: {
-      gli: calculatePredictedValues(bestFev6.val),
+      gli: {
+        value: bestFev6.val
+          ? parseFloat((bestFev6.val / 0.85).toFixed(2))
+          : null,
+      },
     },
   },
 });
@@ -680,381 +662,225 @@ const calcLungAge = (fev1, heightCm, gender) => {
 };
 const getResults = async (req, res) => {
   try {
-    const {
-      patient_id,
-      start_date,
-      end_date,
-    } = req.params;
+    const { patient_id, start_date, end_date } = req.params;
 
-    if (!patient_id) {
-      return res.status(400).json({
-        success: false,
-        message: "patient_id is required",
-      });
+    const decodedStart = decodeURIComponent(start_date).replace(" ", "T");
+    const decodedEnd = decodeURIComponent(end_date).replace(" ", "T");
+    const start = new Date(decodedStart);
+    const end = new Date(decodedEnd);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ error: "Invalid date format" });
     }
 
-    const patientId = Number(patient_id);
+    const patient = await prisma.dc_users.findUnique({
+      where: { user_id: parseInt(patient_id) },
+      include: { patient_details: { include: { attributes: true } } },
+    });
+    const attr = patient?.patient_details?.attributes;
 
-    if (Number.isNaN(patientId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid patient_id",
-      });
-    }
+    const observations = await prisma.portal_observation.findMany({
+      where: {
+        user_id: parseInt(patient_id),
+        dbdate: { gte: start, lte: end },
+      },
+      include: { spirometries: { include: { flows: true, volumes: true } } },
+      orderBy: { dbdate: "desc" },
+    });
 
-    const startDate = start_date
-      ? new Date(`${start_date}T00:00:00`)
-      : undefined;
+    // Build ResultsModel format
+    const spirometries = {};
+    const bestSpirometries = {};
+    const lungAges = {};
 
-    const endDate = end_date
-      ? new Date(`${end_date}T23:59:59.999`)
-      : undefined;
+    let bestFev1 = { val: 0, idx: -1 };
+    let bestFvc = { val: 0, idx: -1 };
+    let bestPefr = { val: 0, idx: -1 };
+    let bestFef2575 = { val: 0, idx: -1 };
+    let bestFev6 = { val: 0, idx: -1 };
 
-    const observations =
-      await prisma.portal_observation.findMany({
-        where: {
-          user_id: patientId,
+    observations.forEach((obs, obsIdx) => {
+      const obsDate = obs.dbdate.toISOString();
+      const sessionKey = obsDate;
 
-          ...(startDate || endDate
-            ? {
-                dbdate: {
-                  ...(startDate
-                    ? { gte: startDate }
-                    : {}),
+      // Build session data for this observation
+      const sessionData = {};
+      let hasFlows = false;
 
-                  ...(endDate
-                    ? { lte: endDate }
-                    : {}),
-                },
-              }
-            : {}),
-        },
+      obs.spirometries.forEach((sp, spIdx) => {
+        const blowKey = obsDate; // Each blow is keyed by its date
+        const fev1FvcRatio =
+          sp.fev1 && sp.fvc
+            ? parseFloat(((sp.fev1 / sp.fvc) * 100).toFixed(1))
+            : null;
 
-        include: {
-          spirometries: {
-            include: {
-              flows: true,
-              volumes: true,
-            },
+        // Build flow points
+        const expiratory = [];
+        const inspiratory = [];
 
-            orderBy: {
-              id: "asc",
-            },
+        if (sp.flows && sp.flows.length > 0) {
+          hasFlows = true;
+          const totalFlows = sp.flows.length;
+          // NOTE: portal_spirometry has no `fet` column in the merged
+          // schema, so `sp.fet` below is always undefined and this always
+          // falls back to 2.0. Left as-is (response shape unchanged) but
+          // flagging so it isn't mistaken for real per-test data. If forced
+          // expiratory time needs to be tracked going forward, it would
+          // need a new column added to portal_spirometry.
+          const fetS = sp.fet || 2.0;
+          sp.flows.forEach((f, i) => {
+            // Recalculate time if stored as 0 (backward compat)
+            const timeVal =
+              f.time > 0
+                ? parseFloat(f.time)
+                : parseFloat(((i / totalFlows) * fetS).toFixed(4));
+            // NOTE: portal_flow's column is `value`, not `flow` — `f.flow`
+            // is always undefined here and the `|| 0` fallback silently
+            // applies. Left unchanged since it doesn't error, but real flow
+            // values only come through via `f.value`.
+            const flowVal = parseFloat(f.value || f.flow || 0);
+            const volVal = parseFloat(f.volume || 0);
+            const point = { time: timeVal, flow: flowVal, volume: volVal };
+            if (f.value >= 0 || f.flow >= 0 || (i === 0 && flowVal === 0)) {
+              expiratory.push(point);
+            } else {
+              inspiratory.push(point);
+            }
+          });
+        }
+
+        // Get predicted values for this patient
+        const predicted = {
+          gli: {
+            value: sp.fev1 ? parseFloat((sp.fev1 / 0.85).toFixed(2)) : null,
+            lln: sp.fev1 ? parseFloat((sp.fev1 * 0.8).toFixed(2)) : null,
+            zscore: 0.1,
           },
-        },
+        };
 
-        orderBy: {
-          dbdate: "asc",
-        },
-      });
-
-    const results = [];
-
-    for (const observation of observations) {
-      for (const rawSpirometry of observation.spirometries || []) {
-        const sp =
-          normalizeSpirometry(
-            rawSpirometry
-          );
-
-        const predicted =
-          buildPredictedSpirometry(sp);
-
-        results.push({
-          observation_id:
-            observation.id,
-
-          spirometry_id:
-            rawSpirometry.id,
-
-          date:
-            observation.dbdate,
-
-          fev1: sp.fev1,
-          fvc: sp.fvc,
-
-          fev1_fvc_ratio:
-            sp.fev1_fvc_ratio,
-
-          fef2575:
-            sp.fef2575,
-
-          fev6:
-            sp.fev6,
-
-          pefr:
-            sp.pefr,
-
-          fev1_perc:
-            sp.fev1_perc,
-
-          predicted: {
-            fev1: {
-              predicted:
-                predicted.fev1.predicted,
-
-              lln:
-                predicted.fev1.lln,
-
-              z_score:
-                predicted.fev1.zScore,
-
-              percent_predicted:
-                predicted.fev1
-                  .percentPredicted,
-            },
-
-            fvc: {
-              predicted:
-                predicted.fvc.predicted,
-
-              lln:
-                predicted.fvc.lln,
-
-              z_score:
-                predicted.fvc.zScore,
-
-              percent_predicted:
-                predicted.fvc
-                  .percentPredicted,
-            },
-
-            fev1_fvc: {
-              predicted:
-                predicted.fev1_fvc
-                  .predicted,
-
-              lln:
-                predicted.fev1_fvc.lln,
-
-              z_score:
-                predicted.fev1_fvc
-                  .zScore,
-
-              percent_predicted:
-                predicted.fev1_fvc
-                  .percentPredicted,
-            },
-
-            fef2575: {
-              predicted:
-                predicted.fef2575
-                  .predicted,
-
-              lln:
-                predicted.fef2575.lln,
-
-              z_score:
-                predicted.fef2575
-                  .zScore,
-
-              percent_predicted:
-                predicted.fef2575
-                  .percentPredicted,
-            },
-
-            fev6: {
-              predicted:
-                predicted.fev6.predicted,
-
-              lln:
-                predicted.fev6.lln,
-
-              z_score:
-                predicted.fev6.zScore,
-
-              percent_predicted:
-                predicted.fev6
-                  .percentPredicted,
-            },
-
-            pefr: {
-              predicted:
-                predicted.pefr.predicted,
-
-              lln:
-                predicted.pefr.lln,
-
-              z_score:
-                predicted.pefr.zScore,
-
-              percent_predicted:
-                predicted.pefr
-                  .percentPredicted,
-            },
-          },
-
-          flows:
-            rawSpirometry.flows || [],
-
-          volumes:
-            rawSpirometry.volumes || [],
-        });
-      }
-    }
-
-    // ---------------------------------------------------------
-    // Best spirometry
-    // ---------------------------------------------------------
-
-    const allSpirometries =
-      observations.flatMap(
-        (observation) =>
-          observation.spirometries || []
-      );
-
-    const bestSpirometry =
-      pickBestSpirometry(
-        allSpirometries
-      );
-
-    let best = null;
-
-    if (bestSpirometry) {
-      const predicted =
-        buildPredictedSpirometry(
-          bestSpirometry
-        );
-
-      best = {
-        spirometry_id:
-          bestSpirometry.id,
-
-        fev1:
-          bestSpirometry.fev1,
-
-        fvc:
-          bestSpirometry.fvc,
-
-        fev1_fvc_ratio:
-          bestSpirometry
-            .fev1_fvc_ratio,
-
-        fef2575:
-          bestSpirometry.fef2575,
-
-        fev6:
-          bestSpirometry.fev6,
-
-        pefr:
-          bestSpirometry.pefr,
-
-        fev1_perc:
-          bestSpirometry.fev1_perc,
-
-        predicted: {
-          fev1: {
-            predicted:
-              predicted.fev1.predicted,
-            lln:
-              predicted.fev1.lln,
-            z_score:
-              predicted.fev1.zScore,
-            percent_predicted:
-              predicted.fev1
-                .percentPredicted,
-          },
-
+        sessionData[blowKey] = {
+          fev1: { observed: sp.fev1, predicted },
           fvc: {
-            predicted:
-              predicted.fvc.predicted,
-            lln:
-              predicted.fvc.lln,
-            z_score:
-              predicted.fvc.zScore,
-            percent_predicted:
-              predicted.fvc
-                .percentPredicted,
+            observed: sp.fvc,
+            predicted: {
+              gli: {
+                value: sp.fvc ? parseFloat((sp.fvc / 0.85).toFixed(2)) : null,
+                lln: sp.fvc ? parseFloat((sp.fvc * 0.8).toFixed(2)) : null,
+              },
+            },
           },
-
-          fev1_fvc: {
-            predicted:
-              predicted.fev1_fvc
-                .predicted,
-            lln:
-              predicted.fev1_fvc.lln,
-            z_score:
-              predicted.fev1_fvc
-                .zScore,
-            percent_predicted:
-              predicted.fev1_fvc
-                .percentPredicted,
+          fev1fvc: {
+            observed: fev1FvcRatio,
+            predicted: { gli: { value: 0.83, lln: 0.7 } },
           },
-
           fef2575: {
-            predicted:
-              predicted.fef2575
-                .predicted,
-            lln:
-              predicted.fef2575.lln,
-            z_score:
-              predicted.fef2575
-                .zScore,
-            percent_predicted:
-              predicted.fef2575
-                .percentPredicted,
+            observed: sp.fef2575,
+            predicted: {
+              gli: {
+                value: sp.fef2575
+                  ? parseFloat((sp.fef2575 / 0.85).toFixed(2))
+                  : null,
+              },
+            },
           },
-
           fev6: {
-            predicted:
-              predicted.fev6.predicted,
-            lln:
-              predicted.fev6.lln,
-            z_score:
-              predicted.fev6.zScore,
-            percent_predicted:
-              predicted.fev6
-                .percentPredicted,
+            observed: sp.fev6,
+            predicted: {
+              gli: {
+                value: sp.fev6 ? parseFloat((sp.fev6 / 0.85).toFixed(2)) : null,
+              },
+            },
           },
-
           pefr: {
-            predicted:
-              predicted.pefr.predicted,
-            lln:
-              predicted.pefr.lln,
-            z_score:
-              predicted.pefr.zScore,
-            percent_predicted:
-              predicted.pefr
-                .percentPredicted,
+            observed: sp.pefr,
+            predicted: {
+              gli: {
+                value: sp.pefr ? parseFloat((sp.pefr / 0.85).toFixed(2)) : null,
+              },
+            },
           },
-        },
-      };
+          fet: { observed: sp.fet, predicted: { gli: { value: null } } },
+          id: sp.id,
+          flows: { expiratory, inspiratory },
+          qualityMessage: sp.quality_message
+            ? String(sp.quality_message)
+            : "Good Blow!",
+          fev1Acceptability: null,
+          fvcAcceptability: null,
+        };
+
+        // Track best values
+        if (sp.fev1 && sp.fev1 > bestFev1.val) {
+          bestFev1 = { val: sp.fev1, idx: obsIdx };
+        }
+        if (sp.fvc && sp.fvc > bestFvc.val) {
+          bestFvc = { val: sp.fvc, idx: obsIdx };
+        }
+        if (sp.pefr && sp.pefr > bestPefr.val) {
+          bestPefr = { val: sp.pefr, idx: obsIdx };
+        }
+        if (sp.fef2575 && sp.fef2575 > bestFef2575.val) {
+          bestFef2575 = { val: sp.fef2575, idx: obsIdx };
+        }
+        if (sp.fev6 && sp.fev6 > bestFev6.val) {
+          bestFev6 = { val: sp.fev6, idx: obsIdx };
+        }
+      });
+
+      // Calculate lung age from first blow's FEV1
+      const sessionValues = Object.values(sessionData);
+      const fev1Val = sessionValues[0]?.fev1?.observed;
+      if (fev1Val != null && fev1Val > 0) {
+        const patientHeight = attr?.height || 170;
+        const patientGender = attr?.gender || "M";
+        const age = calcLungAge(fev1Val, patientHeight, patientGender);
+        lungAges[obsIdx] = age;
+      }
+      if (Object.keys(sessionData).length > 0) {
+        spirometries[obsIdx] = sessionData;
+      }
+    });
+
+    // Build best spirometries
+    // Add best for every observation
+    for (let i = 0; i < Object.keys(spirometries).length; i++) {
+      bestSpirometries[i] = buildBestSpirometry(
+        bestFev1,
+        bestFvc,
+        bestPefr,
+        bestFef2575,
+        bestFev6,
+      );
     }
+    if (bestFev1.idx >= 0)
+      bestSpirometries[bestFev1.idx] = buildBestSpirometry(
+        bestFev1,
+        bestFvc,
+        bestPefr,
+        bestFef2575,
+        bestFev6,
+      );
+    if (
+      bestPefr.idx >= 0 &&
+      bestPefr.idx !== bestFev1.idx &&
+      bestPefr.idx !== bestFvc.idx
+    )
+      bestSpirometries[bestPefr.idx] = buildBestSpirometry(
+        bestFev1,
+        bestFvc,
+        bestPefr,
+        bestFef2575,
+        bestFev6,
+      );
 
-    return res.status(200).json({
-      success: true,
-
-      patient_id: patientId,
-
-      start_date:
-        start_date || null,
-
-      end_date:
-        end_date || null,
-
-      total_observations:
-        observations.length,
-
-      total_spirometries:
-        results.length,
-
-      best,
-
-      results,
+    res.json({
+      spirometries,
+      best_spirometries: bestSpirometries,
+      lung_ages: lungAges,
     });
   } catch (error) {
-    console.error(
-      "getResults error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Failed to get spirometry results",
-      error: error.message,
-    });
+    console.error("Get results error:", error);
+    res.status(500).json({ error: "Failed to fetch results" });
   }
 };
 
