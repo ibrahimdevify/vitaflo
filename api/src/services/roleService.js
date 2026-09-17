@@ -21,7 +21,7 @@ async function listRoles() {
 }
 
 async function getRole(roleId) {
-  const role = await prisma.dc_user_type.findUnique({
+  const role = await prisma.dc_user_type.findFirst({
     where: { ut_id: roleId },
     include: { _count: { select: { users: true } } },
   });
@@ -37,14 +37,14 @@ async function createRole(name) {
 
 async function updateRole(roleId, name) {
   if (!name || !name.trim()) throw new ValidationError('name is required');
-  const existing = await prisma.dc_user_type.findUnique({ where: { ut_id: roleId } });
+  const existing = await prisma.dc_user_type.findFirst({ where: { ut_id: roleId } });
   if (!existing) return null;
   const role = await prisma.dc_user_type.update({ where: { ut_id: roleId }, data: { name: name.trim() } });
   return { id: role.ut_id, name: role.name };
 }
 
 async function deleteRole(roleId) {
-  const existing = await prisma.dc_user_type.findUnique({
+  const existing = await prisma.dc_user_type.findFirst({
     where: { ut_id: roleId },
     include: { _count: { select: { users: true } } },
   });
@@ -81,14 +81,14 @@ async function createModule(name) {
 
 async function updateModule(moduleId, name) {
   if (!name || !name.trim()) throw new ValidationError('name is required');
-  const existing = await prisma.dc_modules.findUnique({ where: { m_id: moduleId } });
+  const existing = await prisma.dc_modules.findFirst({ where: { m_id: moduleId } });
   if (!existing) return null;
   const module_ = await prisma.dc_modules.update({ where: { m_id: moduleId }, data: { m_name: name.trim() } });
   return { id: module_.m_id, name: module_.m_name };
 }
 
 async function deleteModule(moduleId) {
-  const existing = await prisma.dc_modules.findUnique({ where: { m_id: moduleId } });
+  const existing = await prisma.dc_modules.findFirst({ where: { m_id: moduleId } });
   if (!existing) return null;
   await prisma.$transaction([
     prisma.dc_module_roles.deleteMany({ where: { m_id_fk: moduleId } }),
@@ -102,7 +102,7 @@ async function deleteModule(moduleId) {
 // ══════════════════════════════════════
 
 async function getRolePermissions(roleId) {
-  const role = await prisma.dc_user_type.findUnique({ where: { ut_id: roleId } });
+  const role = await prisma.dc_user_type.findFirst({ where: { ut_id: roleId } });
   if (!role) return null;
 
   const [modules, existingPermissions] = await Promise.all([
@@ -129,7 +129,7 @@ async function getRolePermissions(roleId) {
  * @param {Array<{moduleId:number, isView:boolean, isWriteable:boolean}>} permissions
  */
 async function setRolePermissions(roleId, permissions) {
-  const role = await prisma.dc_user_type.findUnique({ where: { ut_id: roleId } });
+  const role = await prisma.dc_user_type.findFirst({ where: { ut_id: roleId } });
   if (!role) return null;
 
   if (!Array.isArray(permissions) || permissions.length === 0) {
@@ -200,8 +200,8 @@ async function getPermissionsMatrix() {
 /** Single-cell update — convenient for a UI toggle without resending the whole role's permissions. */
 async function setPermissionCell(roleId, moduleId, { isView, isWriteable }) {
   const [role, module_] = await Promise.all([
-    prisma.dc_user_type.findUnique({ where: { ut_id: roleId } }),
-    prisma.dc_modules.findUnique({ where: { m_id: moduleId } }),
+    prisma.dc_user_type.findFirst({ where: { ut_id: roleId } }),
+    prisma.dc_modules.findFirst({ where: { m_id: moduleId } }),
   ]);
   if (!role) throw new ValidationError(`Unknown roleId: ${roleId}`);
   if (!module_) throw new ValidationError(`Unknown moduleId: ${moduleId}`);
@@ -221,7 +221,7 @@ async function setPermissionCell(roleId, moduleId, { isView, isWriteable }) {
 // ══════════════════════════════════════
 
 async function getUserRole(userId) {
-  const user = await prisma.dc_users.findUnique({
+  const user = await prisma.dc_users.findFirst({
     where: { user_id: userId },
     select: { user_id: true, ut_id_fk: true, user_type: { select: { name: true } } },
   });
@@ -231,8 +231,8 @@ async function getUserRole(userId) {
 
 async function setUserRole(userId, roleId) {
   const [user, role] = await Promise.all([
-    prisma.dc_users.findUnique({ where: { user_id: userId } }),
-    prisma.dc_user_type.findUnique({ where: { ut_id: roleId } }),
+    prisma.dc_users.findFirst({ where: { user_id: userId } }),
+    prisma.dc_user_type.findFirst({ where: { ut_id: roleId } }),
   ]);
   if (!user) throw new ValidationError(`User ${userId} not found`);
   if (!role) throw new ValidationError(`Role ${roleId} not found`);

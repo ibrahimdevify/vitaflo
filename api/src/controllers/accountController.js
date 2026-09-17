@@ -18,7 +18,7 @@ const getAllAccounts = async (req, res) => {
 
 const getAccountById = async (req, res) => {
   try {
-    const account = await prisma.vf_account.findUnique({
+    const account = await prisma.vf_account.findFirst({
       where: { id: parseInt(req.params.id) },
       include: {
         account_attributes: true,
@@ -82,7 +82,7 @@ const updateAccount = async (req, res) => {
 
 const getAccountAttributes = async (req, res) => {
   try {
-    const attrs = await prisma.vf_account_attributes.findUnique({
+    const attrs = await prisma.vf_account_attributes.findFirst({
       where: { account_id: parseInt(req.params.id) },
     });
     res.json({ data: attrs });

@@ -43,7 +43,7 @@ const forgotPassword = async (req, res) => {
 
     // Verify DOB if provided
     if (user && dob) {
-      const patient = await prisma.dc_patient_details.findUnique({
+      const patient = await prisma.dc_patient_details.findFirst({
         where: { user_id_fk: user.user_id },
         include: { attributes: true },
       });
@@ -60,7 +60,7 @@ const forgotPassword = async (req, res) => {
     // dc_users.findFirst above only selected default fields when matched by email;
     // when matched by phone we already selected f_name/email. Re-fetch minimal fields
     // to be safe regardless of which branch matched.
-    const fullUser = await prisma.dc_users.findUnique({
+    const fullUser = await prisma.dc_users.findFirst({
       where: { user_id: user.user_id },
       select: { user_id: true, email: true, f_name: true },
     });

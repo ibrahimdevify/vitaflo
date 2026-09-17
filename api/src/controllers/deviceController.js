@@ -29,7 +29,7 @@ const getAllDevices = async (req, res) => {
 
 const getDeviceById = async (req, res) => {
   try {
-    const device = await prisma.dc_devices.findUnique({
+    const device = await prisma.dc_devices.findFirst({
       where: { dev_id: parseInt(req.params.id) },
       include: { air_monitors: true },
     });
@@ -69,7 +69,7 @@ const assignDevice = async (req, res) => {
   try {
     const { patient_id, monitor_id, label } = req.body;
     const deviceId = parseInt(req.params.id);
-    const patient = await prisma.dc_patient_details.findUnique({ where: { pd_id: parseInt(patient_id) }, include: { attributes: true } });
+    const patient = await prisma.dc_patient_details.findFirst({ where: { pd_id: parseInt(patient_id) }, include: { attributes: true } });
     if (!patient || !patient.attributes) return res.status(404).json({ error: 'Patient or attributes not found' });
     const airMonitor = await prisma.vf_air_monitor.create({
       data: { monitor_id: monitor_id || `MON-${deviceId}`, label: label || 'Patient Monitor', dev_id: deviceId, attributes_id: patient.attributes.id },
@@ -84,7 +84,7 @@ const assignDevice = async (req, res) => {
 const getDeviceReadings = async (req, res) => {
   try {
     const deviceId = parseInt(req.params.id);
-    const device = await prisma.dc_devices.findUnique({ where: { dev_id: deviceId } });
+    const device = await prisma.dc_devices.findFirst({ where: { dev_id: deviceId } });
     if (!device) return res.status(404).json({ error: 'Device not found' });
 
     // Get air monitors linked to this device

@@ -84,7 +84,7 @@ const ALLOWED_SORT_FIELDS = new Set([
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await prisma.dc_users.findUnique({
+    const user = await prisma.dc_users.findFirst({
       where: { user_id: parseInt(id) },
       include: {
         user_type: true, user_status: true,

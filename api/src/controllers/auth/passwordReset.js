@@ -61,7 +61,7 @@ const forgotPassword = async (req, res) => {
 
     // Verify DOB if provided
     if (user && dob) {
-      const patient = await prisma.dc_patient_details.findUnique({
+      const patient = await prisma.dc_patient_details.findFirst({
         where: { user_id_fk: user.user_id },
         include: { attributes: true },
       });
@@ -75,7 +75,7 @@ const forgotPassword = async (req, res) => {
       return res.status(404).json({ error: 'User not found', message: 'No account found with these details' });
     }
 
-    const fullUser = await prisma.dc_users.findUnique({
+    const fullUser = await prisma.dc_users.findFirst({
       where: { user_id: user.user_id },
       select: { user_id: true, email: true, f_name: true, userName: true },
     });

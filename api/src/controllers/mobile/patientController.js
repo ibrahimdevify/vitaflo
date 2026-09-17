@@ -121,7 +121,7 @@ const clinicianLogin = async (req, res) => {
     };
 
     if (hospital) {
-      const attrs = await prisma.vf_account_attributes.findUnique({
+      const attrs = await prisma.vf_account_attributes.findFirst({
         where: { account_id: hospital.id },
       }).catch(() => null);
 
@@ -157,7 +157,7 @@ const getMe = async (req, res) => {
   try {
     const userId = req.user.user_id;
     const body = req.body || {};
-    const user = await prisma.dc_users.findUnique({
+    const user = await prisma.dc_users.findFirst({
       where: { user_id: userId },
       include: {
         patient_details: { include: { attributes: true } },
@@ -188,7 +188,7 @@ const getMe = async (req, res) => {
 
       // Check hospital account for actual setting
       if (user.doctor_details?.hospital?.id) {
-        const attrs = await prisma.vf_account_attributes.findUnique({
+        const attrs = await prisma.vf_account_attributes.findFirst({
           where: { account_id: user.doctor_details.hospital.id },
         }).catch(() => null);
 
@@ -266,7 +266,7 @@ const updateDemographics = async (req, res) => {
     const { user_id } = req.params;
     const { attributes } = req.body || {};
     if (!attributes) return res.status(400).json({ error: 'Attributes required' });
-    const patient = await prisma.dc_patient_details.findUnique({ where: { user_id_fk: parseInt(user_id) } });
+    const patient = await prisma.dc_patient_details.findFirst({ where: { user_id_fk: parseInt(user_id) } });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     const attrData = {};
     if (attributes.height !== undefined) attrData.height = parseFloat(parseFloat(attributes.height).toFixed(2));
@@ -306,7 +306,7 @@ const saveOnboarding = async (req, res) => {
   try {
     const { user_id } = req.params;
     const { address } = req.body || {};
-    const patient = await prisma.dc_patient_details.findUnique({ where: { user_id_fk: parseInt(user_id) } });
+    const patient = await prisma.dc_patient_details.findFirst({ where: { user_id_fk: parseInt(user_id) } });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     if (address && address.length > 0) {
       const addr = address[0];
@@ -436,7 +436,7 @@ const createPatient = async (req, res) => {
     const userPhone = phone || 'phone-' + crypto.randomBytes(8).toString('hex');
 
     // Check for existing user by email
-    const existingEmail = await prisma.dc_users.findUnique({ where: { email: userEmail } });
+    const existingEmail = await prisma.dc_users.findFirst({ where: { email: userEmail } });
     if (existingEmail) {
       return res.status(409).json({
         error: 'User already exists',
@@ -447,7 +447,7 @@ const createPatient = async (req, res) => {
 
     // Check for existing user by phone
     if (userPhone) {
-      const existingPhone = await prisma.dc_users.findUnique({ where: { phone: userPhone } });
+      const existingPhone = await prisma.dc_users.findFirst({ where: { phone: userPhone } });
       if (existingPhone) {
         return res.status(409).json({
           error: 'User already exists',
@@ -588,7 +588,7 @@ const clinicianControl = async (req, res) => {
     });
 
     // Get the controlling clinician's full user object
-    const clinician = await prisma.dc_users.findUnique({
+    const clinician = await prisma.dc_users.findFirst({
       where: { user_id: req.user.user_id },
       include: { doctor_details: { include: { hospital: true } } },
     });

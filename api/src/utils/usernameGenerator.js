@@ -13,7 +13,7 @@ async function generateUserName(email) {
     }
 
     // Check if exists
-    const existing = await prisma.dc_users.findUnique({
+    const existing = await prisma.dc_users.findFirst({
         where: { userName },
         select: { user_id: true }
     });

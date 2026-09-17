@@ -93,13 +93,13 @@ const login = async (req, res) => {
     // Get type-specific details
     if (user.ut_id_fk === 3 || user.ut_id_fk === 6) {
       // Clinician
-      const doctor = await prisma.dc_doctor_details.findUnique({
+      const doctor = await prisma.dc_doctor_details.findFirst({
         where: { user_id_fk: user.user_id },
       });
       userData.doctor_details = doctor;
     } else if (user.ut_id_fk === 4) {
       // Patient
-      const patient = await prisma.dc_patient_details.findUnique({
+      const patient = await prisma.dc_patient_details.findFirst({
         where: { user_id_fk: user.user_id },
       });
       userData.patient_details = patient;
@@ -225,7 +225,7 @@ const register = async (req, res) => {
 // Get current user (me)
 const me = async (req, res) => {
   try {
-    const user = await prisma.dc_users.findUnique({
+    const user = await prisma.dc_users.findFirst({
       where: { user_id: req.user.user_id },
       include: {
         user_type: true,
@@ -281,7 +281,7 @@ const refresh = async (req, res) => {
     const { refresh_token } = req.body;
 
     const decoded = require('../utils/jwt').verifyToken(refresh_token);
-    const user = await prisma.dc_users.findUnique({
+    const user = await prisma.dc_users.findFirst({
       where: { user_id: decoded.user_id },
     });
 
@@ -316,7 +316,7 @@ const changePassword = async (req, res) => {
     const { current_password, new_password } = req.body;
     const userId = req.user.user_id;
 
-    const user = await prisma.dc_users.findUnique({
+    const user = await prisma.dc_users.findFirst({
       where: { user_id: userId },
     });
 

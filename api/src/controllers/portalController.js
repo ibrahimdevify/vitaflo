@@ -98,7 +98,7 @@ const getSpirometryByUser = async (req, res) => {
     }));
 
     // Get patient info
-    const patient = await prisma.dc_users.findUnique({
+    const patient = await prisma.dc_users.findFirst({
       where: { user_id: userId },
       select: {
         user_id: true,

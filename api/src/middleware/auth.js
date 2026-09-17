@@ -40,7 +40,7 @@ const authenticate = async (req, res, next) => {
     }
 
     // Check vf_session
-    const session = await prisma.vf_session.findUnique({
+    const session = await prisma.vf_session.findFirst({
       where: { access_token: token },
       include: { user: { select: { user_id: true, ut_id_fk: true, email: true } } }
     });

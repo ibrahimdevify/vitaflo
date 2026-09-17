@@ -690,7 +690,7 @@ const createAttributes = async (req, res) => {
     } = req.body;
 
     // Check patient exists
-    const patient = await prisma.dc_patient_details.findUnique({
+    const patient = await prisma.dc_patient_details.findFirst({
       where: { pd_id: parseInt(id) },
     });
 
@@ -699,7 +699,7 @@ const createAttributes = async (req, res) => {
     }
 
     // Check if attributes already exist
-    const existing = await prisma.vf_attributes.findUnique({
+    const existing = await prisma.vf_attributes.findFirst({
       where: { pd_id: parseInt(id) },
     });
 
@@ -1097,7 +1097,7 @@ const createPatient = async (req, res) => {
     const userPhone = phone || `phone-${crypto.randomBytes(8).toString("hex")}`;
 
     // Check for existing user by email
-    const existingEmail = await prisma.dc_users.findUnique({
+    const existingEmail = await prisma.dc_users.findFirst({
       where: { email: userEmail },
     });
     if (existingEmail) {
@@ -1109,7 +1109,7 @@ const createPatient = async (req, res) => {
     }
 
     // Check for existing user by phone
-    const existingPhone = await prisma.dc_users.findUnique({
+    const existingPhone = await prisma.dc_users.findFirst({
       where: { phone: userPhone },
     });
     if (existingPhone) {

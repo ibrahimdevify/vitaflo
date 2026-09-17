@@ -68,7 +68,7 @@ const getSpirometryReportPDF = async (req, res) => {
       return res.status(400).json({ error: 'Invalid observation_id' });
     }
 
-    const anchorObservation = await prisma.portal_observation.findUnique({ where: { id: obsId } });
+    const anchorObservation = await prisma.portal_observation.findFirst({ where: { id: obsId } });
     if (!anchorObservation) {
       return res.status(404).json({ error: 'Observation not found' });
     }
@@ -81,12 +81,12 @@ const getSpirometryReportPDF = async (req, res) => {
     if (anchorObservation.is_post_bronchodilator) {
       postObservation = anchorObservation;
       if (anchorObservation.linked_pre_post_observation_id) {
-        preObservation = await prisma.portal_observation.findUnique({
+        preObservation = await prisma.portal_observation.findFirst({
           where: { id: anchorObservation.linked_pre_post_observation_id },
         });
       }
     } else if (anchorObservation.linked_pre_post_observation_id) {
-      postObservation = await prisma.portal_observation.findUnique({
+      postObservation = await prisma.portal_observation.findFirst({
         where: { id: anchorObservation.linked_pre_post_observation_id },
       });
     } else {
@@ -111,7 +111,7 @@ const getSpirometryReportPDF = async (req, res) => {
             include: { flows: true, volumes: true },
           })
         : Promise.resolve([]),
-      prisma.dc_users.findUnique({
+      prisma.dc_users.findFirst({
         where: { user_id: userId },
         select: {
           user_id: true,

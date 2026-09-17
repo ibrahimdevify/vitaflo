@@ -440,7 +440,7 @@ const updatePatient = async (req, res) => {
     const result = await prisma.$transaction(
       async (tx) => {
         // Get patient first
-        const patient = await tx.dc_patient_details.findUnique({
+        const patient = await tx.dc_patient_details.findFirst({
           where: {
             user_id_fk: userId,
           },
@@ -631,7 +631,7 @@ const deletePatient = async (req, res) => {
       });
     }
 
-    const patient = await prisma.dc_users.findUnique({
+    const patient = await prisma.dc_users.findFirst({
       where: {
         user_id: userId,
       },
