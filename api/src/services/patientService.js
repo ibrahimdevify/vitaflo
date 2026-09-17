@@ -1,6 +1,8 @@
 const patientRepository = require('../repositories/patientRepository');
 const {
   calculatePredictedValues,
+   calculatePredictedValues,
+  normalizeSpirometryValue,
 } = require('../helpers/spirometry');
 class ValidationError extends Error {}
 
@@ -84,12 +86,7 @@ function buildVariableRow(label, observedValue) {
 // portal_spirometry stores fev1/fvc/fev6/pefr/fef2575 scaled by 100 of their true value
 // (confirmed against raw rows: e.g. fev1=299.0000009536743 -> 2.99 L, a normal clinical value;
 // the float noise is itself evidence these were written as an integer x100 through a float column).
-const RAW_SPIROMETRY_SCALE_FACTOR = 100;
 
-function normalizeSpirometryValue(rawValue) {
-  if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) return null;
-  return Math.round((rawValue / RAW_SPIROMETRY_SCALE_FACTOR) * 100) / 100;
-}
 
 /**
  * Builds the Flow/Volume and Volume/Time chart series for a set of spirometry tests.
@@ -127,10 +124,10 @@ function pickBestSpirometryValues(spirometries) {
     best[field] = values.length > 0 ? Math.max(...values) : null;
   }
 
-  best.fev1FvcRatio =
-    best.fev1 !== null && best.fvc !== null && best.fvc !== 0
-      ? Number((best.fev1 / best.fvc).toFixed(2))
-      : null;
+best.fev1FvcRatio =
+  best.fev1 !== null && best.fvc !== null && best.fvc !== 0
+    ? Number(((best.fev1 / best.fvc) * 100).toFixed(1))
+    : null;
 
   return best;
 }
@@ -392,7 +389,11 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
 
   const rows = observations.map((observation) => {
     const best = pickBestSpirometryValues(observation.spirometries);
-    return { observationId: observation.id, date: observation.dbdate, results: buildResultRows(best, predictedMap) };
+    return {
+  observationId: observation.id,
+  date: observation.dbdate,
+  results: buildResultRows(best),
+};
   });
 
   return {
