@@ -1,6 +1,6 @@
 import { Filter, Search, UserPlus, Users, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import PatientDetailModal from '../components/patients/PatientDetailModal';
 import PatientsTable from '../components/patients/PatientsTable';
@@ -18,6 +18,16 @@ import { patientsAPI } from '../services/api';
 
 export default function Patients() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // If a clinician id was passed via navigation state (e.g. from the
+  // Clinicians "View Patients" action), filter by that clinician instead
+  // of the currently logged-in user. Never appears in the URL, and is
+  // lost on a hard refresh — at which point we fall back to "my patients".
+  const stateClinicianId = location.state?.assignedClinicianId;
+  const stateClinicianName = location.state?.assignedClinicianName;
+  const effectiveClinicianId = stateClinicianId || user?.user_id || user?.id;
 
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,8 +37,6 @@ export default function Patients() {
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const navigate = useNavigate();
-  // Advanced filters
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     first_name: '',
@@ -52,7 +60,6 @@ export default function Patients() {
 
   const debounceRef = useRef(null);
 
-  // Debounce search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -62,20 +69,24 @@ export default function Patients() {
     return () => clearTimeout(debounceRef.current);
   }, [search]);
 
+  // Reset to page 1 whenever we switch which clinician we're viewing
+  useEffect(() => {
+    setPage(1);
+  }, [stateClinicianId]);
+
   const loadPatients = useCallback(async () => {
+    if (!effectiveClinicianId) return;
     try {
       setLoading(true);
 
-      // Build query params
       const params = {
         page,
         limit,
         search: debouncedSearch || undefined,
-        assigned_clinician_id: user?.user_id || user?.id,
+        assigned_clinician_id: effectiveClinicianId,
         ...filters,
       };
 
-      // Remove empty filters
       Object.keys(params).forEach((key) => {
         if (
           params[key] === '' ||
@@ -96,48 +107,13 @@ export default function Patients() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, debouncedSearch, user, filters]);
+  }, [page, limit, debouncedSearch, effectiveClinicianId, filters]);
 
   useEffect(() => {
     loadPatients();
   }, [loadPatients]);
 
   const viewPatient = async (id) => {
-    // try {
-    //   setLoadingDetail(true);
-    //   setSelectedPatient(id);
-
-    //   const detailRes = await patientsAPI.getById(id);
-    //   setPatientDetail(detailRes.data.data || detailRes.data);
-
-    //   // Get spirometry data
-    //   try {
-    //     const spiroRes = await spirometryAPI.getByUser(id, {
-    //       start: "2020-01-01",
-    //       end: "2030-12-31",
-    //     });
-
-    //     const spiroData = (spiroRes.data.data || []).map((d) => ({
-    //       date: new Date(d.dbdate).toLocaleDateString(),
-    //       fev1: d.fev1,
-    //       fvc: d.fvc,
-    //       pefr: d.pefr,
-    //       fef2575: d.fef2575,
-    //       fev1_perc: d.fev1_perc,
-    //       is_post_bronchodilator: d.is_post_bronchodilator,
-    //       quality_message: d.quality_message,
-    //     }));
-
-    //     setSpirometryData(spiroData);
-    //   } catch (spiroErr) {
-    //     console.error("Failed to load spirometry:", spiroErr);
-    //     setSpirometryData([]);
-    //   }
-    // } catch (err) {
-    //   toast.error("Failed to load patient details");
-    // } finally {
-    //   setLoadingDetail(false);
-    // }
     navigate(`/patients/${id}`);
   };
 
@@ -172,15 +148,21 @@ export default function Patients() {
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
 
+  const pageTitle = stateClinicianName
+    ? `${stateClinicianName}'s Patients`
+    : 'My Patients';
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            My Patients
+            {pageTitle}
           </h1>
           <p className="text-caption text-fg-muted mt-1 hidden sm:block">
-            Manage and view all your assigned patients
+            {stateClinicianName
+              ? `Viewing patients assigned to ${stateClinicianName}`
+              : 'Manage and view all your assigned patients'}
           </p>
         </div>
         <Button
@@ -208,7 +190,7 @@ export default function Patients() {
                 {' '}
                 <Users className="h-3.5 w-3.5 text-white" />{' '}
               </div>
-              My Patients
+              {pageTitle}
             </CardTitle>
 
             <div className="flex w-full items-center gap-2 sm:w-auto">
@@ -241,7 +223,6 @@ export default function Patients() {
               </Button>
             </div>
           </div>
-          {/* Advanced Filters Panel */}
           {showFilters && (
             <div className="mt-4 p-4 bg-surface-raised rounded-lg border border-border space-y-4">
               <div className="flex items-center justify-between">

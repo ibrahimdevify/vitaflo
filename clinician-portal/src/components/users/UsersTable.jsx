@@ -1,4 +1,13 @@
-import { Edit, Mail, MoreHorizontal, Phone, Trash2, UserPlus } from "lucide-react";
+import {
+  Edit,
+  Mail,
+  MoreHorizontal,
+  Phone,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import EmptyState from "../shared/EmptyState";
 import { Badge } from "../ui/badge";
 import {
@@ -17,9 +26,6 @@ import {
 } from "../ui/table";
 import UsersTableSkeleton from "./UsersTableSkeleton";
 
-// Keyed by the lowercased user_status.name returned from the API
-// (user_status: { name }). Adjust keys if your dc_user_statuses table
-// uses different wording than active/inactive/suspended/unverified.
 const statusBadgeVariants = {
   active: "success",
   inactive: "danger",
@@ -37,6 +43,8 @@ const toneGradients = {
 };
 
 export default function UsersTable({ users, loading, onEdit, onDelete }) {
+  const navigate = useNavigate();
+
   if (loading) return <UsersTableSkeleton />;
 
   if (!users?.length) {
@@ -48,6 +56,12 @@ export default function UsersTable({ users, loading, onEdit, onDelete }) {
       />
     );
   }
+
+  const viewPatients = (userId, fullName) => {
+    navigate('/patients', {
+      state: { assignedClinicianId: userId, assignedClinicianName: fullName },
+    });
+  };
 
   return (
     <div className="table-container">
@@ -66,10 +80,8 @@ export default function UsersTable({ users, loading, onEdit, onDelete }) {
           {users.map((user, i) => {
             const tone = avatarTones[i % avatarTones.length];
             const gradient = toneGradients[tone];
+            const fullName = `${user.f_name || ""} ${user.l_name || ""}`.trim();
 
-            // Status comes straight from the API's included relation
-            // (select: { user_status: { select: { us_id, name } } }) —
-            // no id-to-name lookup needed/available on the client.
             const statusLabel = user.user_status?.name || "Unknown";
             const statusKey = statusLabel.toLowerCase();
 
@@ -85,7 +97,7 @@ export default function UsersTable({ users, loading, onEdit, onDelete }) {
                     </div>
                     <div>
                       <p className="font-medium text-fg text-body">
-                        {user.f_name} {user.l_name}
+                        {fullName}
                       </p>
                       <p className="text-caption text-fg-muted truncate">
                         <span className="font-medium text-fg">
@@ -128,6 +140,12 @@ export default function UsersTable({ users, loading, onEdit, onDelete }) {
                       </div>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => viewPatients(user.user_id, fullName)}
+                        className="cursor-pointer"
+                      >
+                        <Users className="h-4 w-4 mr-2" /> View Patients
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => onEdit(user)}
                         className="cursor-pointer"
