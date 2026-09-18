@@ -180,7 +180,7 @@ const toBoolean = (value) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.dc_users.update({ where: { user_id: parseInt(id) }, data: { us_id_fk: 2 } });
+    await prisma.dc_users.update({ where: { user_id: parseInt(id) }, data: { us_id_fk: 3 } });
     res.json({ message: 'User deactivated' });
   } catch (error) {
     console.error('Delete user error:', error);
