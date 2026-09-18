@@ -138,7 +138,7 @@ const syncSpirometryPlus = async (req, res) => {
       if (!point.dbdate) point.dbdate = now;
     }
     if (attributes) {
-      const patient = await prisma.dc_patient_details.findUnique({
+      const patient = await prisma.dc_patient_details.findFirst({
         where: { user_id_fk: userId },
       });
       if (patient) {
@@ -265,7 +265,7 @@ const getSpirometryByUser = async (req, res) => {
     // in this function's scope (only `user_id` is destructured from
     // req.params) — every call to this endpoint threw a ReferenceError
     // before it ever reached the actual query below.
-    const patient = await prisma.dc_users.findUnique({
+    const patient = await prisma.dc_users.findFirst({
       where: { user_id: parseInt(user_id) },
       include: { patient_details: { include: { attributes: true } } },
     });
@@ -316,7 +316,7 @@ const getPredictedValues = async (req, res) => {
   try {
     const userId = parseInt(req.params.user_id);
 
-    const patient = await prisma.dc_users.findUnique({
+    const patient = await prisma.dc_users.findFirst({
       where: { user_id: userId },
       include: { patient_details: { include: { attributes: true } } },
     });
@@ -673,7 +673,7 @@ const getResults = async (req, res) => {
       return res.status(400).json({ error: "Invalid date format" });
     }
 
-    const patient = await prisma.dc_users.findUnique({
+    const patient = await prisma.dc_users.findFirst({
       where: { user_id: parseInt(patient_id) },
       include: { patient_details: { include: { attributes: true } } },
     });
@@ -903,7 +903,7 @@ const getDaysOfSpirometry = async (req, res) => {
 
 const syncPatient = async (req, res) => {
   try {
-    const user = await prisma.dc_users.findUnique({
+    const user = await prisma.dc_users.findFirst({
       where: { user_id: parseInt(req.body.user_id) || undefined },
     });
     if (user)

@@ -135,8 +135,8 @@ const assignClinicianToAdmin = async (req, res) => {
     }
 
     const [clinician, admin] = await Promise.all([
-      prisma.dc_users.findUnique({ where: { user_id: parseInt(clinician_id) } }),
-      prisma.dc_users.findUnique({ where: { user_id: parseInt(clinician_admin_id) } }),
+      prisma.dc_users.findFirst({ where: { user_id: parseInt(clinician_id) } }),
+      prisma.dc_users.findFirst({ where: { user_id: parseInt(clinician_admin_id) } }),
     ]);
 
     if (!clinician || clinician.ut_id_fk !== 3) {
@@ -283,12 +283,12 @@ const createClinician = async (req, res) => {
       return res.status(400).json({ error: "First name, last name, email, phone, and license number are required" });
     }
 
-    const existingEmail = await prisma.dc_users.findUnique({ where: { email } });
+    const existingEmail = await prisma.dc_users.findFirst({ where: { email } });
     if (existingEmail) {
       return res.status(409).json({ error: "Email already exists", field: "email" });
     }
 
-    const existingPhone = await prisma.dc_users.findUnique({ where: { phone } });
+    const existingPhone = await prisma.dc_users.findFirst({ where: { phone } });
     if (existingPhone) {
       return res.status(409).json({ error: "Phone already exists", field: "phone" });
     }
