@@ -40,6 +40,8 @@ router.get('/', userController.getAllUsers);
 router.get('/types', userController.getUserTypes);
 router.get('/statuses', userController.getUserStatuses);
 router.get('/:id', userController.getUserById);
+router.put('/:id', userController.updateUser);
+
 
 /**
  * @swagger
