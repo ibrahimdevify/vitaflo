@@ -138,13 +138,14 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { f_name, l_name, email, phone, us_id_fk, is_guardian, is_availible, is_profile_completed, is_rpm_allow, password } = req.body;
+    const { f_name, l_name, email, phone, us_id_fk,ut_id_fk, is_guardian, is_availible, is_profile_completed, is_rpm_allow, password } = req.body;
     const data = {};
     if (f_name) data.f_name = f_name;
     if (l_name) data.l_name = l_name;
     if (email) data.email = email;
     if (phone) data.phone = phone;
     if (us_id_fk !== undefined) data.us_id_fk = parseInt(us_id_fk);
+    if (ut_id_fk !== undefined) data.ut_id_fk = parseInt(ut_id_fk);
     if (is_guardian !== undefined) data.is_guardian = is_guardian;
     if (is_availible !== undefined) data.is_availible = is_availible;
     if (is_profile_completed !== undefined) data.is_profile_completed = is_profile_completed;
