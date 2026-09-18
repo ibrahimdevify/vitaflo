@@ -23,14 +23,10 @@ export default function Patients() {
 
   // If a clinician id was passed via navigation state (e.g. from the
   // Clinicians "View Patients" action), filter to that one clinician.
-  // Otherwise, omit assigned_clinician_id entirely and let the backend
-  // decide the default scope for the logged-in user (their own patients,
-  // their whole team, or every clinician they manage, depending on role)
-  // — do NOT default this to the logged-in user's own id here, since for
-  // a clinician_admin that id is never a valid "clinician" and would
-  // incorrectly return an empty list.
+  // Otherwise, default to the logged-in clinician's own id.
   const stateClinicianId = location.state?.assignedClinicianId;
   const stateClinicianName = location.state?.assignedClinicianName;
+  const effectiveClinicianId = stateClinicianId || user?.user_id || user?.id;
 
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +74,7 @@ export default function Patients() {
   }, [stateClinicianId]);
 
   const loadPatients = useCallback(async () => {
-    if (!user) return;
+    if (!effectiveClinicianId) return;
     try {
       setLoading(true);
 
@@ -86,10 +82,7 @@ export default function Patients() {
         page,
         limit,
         search: debouncedSearch || undefined,
-        // Only include assigned_clinician_id when a specific clinician
-        // was explicitly requested. Leaving it out on the default view
-        // lets the backend apply its own role-based default scope.
-        ...(stateClinicianId ? { assigned_clinician_id: stateClinicianId } : {}),
+        assigned_clinician_id: effectiveClinicianId,
         ...filters,
       };
 
@@ -113,15 +106,15 @@ export default function Patients() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, debouncedSearch, stateClinicianId, filters, user]);
+  }, [page, limit, debouncedSearch, effectiveClinicianId, filters]);
 
   useEffect(() => {
     loadPatients();
   }, [loadPatients]);
 
-  const viewPatient = async (id) => {
-    navigate(`/patients/${id}`);
-  };
+ const viewPatient = async (id) => {
+  navigate('/patients-details', { state: { patientId: id } });
+};
 
   const closeModal = () => {
     setSelectedPatient(null);

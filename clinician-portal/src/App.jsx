@@ -77,7 +77,7 @@ export default function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/patients" element={<Patients />} />
-              <Route path="/patients/:id" element={<PatientDetail />} />
+              <Route path="/patients-details" element={<PatientDetail />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/spirometry" element={<Spirometry />} />
               <Route path="/prescriptions" element={<Prescriptions />} />

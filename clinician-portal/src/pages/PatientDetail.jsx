@@ -1,6 +1,10 @@
 import { ArrowLeft, BookOpen, Download, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -39,11 +43,28 @@ const TAB_COMPONENTS = {
 // Tabs where a PDF report doesn't make sense / needs user-picked input first
 const NON_DOWNLOADABLE_TABS = new Set(['alerts']);
 
+const STORAGE_KEY = 'activePatientId';
+
 export default function PatientDetail() {
-  const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'patient-info';
+
+  // Resolve the patient id ONCE on mount:
+  //   1. prefer navigation state (fresh click from the patients list)
+  //   2. fall back to sessionStorage (tab change / refresh)
+  // Never read location.state again after this — setSearchParams wipes it.
+  const [id] = useState(() => {
+    const fromState = Number(location.state?.patientId);
+    if (Number.isFinite(fromState) && fromState > 0) {
+      sessionStorage.setItem(STORAGE_KEY, String(fromState));
+      return fromState;
+    }
+
+    const stored = Number(sessionStorage.getItem(STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : NaN;
+  });
 
   const [patientName, setPatientName] = useState('');
   const [tabData, setTabData] = useState(null);
@@ -57,8 +78,16 @@ export default function PatientDetail() {
   const [downloading, setDownloading] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
 
+  // If we have no id at all (deep link / cleared storage), bounce out.
   useEffect(() => {
-    if (!id) return;
+    if (!Number.isFinite(id)) {
+      navigate('/patients', { replace: true });
+    }
+  }, [id, navigate]);
+
+  // Header: fetch the patient's name.
+  useEffect(() => {
+    if (!Number.isFinite(id)) return;
     let isMounted = true;
 
     patientsAPI
@@ -80,9 +109,9 @@ export default function PatientDetail() {
 
   const loadTabData = useCallback(
     async (tab, params = {}) => {
-      if (!id) {
+      if (!Number.isFinite(id)) {
         setLoading(false);
-        setError('No patient id in URL');
+        setError('No patient selected');
         return;
       }
 
@@ -131,6 +160,11 @@ export default function PatientDetail() {
   };
 
   useEffect(() => {
+    if (!Number.isFinite(id)) {
+      setLoading(false);
+      return;
+    }
+
     setTabData(null);
     setCurrentParams({});
 
@@ -146,7 +180,13 @@ export default function PatientDetail() {
 
   const handleTabChange = (tabKey) => {
     if (tabKey === activeTab) return;
+    // No need to carry location.state — id lives in sessionStorage now.
     setSearchParams({ tab: tabKey });
+  };
+
+  const handleBack = () => {
+    sessionStorage.removeItem(STORAGE_KEY);
+    navigate('/patients');
   };
 
   // Extracts a readable message even when the server returns a JSON error
@@ -166,7 +206,7 @@ export default function PatientDetail() {
   };
 
   const handleDownloadReport = async () => {
-    if (!id) return;
+    if (!Number.isFinite(id)) return;
 
     // NOTE: patientsAPI.getPatientReportPdf calls a PDF export endpoint that
     // hasn't been built on the backend yet (only the JSON tab endpoints from
@@ -216,7 +256,7 @@ export default function PatientDetail() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => navigate('/patients')}
+            onClick={handleBack}
             className="shrink-0"
           >
             <ArrowLeft className="h-5 w-5" />

@@ -88,34 +88,38 @@ export default function PatientsTable({ patients, loading, onViewPatient }) {
 
           return (
             <TableRow key={patient.user_id}>
-              <TableCell>
-                <NavLink to={`/patients/${patient.user_id}`} className="flex items-center gap-3">
-                <div className="flex items-center gap-3">
-                  
-                  <div
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-caption font-semibold text-white bg-linear-to-br ${gradient}`}
-                  >
-                    {patient.f_name?.[0]}
-                    {patient.l_name?.[0]}
-                  </div>
-                  
-                  <div className="min-w-0">
-                    <p className="font-medium text-fg text-body truncate">
-                      {patient.f_name} {patient.l_name}
-                    </p>
-                    <p className="text-caption text-fg-muted truncate">
-                      {patient.email}
-                    </p>
-                    {patient.attributes?.dob && (
-                      <p className="text-caption text-fg-muted">
-                        DOB: {formatDate(patient.attributes.dob)}
-                      </p>
-                    )}
-                  </div>
-                  
-                </div>
-                </NavLink>
-              </TableCell>
+             <TableCell>
+  <button
+    type="button"
+    onClick={() =>
+      navigate('/patients-details', {
+        state: { patientId: patient.user_id },
+      })
+    }
+    className="flex items-center gap-3 text-left"
+  >
+    <div
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-caption font-semibold text-white bg-linear-to-br ${gradient}`}
+    >
+      {patient.f_name?.[0]}
+      {patient.l_name?.[0]}
+    </div>
+
+    <div className="min-w-0">
+      <p className="font-medium text-fg text-body truncate">
+        {patient.f_name} {patient.l_name}
+      </p>
+      <p className="text-caption text-fg-muted truncate">
+        {patient.email}
+      </p>
+      {patient.attributes?.dob && (
+        <p className="text-caption text-fg-muted">
+          DOB: {formatDate(patient.attributes.dob)}
+        </p>
+      )}
+    </div>
+  </button>
+</TableCell>
               
               <TableCell className="text-fg tabular-nums">
                 <span className="font-mono text-caption bg-surface px-2 py-0.5 rounded border border-border">
