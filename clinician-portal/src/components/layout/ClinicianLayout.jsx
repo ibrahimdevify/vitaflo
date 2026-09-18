@@ -4,6 +4,7 @@ import {
   ClipboardList,
   FileText,
   LayoutDashboard,
+  Stethoscope,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -18,21 +19,33 @@ import SidebarContent from './SidebarContent';
 const baseMenuItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/patients', icon: Users, label: 'My Patients' },
-  { path: '/spirometry', icon: Activity, label: 'Spirometry' },
-  { path: '/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
-  { path: '/notes', icon: FileText, label: 'Notes' },
-  { path: '/alerts', icon: Bell, label: 'Alerts' },
-  { path: '/profile', icon: UserRound, label: 'Profile' },
-  { path: '/users', icon: UserRound, label: 'Users', requiredUtId: 6 },
+  { path: '/users', icon: UserRound, label: 'My Clinics', requiredUtId: 6 },
+  {
+    icon: Stethoscope,
+    label: 'Clinical Records',
+    children: [
+      { path: '/spirometry', icon: Activity, label: 'Spirometry' },
+      { path: '/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
+      { path: '/notes', icon: FileText, label: 'Notes' },
+      { path: '/alerts', icon: Bell, label: 'Alerts' },
+    ],
+  },
 ];
 
 export default function ClinicianLayout() {
   const { loading, user } = useAuth();
   const [open, setOpen] = useState(false);
 
-  const menuItems = baseMenuItems.filter(
-    (item) => !item.requiredUtId || user?.ut_id_fk === item.requiredUtId
-  );
+  const filterItems = (items) =>
+    items
+      .filter((item) => !item.requiredUtId || user?.ut_id_fk === item.requiredUtId)
+      .map((item) =>
+        item.children
+          ? { ...item, children: filterItems(item.children) }
+          : item
+      );
+
+  const menuItems = filterItems(baseMenuItems);
 
   const sidebar = (
     <SidebarContent items={menuItems} onItemClick={() => setOpen(false)} />

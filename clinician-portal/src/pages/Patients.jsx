@@ -22,12 +22,15 @@ export default function Patients() {
   const location = useLocation();
 
   // If a clinician id was passed via navigation state (e.g. from the
-  // Clinicians "View Patients" action), filter by that clinician instead
-  // of the currently logged-in user. Never appears in the URL, and is
-  // lost on a hard refresh — at which point we fall back to "my patients".
+  // Clinicians "View Patients" action), filter to that one clinician.
+  // Otherwise, omit assigned_clinician_id entirely and let the backend
+  // decide the default scope for the logged-in user (their own patients,
+  // their whole team, or every clinician they manage, depending on role)
+  // — do NOT default this to the logged-in user's own id here, since for
+  // a clinician_admin that id is never a valid "clinician" and would
+  // incorrectly return an empty list.
   const stateClinicianId = location.state?.assignedClinicianId;
   const stateClinicianName = location.state?.assignedClinicianName;
-  const effectiveClinicianId = stateClinicianId || user?.user_id || user?.id;
 
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +78,7 @@ export default function Patients() {
   }, [stateClinicianId]);
 
   const loadPatients = useCallback(async () => {
-    if (!effectiveClinicianId) return;
+    if (!user) return;
     try {
       setLoading(true);
 
@@ -83,7 +86,10 @@ export default function Patients() {
         page,
         limit,
         search: debouncedSearch || undefined,
-        assigned_clinician_id: effectiveClinicianId,
+        // Only include assigned_clinician_id when a specific clinician
+        // was explicitly requested. Leaving it out on the default view
+        // lets the backend apply its own role-based default scope.
+        ...(stateClinicianId ? { assigned_clinician_id: stateClinicianId } : {}),
         ...filters,
       };
 
@@ -107,7 +113,7 @@ export default function Patients() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, debouncedSearch, effectiveClinicianId, filters]);
+  }, [page, limit, debouncedSearch, stateClinicianId, filters, user]);
 
   useEffect(() => {
     loadPatients();

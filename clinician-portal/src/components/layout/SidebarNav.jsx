@@ -12,10 +12,79 @@ const RESOURCES = [
   { label: 'Interpretation of PFTs', file: 'interpretation-of-pfts.pdf' },
 ];
 
+function NavGroup({ item, isChildActive, onItemClick }) {
+  const location = useLocation();
+  const [open, setOpen] = useState(isChildActive);
+  const { icon: Icon, label, children } = item;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+          isChildActive
+            ? 'text-white'
+            : 'text-brand-300 hover:bg-white/5 hover:text-white'
+        }`}
+      >
+        {isChildActive && (
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-brand-400" />
+        )}
+        <Icon
+          className={`h-4 w-4 shrink-0 transition-colors ${
+            isChildActive
+              ? 'text-brand-400'
+              : 'text-brand-400/60 group-hover:text-brand-400'
+          }`}
+        />
+        <span className="flex-1 text-left">{label}</span>
+        {open ? (
+          <ChevronUp className="h-4 w-4 text-brand-400/60" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-brand-400/60" />
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-0.5 space-y-0.5 pl-4">
+          {children.map((child) => {
+            const isActive = location.pathname === child.path;
+            return (
+              <Link
+                key={child.path}
+                to={child.path}
+                onClick={onItemClick}
+                className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-white/10 text-white'
+                    : 'text-brand-300 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-brand-400" />
+                )}
+                <child.icon
+                  className={`h-4 w-4 shrink-0 transition-colors ${
+                    isActive
+                      ? 'text-brand-400'
+                      : 'text-brand-400/60 group-hover:text-brand-400'
+                  }`}
+                />
+                {child.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SidebarNav({ items, onItemClick }) {
   const location = useLocation();
   const [resourcesOpen, setResourcesOpen] = useState(true);
-  
+
   // Get the API URL from environment
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -25,6 +94,20 @@ export default function SidebarNav({ items, onItemClick }) {
         Main Menu
       </p>
       {items.map((item) => {
+        if (item.children) {
+          const isChildActive = item.children.some(
+            (child) => location.pathname === child.path
+          );
+          return (
+            <NavGroup
+              key={item.label}
+              item={item}
+              isChildActive={isChildActive}
+              onItemClick={onItemClick}
+            />
+          );
+        }
+
         const isActive = location.pathname === item.path;
         return (
           <Link
