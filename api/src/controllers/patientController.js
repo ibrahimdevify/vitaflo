@@ -201,6 +201,20 @@ const getAllPatients = async (req, res) => {
       }
     }
 
+    // ────────────────────────────────────────────────────────────
+    // Clinician visibility scoping (security-critical — resolved
+    // from req.user, never trusted from the client alone)
+    // ────────────────────────────────────────────────────────────
+    const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+    if (visibleClinicianIds.length === 0) {
+      return res.json({
+        data: [],
+        pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
+        filters: { available_filters: [] },
+      });
+    }
+
     // Build patient_details where clause
     let patientDetailsWhere = {};
 
@@ -212,15 +226,21 @@ const getAllPatients = async (req, res) => {
       patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
     }
 
-    // NOTE: assigned_clinician_id query param is still allowed as an
-    // additional narrowing filter (e.g. admin picking one clinician
-    // on their team from a dropdown), but it no longer does the
-    // security scoping by itself — that's handled below via
-    // getVisibleClinicianIds, combined with an AND.
+    // If a specific clinician was requested, it must be within the
+    // caller's visible set (self, or a clinician they manage).
+    // Otherwise, default to everyone the caller can see.
     if (assigned_clinician_id) {
-      patientDetailsWhere.assigned_clinician_id = parseInt(
-        assigned_clinician_id,
-      );
+      const requestedId = parseInt(assigned_clinician_id);
+
+      if (!visibleClinicianIds.includes(requestedId)) {
+        return res.status(403).json({
+          error: "Not authorized to view this clinician's patients",
+        });
+      }
+
+      patientDetailsWhere.assigned_clinician_id = requestedId;
+    } else {
+      patientDetailsWhere.assigned_clinician_id = { in: visibleClinicianIds };
     }
 
     if (chart_no) {
@@ -357,34 +377,6 @@ const getAllPatients = async (req, res) => {
             ...(last_alert_to && { lte: new Date(last_alert_to) }),
           },
         },
-      };
-    }
-
-    // 🔒 Visibility scoping (replaces the old "clinician-only" check):
-    //   - clinician_admin (ut_id_fk=6): sees patients across every
-    //     clinician they manage
-    //   - clinician (ut_id_fk=3) with an admin: sees patients across
-    //     their whole team (every clinician sharing that same admin)
-    //   - clinician (ut_id_fk=3) with no admin: sees only their own
-    //     assigned patients
-    //   - anyone else (e.g. technician/admin roles not covered above):
-    //     unchanged — no clinician-based restriction applied here
-    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
-      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
-
-      if (visibleClinicianIds.length === 0) {
-        // No team / no self-assignment resolvable — return no results
-        // rather than accidentally falling through to "see everything".
-        return res.json({
-          data: [],
-          pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
-          filters: { available_filters: [] },
-        });
-      }
-
-      where.patient_details = {
-        ...(where.patient_details || {}),
-        assigned_clinician_id: { in: visibleClinicianIds },
       };
     }
 
