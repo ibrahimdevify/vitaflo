@@ -1,6 +1,7 @@
 import { Plus, Stethoscope } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import AssignAdminModal from "../components/clinicians/AssignAdminModal";
 import ClinicianDetailModal from "../components/clinicians/ClinicianDetailModal";
 import ClinicianForm from "../components/clinicians/ClinicianForm";
 import CliniciansFilters from "../components/clinicians/CliniciansFilters";
@@ -30,6 +31,7 @@ export default function Clinicians() {
   const [selectedClinician, setSelectedClinician] = useState(null);
   const [clinicianDetail, setClinicianDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [assigningClinician, setAssigningClinician] = useState(null);
   const debounceRef = useRef(null);
 
   useEffect(() => {
@@ -124,6 +126,13 @@ export default function Clinicians() {
         loading={loadingDetail}
       />
 
+      <AssignAdminModal
+        open={!!assigningClinician}
+        clinician={assigningClinician}
+        onClose={() => setAssigningClinician(null)}
+        onAssigned={loadClinicians}
+      />
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
           <CardTitle className="text-subheading font-semibold flex items-center gap-2.5 text-fg">
@@ -151,6 +160,7 @@ export default function Clinicians() {
               setEditingClinician(c);
               setShowForm(true);
             }}
+            onAssignAdmin={(c) => setAssigningClinician(c)}
           />
           <Pagination
             page={page}

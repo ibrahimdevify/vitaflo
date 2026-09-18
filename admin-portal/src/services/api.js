@@ -63,8 +63,12 @@ export const cliniciansAPI = {
   unassignPatient: (id, patientId) =>
     api.delete(`/clinicians/${id}/patients/${patientId}`),
   resetPassword: (data) => api.post('/clinicians/reset-password', data),
+  assignAdmin: (clinician_id, clinician_admin_id) =>
+    api.put('/clinicians/assign-admin', { clinician_id, clinician_admin_id }),
 };
-
+export const clinicianAdminsAPI = {
+  getAll: (params) => api.get('/clinicians/admins', { params }),
+};
 export const dashboardAPI = {
   getSystemStats: () => api.get('/dashboard/system'),
   getClinicianDashboard: () => api.get('/dashboard/clinician'),

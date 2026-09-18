@@ -49,16 +49,124 @@ const getAllClinicians = async (req, res) => {
           user_status: { select: { name: true } },
           doctor_details: { select: { dd_id: true, about_doctor: true, education: true, license_no: true, is_specialist: true, experience: true, hospital: { select: { id: true, name: true } } } },
           _count: { select: { assigned_patients: true } },
+          clinician_admin_link: {
+            select: {
+              clinician_admin: {
+                select: { user_id: true, f_name: true, l_name: true, email: true, phone: true, userName: true, profile_pic: true },
+              },
+            },
+          },
         },
       }),
       prisma.dc_users.count({ where }),
     ]);
-    res.json({ data: clinicians, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
+
+    const data = clinicians.map(({ clinician_admin_link, ...rest }) => ({
+      ...rest,
+      clinician_admin: clinician_admin_link?.clinician_admin ?? null,
+    }));
+
+    res.json({ data, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
   } catch (error) {
     console.error('Get clinicians error:', error);
     res.status(500).json({ error: 'Failed to fetch clinicians' });
   }
 };
+const getAllClinicianAdmins = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search } = req.query;
+    const where = { ut_id_fk: 6 }; // TODO: confirm actual ut_id for "clinician admin"
+    if (search) {
+      const searchTerm = search.trim();
+      const nameParts = searchTerm.split(/\s+/).filter(Boolean);
+
+      where.OR = [
+        { f_name: { contains: searchTerm } },
+        { l_name: { contains: searchTerm } },
+        { userName: { contains: searchTerm } },
+        { email: { contains: searchTerm } },
+        { phone: { contains: searchTerm } },
+      ];
+
+      // Handle "First Last" style full-name search across two fields
+      if (nameParts.length > 1) {
+        where.OR.push(
+          {
+            AND: [
+              { f_name: { contains: nameParts[0] } },
+              { l_name: { contains: nameParts.slice(1).join(' ') } },
+            ],
+          },
+          {
+            AND: [
+              { f_name: { contains: nameParts[nameParts.length - 1] } },
+              { l_name: { contains: nameParts.slice(0, -1).join(' ') } },
+            ],
+          },
+        );
+      }
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [clinicianAdmins, total] = await Promise.all([
+      prisma.dc_users.findMany({
+        where, skip, take: parseInt(limit), orderBy: { reg_date: 'desc' },
+        select: {
+          user_id: true, f_name: true, l_name: true, email: true, phone: true, userName: true,
+          profile_pic: true, is_availible: true, reg_date: true,
+          user_status: { select: { name: true } },
+          _count: { select: { managed_clinicians: true } },
+        },
+      }),
+      prisma.dc_users.count({ where }),
+    ]);
+
+    res.json({ data: clinicianAdmins, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
+  } catch (error) {
+    console.error('Get clinician admins error:', error);
+    res.status(500).json({ error: 'Failed to fetch clinician admins' });
+  }
+};
+const assignClinicianToAdmin = async (req, res) => {
+  try {
+    const { clinician_id, clinician_admin_id } = req.body;
+    if (!clinician_id || !clinician_admin_id) {
+      return res.status(400).json({ error: 'clinician_id and clinician_admin_id are required' });
+    }
+
+    const [clinician, admin] = await Promise.all([
+      prisma.dc_users.findUnique({ where: { user_id: parseInt(clinician_id) } }),
+      prisma.dc_users.findUnique({ where: { user_id: parseInt(clinician_admin_id) } }),
+    ]);
+
+    if (!clinician || clinician.ut_id_fk !== 3) {
+      return res.status(404).json({ error: 'Clinician not found' });
+    }
+    if (!admin || admin.ut_id_fk !== 6) { // TODO: confirm ut_id for clinician admin
+      return res.status(404).json({ error: 'Clinician admin not found' });
+    }
+
+    const assignment = await prisma.dc_clinician_assignments.upsert({
+      where: { clinician_id: parseInt(clinician_id) },
+      update: { clinician_admin_id: parseInt(clinician_admin_id) },
+      create: {
+        clinician_id: parseInt(clinician_id),
+        clinician_admin_id: parseInt(clinician_admin_id),
+      },
+      select: {
+        ca_id: true,
+        clinician_admin: { select: { user_id: true, f_name: true, l_name: true, email: true } },
+      },
+    });
+
+    res.json({ data: assignment });
+  } catch (error) {
+    console.error('Assign clinician error:', error);
+    res.status(500).json({ error: 'Failed to assign clinician to admin' });
+  }
+};
+
+
 
 const getClinicianById = async (req, res) => {
   try {
@@ -274,4 +382,4 @@ const updateClinician = async (req, res) => {
   }
 };
 
-module.exports = { createClinician, updateClinician, getAllClinicians, getClinicianById, assignPatient, unassignPatient, getClinicianPatients, getClinicianOverview, updateDoctorDetails };
+module.exports = { createClinician, updateClinician, getAllClinicians, getClinicianById, assignPatient, unassignPatient, getClinicianPatients, getClinicianOverview, updateDoctorDetails,getAllClinicianAdmins,assignClinicianToAdmin };

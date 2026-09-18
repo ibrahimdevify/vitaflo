@@ -4,9 +4,11 @@ import {
   Eye,
   MoreHorizontal,
   Stethoscope,
+  UserPlus,
 } from "lucide-react";
 import EmptyState from "../shared/EmptyState";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +39,7 @@ export default function CliniciansTable({
   loading,
   onView,
   onEdit,
+  onAssignAdmin,
 }) {
   if (loading) return <CliniciansTableSkeleton />;
 
@@ -58,6 +61,7 @@ export default function CliniciansTable({
             <TableHead>Clinician</TableHead>
             <TableHead>License</TableHead>
             <TableHead>Hospital</TableHead>
+            <TableHead>Admin</TableHead>
             <TableHead>Specialist</TableHead>
             <TableHead>Patients</TableHead>
             <TableHead>Status</TableHead>
@@ -102,6 +106,23 @@ export default function CliniciansTable({
                     <Building2 className="h-3 w-3" />
                     {c.doctor_details?.hospital?.name || "—"}
                   </div>
+                </TableCell>
+                <TableCell>
+                  {c.clinician_admin ? (
+                    <Badge variant="success" className="whitespace-nowrap">
+                      {c.clinician_admin.f_name} {c.clinician_admin.l_name}
+                    </Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => onAssignAdmin(c)}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Assign to Admin
+                    </Button>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge
