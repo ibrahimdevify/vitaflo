@@ -126,19 +126,13 @@ function pickBestSpirometryValues(spirometries) {
     best[field] = values.length > 0 ? Math.max(...values) : null;
   }
 
-  // Calculate FEV1/FVC from the same spirometry test.
-  // Do NOT divide independently selected best FEV1 and best FVC.
-  const ratios = spirometries
-    .map((s) => {
-      const fev1 = normalizeSpirometryValue(s.fev1);
-      const fvc = normalizeSpirometryValue(s.fvc);
-
-      return calculateFev1FvcRatio(fev1, fvc);
-    })
-    .filter((v) => v !== null);
-
+  // Calculate FEV1/FVC from the selected best FEV1 and best FVC.
   best.fev1FvcRatio =
-    ratios.length > 0 ? Math.max(...ratios) : null;
+    best.fev1 !== null &&
+    best.fvc !== null &&
+    best.fvc !== 0
+      ? Number(((best.fev1 / best.fvc) * 100).toFixed(1))
+      : null;
 
   return best;
 }
