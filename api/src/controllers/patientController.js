@@ -212,11 +212,11 @@ const getAllPatients = async (req, res) => {
       patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
     }
 
-    // NOTE: assigned_clinician_id query param is applied here as a plain
-    // filter. For clinician/admin roles (ut_id_fk 3 or 6), the visibility
-    // scoping block below re-validates and re-applies this value against
-    // what that user is actually allowed to see — see comments there.
-    // For any other role, this is the only place it's applied.
+    // NOTE: assigned_clinician_id query param is still allowed as an
+    // additional narrowing filter (e.g. admin picking one clinician
+    // on their team from a dropdown), but it no longer does the
+    // security scoping by itself — that's handled below via
+    // getVisibleClinicianIds, combined with an AND.
     if (assigned_clinician_id) {
       patientDetailsWhere.assigned_clinician_id = parseInt(
         assigned_clinician_id,
@@ -360,7 +360,7 @@ const getAllPatients = async (req, res) => {
       };
     }
 
-    // 🔒 Visibility scoping:
+    // 🔒 Visibility scoping (replaces the old "clinician-only" check):
     //   - clinician_admin (ut_id_fk=6): sees patients across every
     //     clinician they manage
     //   - clinician (ut_id_fk=3) with an admin: sees patients across
@@ -368,16 +368,7 @@ const getAllPatients = async (req, res) => {
     //   - clinician (ut_id_fk=3) with no admin: sees only their own
     //     assigned patients
     //   - anyone else (e.g. technician/admin roles not covered above):
-    //     unchanged — no clinician-based restriction applied here,
-    //     assigned_clinician_id (if provided) is applied as a plain
-    //     filter above with no extra validation.
-    //
-    // If a specific assigned_clinician_id was requested (e.g. "View
-    // Patients" from a clinician's row), it is validated against the
-    // caller's visible set rather than being silently overwritten by
-    // the "see everyone visible" filter — previously this block always
-    // replaced assigned_clinician_id with { in: visibleClinicianIds },
-    // which meant a requested single clinician was never actually honored.
+    //     unchanged — no clinician-based restriction applied here
     if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
       const visibleClinicianIds = await getVisibleClinicianIds(req.user);
 
@@ -391,30 +382,10 @@ const getAllPatients = async (req, res) => {
         });
       }
 
-      if (assigned_clinician_id) {
-        const requestedId = parseInt(assigned_clinician_id);
-
-        if (!visibleClinicianIds.includes(requestedId)) {
-          // Requested clinician is outside what this user is allowed
-          // to see — return no results rather than leaking another
-          // team's patients.
-          return res.json({
-            data: [],
-            pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
-            filters: { available_filters: [] },
-          });
-        }
-
-        where.patient_details = {
-          ...(where.patient_details || {}),
-          assigned_clinician_id: requestedId,
-        };
-      } else {
-        where.patient_details = {
-          ...(where.patient_details || {}),
-          assigned_clinician_id: { in: visibleClinicianIds },
-        };
-      }
+      where.patient_details = {
+        ...(where.patient_details || {}),
+        assigned_clinician_id: { in: visibleClinicianIds },
+      };
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
