@@ -333,31 +333,11 @@ const getClinicianPatients = async (req, res) => {
   try {
     const clinicianId = req.user.user_id;
 
-    // Pagination
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.max(parseInt(req.query.limit) || 20, 1);
-    const skip = (page - 1) * limit;
-
-    // Get total count
-    const total = await prisma.dc_users.count({
-      where: {
-        ut_id_fk: 4,
-        patient_details: {
-          assigned_clinician_id: clinicianId,
-        },
-      },
-    });
-
-    // Get paginated patients
     const patients = await prisma.dc_users.findMany({
       where: {
         ut_id_fk: 4,
-        patient_details: {
-          assigned_clinician_id: clinicianId,
-        },
+        patient_details: { assigned_clinician_id: clinicianId },
       },
-      skip,
-      take: limit,
       include: {
         patient_details: {
           include: {
@@ -385,6 +365,8 @@ const getClinicianPatients = async (req, res) => {
           phone: attr?.phone || p.phone || '',
           dob: attr?.dob ? String(attr.dob) : null,
           gender: attr?.gender || null,
+          // Wrapped so JSON.stringify emits e.g. 80.0 instead of 80.
+          // asFloat(..., 1) matches the previous .toFixed(1) precision.
           height: asFloat(attr?.height, 1),
           weight: asFloat(attr?.weight, 1),
           lookup_table: attr?.lookup_table || attr?.ethnic_group || '',
@@ -394,28 +376,13 @@ const getClinicianPatients = async (req, res) => {
       };
     });
 
-    const response = {
-      data: result,
-      pagination: {
-        page,
-        limit,
-        total,
-        total_pages: Math.ceil(total / limit),
-        has_next_page: page < Math.ceil(total / limit),
-        has_previous_page: page > 1,
-      },
-    };
-
-    res
-      .type('application/json')
-      .send(stringifyWithFloats(response));
-
+    // NOTE: res.json(result) would run JSON.stringify internally and strip
+    // the decimal points again. Serialize manually with stringifyWithFloats
+    // and send it as JSON explicitly.
+    res.type('application/json').send(stringifyWithFloats(result));
   } catch (error) {
     console.error('Get clinician patients error:', error);
-    res.status(500).json({
-      error: 'Failed to fetch patients',
-      message: error.message,
-    });
+    res.status(500).json({ error: 'Failed to fetch patients', message: error.message });
   }
 };
 const getPatientById = async (req, res) => {
