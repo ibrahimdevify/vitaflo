@@ -95,7 +95,9 @@ const clinicianLogin = async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
     const user = await prisma.dc_users.findFirst({
-      where: { OR: [{ email: username }, { phone: username }, { userName: username }], ut_id_fk: 3 },
+      where: { OR: [{ email: username }, { phone: username }, { userName: username }], ut_id_fk: {
+      in: [3, 6],
+    }, },
       include: { doctor_details: { include: { hospital: true } } },
     });
     if (!user) {
