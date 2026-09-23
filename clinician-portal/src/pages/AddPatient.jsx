@@ -1,6 +1,7 @@
 import { ArrowLeft, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PatientForm from '../components/patients/PatientForm';
+import AnimatedText from '../components/ui/AnimatedText';
 import { Button } from '../components/ui/button';
 
 export default function AddPatient() {
@@ -34,7 +35,7 @@ export default function AddPatient() {
               <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-brand-500 to-brand-700">
                 <UserPlus className="h-3.5 w-3.5 text-white" />
               </div>
-              Add New Patient
+              <AnimatedText speed={20}>Add New Patient</AnimatedText>
             </h1>
 
             <p className="mt-0.5 text-caption text-fg-muted">

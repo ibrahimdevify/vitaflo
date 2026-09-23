@@ -1,0 +1,1 @@
+import{n as e}from"./createLucideIcon-B7Rt97dI.js";import{w as t}from"./index-CdVmtVVR.js";var n=e();function r({className:e,...r}){return(0,n.jsx)(`div`,{"data-slot":`skeleton`,role:`status`,"aria-label":`Loading`,className:t(`animate-pulse rounded-md bg-surface-raised`,e),...r})}export{r as t};

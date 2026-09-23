@@ -1,6 +1,7 @@
 import { UserPlus, Users as UsersIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import AnimatedText from '../components/ui/AnimatedText';
 import { Button } from '../components/ui/button';
 import {
   Card,
@@ -116,7 +117,7 @@ export default function Clinicians() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Clinicians
+            <AnimatedText speed={30}>Clinicians</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage clinicians under your account
@@ -133,16 +134,15 @@ export default function Clinicians() {
         </Button>
       </div>
 
-      {showForm && (
-        <UserForm
-          onSubmit={editingClinician ? handleUpdate : handleCreate}
-          onCancel={() => {
-            setShowForm(false);
-            setEditingClinician(null);
-          }}
-          initialData={editingClinician}
-        />
-      )}
+      <UserForm
+        open={showForm}
+        onSubmit={editingClinician ? handleUpdate : handleCreate}
+        onCancel={() => {
+          setShowForm(false);
+          setEditingClinician(null);
+        }}
+        initialData={editingClinician}
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">

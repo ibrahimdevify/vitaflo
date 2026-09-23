@@ -1,105 +1,13 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { Toaster } from "sonner";
-import ErrorBoundary from "./components/ErrorBoundary";
-import ClinicianLayout from "./components/layout/ClinicianLayout";
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import Login from "./pages/Login";
-import ResetPassword from "./pages/ResetPassword";
+import { RouterProvider } from 'react-router';
 
-const Alerts = lazy(() => import("./pages/Alerts"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Users = lazy(() => import('./pages/Users'));
-const AddPatient = lazy(() => import("./pages/AddPatient"));
-const PatientDetail = lazy(() => import("./pages/PatientDetail"));
-const Forbidden = lazy(() => import("./pages/Forbidden"));
-const Notes = lazy(() => import("./pages/Notes"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Patients = lazy(() => import("./pages/Patients"));
-const Prescriptions = lazy(() => import("./pages/Prescriptions"));
-const Profile = lazy(() => import("./pages/Profile"));
-const Spirometry = lazy(() => import("./pages/Spirometry"));
-const PDFViewer = lazy(() => import("./components/PDFViewer"));
-const Unauthorized = lazy(() => import("./pages/Unauthorized"));
-
-function ProtectedRoute({ children }) {
-  const { user, loading, unauthorized } = useAuth();
-
-  if (loading) return children;
-
-  if (unauthorized) {
-    return <Navigate to="/unauthorized" replace />;
-  }
-
-  if (!user) return <Navigate to="/login" replace />;
-
-  return children;
-}
-
-function RequireRole({ role, children }) {
-  const { user, loading } = useAuth();
-
-  if (loading) return children;
-
-  if (user?.ut_id_fk !== role) {
-    return <Navigate to="/forbidden" replace />;
-  }
-
-  return children;
-}
-
-function PageFallback() {
-  return (
-    <div className="flex h-screen w-full items-center justify-center bg-surface">
-      <div className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
-    </div>
-  );
-}
+import { Toaster } from 'sonner';
+import { AuthProvider } from './context/AuthContext';
+import { router } from './router';
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Suspense fallback={<PageFallback />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/unauthorized" element={<Unauthorized />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-
-            <Route
-              element={
-                <ProtectedRoute>
-                  <ErrorBoundary>
-                    <ClinicianLayout />
-                  </ErrorBoundary>
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/patients" element={<Patients />} />
-              <Route path="/patients-details" element={<PatientDetail />} />
-              <Route path="/notes" element={<Notes />} />
-              <Route path="/spirometry" element={<Spirometry />} />
-              <Route path="/prescriptions" element={<Prescriptions />} />
-              <Route
-                path="/users"
-                element={
-                  <RequireRole role={6}>
-                    <Users />
-                  </RequireRole>
-                }
-              />
-              <Route path="/alerts" element={<Alerts />} />
-              <Route path="/patients/add" element={<AddPatient />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/resources/:filename" element={<PDFViewer />} />
-              <Route path="/forbidden" element={<Forbidden />} />
-
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+      <RouterProvider router={router} />
       <Toaster />
     </AuthProvider>
   );

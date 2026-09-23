@@ -44,7 +44,11 @@ export default function AlertsFilterBar({
                 className="pl-10"
               />
             </div>
-            <Button onClick={() => onSearch(1)} disabled={loading}>
+            <Button
+              size={'default'}
+              onClick={() => onSearch(1)}
+              disabled={loading}
+            >
               <Search className="h-4 w-4 mr-2" />
               {loading ? 'Loading...' : 'Search'}
             </Button>
@@ -55,7 +59,7 @@ export default function AlertsFilterBar({
           <div className="flex items-center gap-3 flex-wrap">
             <span className="flex items-center gap-1.5 text-caption text-fg-muted font-medium">
               <Filter className="h-3.5 w-3.5" />
-              Filters
+              Filters:
             </span>
 
             <Input
@@ -67,7 +71,7 @@ export default function AlertsFilterBar({
                   start: e.target.value,
                 }))
               }
-              className="w-40 h-9 text-caption"
+              className="w-40 h-9 text-caption flex-1"
             />
             <span className="text-caption text-fg-muted">to</span>
             <Input
@@ -76,13 +80,13 @@ export default function AlertsFilterBar({
               onChange={(e) =>
                 onDateRangeChange((prev) => ({ ...prev, end: e.target.value }))
               }
-              className="w-40 h-9 text-caption"
+              className="w-40 h-9 text-caption flex-1"
             />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 {/* 🔧 Div instead of Button — no nested <button> */}
-                <div className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
+                <div className="inline-flex flex-1 items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
                   <Filter className="h-3.5 w-3.5" />
                   {filterOptions[filterRead]}
                   <ChevronDown className="h-3 w-3 ml-1" />
@@ -108,10 +112,9 @@ export default function AlertsFilterBar({
             </DropdownMenu>
 
             <Button
-              variant="ghost"
-              size="sm"
+              variant="default"
+              size="default"
               onClick={() => onSearch(1)}
-              className="text-brand-600 hover:text-brand-700"
             >
               Apply filters
             </Button>

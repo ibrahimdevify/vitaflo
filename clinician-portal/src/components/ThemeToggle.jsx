@@ -22,17 +22,18 @@ export default function ThemeToggle() {
       onClick={() => setIsDark((prev) => !prev)}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       aria-pressed={isDark}
-      className="btn-secondary rounded-xl relative h-9 w-9 p-0! overflow-hidden"
+      className="relative h-9 w-9 cursor-pointer overflow-hidden p-0!"
     >
-      <Sun
-        className={`absolute inset-0 m-auto h-4 w-4 transition-all duration-300 ${
+      <Moon
+        className={`absolute inset-0 m-auto h-5 w-5 text-(--active-surface) transition-all duration-300 ${
           isDark
             ? 'scale-0 -rotate-90 opacity-0'
             : 'scale-100 rotate-0 opacity-100'
         }`}
       />
-      <Moon
-        className={`absolute inset-0 m-auto h-4 w-4 transition-all duration-300 ${
+
+      <Sun
+        className={`absolute inset-0 m-auto h-5 w-5 text-(--active-surface) transition-all duration-300 ${
           isDark
             ? 'scale-100 rotate-0 opacity-100'
             : 'scale-0 rotate-90 opacity-0'

@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import PrescriptionsAddForm from "../components/prescriptions/PrescriptionsAddForm";
-import PrescriptionsList from "../components/prescriptions/PrescriptionsList";
-import PrescriptionsPatientBar from "../components/prescriptions/PrescriptionsPatientBar";
-import PrescriptionsSearch from "../components/prescriptions/PrescriptionsSearch";
-import { patientsAPI } from "../services/api";
-import { useAuth } from "../context/AuthContext";
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import PrescriptionsAddForm from '../components/prescriptions/PrescriptionsAddForm';
+import PrescriptionsList from '../components/prescriptions/PrescriptionsList';
+import PrescriptionsPatientBar from '../components/prescriptions/PrescriptionsPatientBar';
+import PrescriptionsSearch from '../components/prescriptions/PrescriptionsSearch';
+import AnimatedText from '../components/ui/AnimatedText';
+import { useAuth } from '../context/AuthContext';
+import { patientsAPI } from '../services/api';
 
 export default function Prescriptions() {
-  const [search, setSearch] = useState(""); // empty by default — optional filter
+  const [search, setSearch] = useState(''); // empty by default — optional filter
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -25,7 +26,7 @@ export default function Prescriptions() {
   const [selectedPatient, setSelectedPatient] = useState(null);
 
   // ✅ empty by default — no date filter applied unless the user sets one
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   // ✅ The ONLY fetch function in this file — always hits the list endpoint.
   // No `id` param is ever sent, so it can never 400 with "id must be a
@@ -54,7 +55,7 @@ export default function Prescriptions() {
       setTotalPages(pagination.pages || 1);
       setTotalRecords(pagination.total || data.length);
     } catch (err) {
-      toast.error("Failed to load prescriptions");
+      toast.error('Failed to load prescriptions');
       setPrescriptions([]);
       setTotalRecords(0);
       setTotalPages(1);
@@ -82,7 +83,7 @@ export default function Prescriptions() {
 
   const handleSubmit = async (data) => {
     if (!selectedPatient) {
-      toast.error("Select a patient first");
+      toast.error('Select a patient first');
       return;
     }
     try {
@@ -90,21 +91,21 @@ export default function Prescriptions() {
 
       await patientsAPI.createPrescription(selectedPatient.id, {
         diagnosis: data.diagnosis.trim(),
-        pharmacy_instruction: data.pharmacy_instruction?.trim() || "",
+        pharmacy_instruction: data.pharmacy_instruction?.trim() || '',
         medicines: data.medicines.map((m) => ({
           drug: m.drug.trim(),
-          dosage: m.dosage?.trim() || "N/A",
-          frequency: m.frequency?.trim() || "N/A",
-          quantity: m.quantity?.trim() || "1",
-          days: m.days?.trim() || "1",
-          direction: m.direction?.trim() || "N/A",
+          dosage: m.dosage?.trim() || 'N/A',
+          frequency: m.frequency?.trim() || 'N/A',
+          quantity: m.quantity?.trim() || '1',
+          days: m.days?.trim() || '1',
+          direction: m.direction?.trim() || 'N/A',
         })),
       });
-      toast.success("Prescription created successfully!");
+      toast.success('Prescription created successfully!');
       setShowForm(false);
       fetchList(1, { search: selectedPatient.label });
     } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to create prescription");
+      toast.error(err.response?.data?.error || 'Failed to create prescription');
     } finally {
       setSubmitting(false);
     }
@@ -118,13 +119,14 @@ export default function Prescriptions() {
   const isSinglePatientView =
     prescriptions.length > 0 && distinctPatientIds.size === 1;
   const activePatientId =
-    selectedPatient?.id ?? (isSinglePatientView ? prescriptions[0].patient_id : null);
+    selectedPatient?.id ??
+    (isSinglePatientView ? prescriptions[0].patient_id : null);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-heading font-bold text-fg tracking-tight">
-          Prescriptions
+          <AnimatedText speed={20}> Prescriptions</AnimatedText>
         </h1>
         <p className="text-caption text-fg-muted mt-1">
           Manage and track prescriptions across your clinic's patients

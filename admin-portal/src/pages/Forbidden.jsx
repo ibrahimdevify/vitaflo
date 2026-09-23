@@ -79,9 +79,9 @@
 //     </div>
 //   );
 // }
-import { ShieldAlert } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "../components/ui/button";
+import { ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '../components/ui/button';
 
 export default function Forbidden() {
   const navigate = useNavigate();
@@ -100,7 +100,7 @@ export default function Forbidden() {
         wrong, ask an admin to check your role's permissions.
       </p>
 
-      <Button className="mt-6" onClick={() => navigate("/")}>
+      <Button className="mt-6" onClick={() => navigate('/')}>
         Back to Dashboard
       </Button>
     </div>

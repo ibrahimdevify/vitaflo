@@ -5,7 +5,6 @@ import {
   Calendar,
   FileText,
   Loader2,
-  TrendingUp,
   UserRound,
 } from 'lucide-react';
 
@@ -21,6 +20,7 @@ import {
   TableRow,
 } from '../ui/table';
 
+import { Button } from '../ui/button';
 import SpirometryTableSkeleton from './SpirometryTableSkeleton';
 
 export default function SpirometryTable({
@@ -127,7 +127,6 @@ export default function SpirometryTable({
             <TableHead>FEV1%</TableHead>
             <TableHead>Last Blow</TableHead>
             <TableHead>Action</TableHead>
-            <TableHead className="w-24"></TableHead>
           </TableRow>
         </TableHeader>
 
@@ -146,18 +145,14 @@ export default function SpirometryTable({
 
             // Support observation_id from different possible structures
             const observationId =
-              s?.observation_id ??
-              observation?.id ??
-              s?.observationId ??
-              null;
+              s?.observation_id ?? observation?.id ?? s?.observationId ?? null;
 
             const isReportLoading =
               Boolean(onViewReport) &&
               reportLoadingId != null &&
               String(reportLoadingId) === String(observationId);
 
-            const canViewPatient =
-              Boolean(onViewPatient) && userId != null;
+            const canViewPatient = Boolean(onViewPatient) && userId != null;
 
             const canViewReport =
               Boolean(onViewReport) && observationId != null;
@@ -180,7 +175,7 @@ export default function SpirometryTable({
                         canViewPatient &&
                         onViewPatient(
                           userId,
-                          s?.patient_username ?? s?.patient_name,
+                          s?.patient_username ?? s?.patient_name
                         )
                       }
                       className={`flex items-center gap-1.5 text-left ${
@@ -188,7 +183,11 @@ export default function SpirometryTable({
                           ? 'cursor-pointer hover:text-brand-600'
                           : ''
                       }`}
-                      title={canViewPatient ? 'View this patient\u2019s trends' : undefined}
+                      title={
+                        canViewPatient
+                          ? 'View this patient\u2019s trends'
+                          : undefined
+                      }
                     >
                       <UserRound className="h-3 w-3 text-fg-muted shrink-0" />
                       <span className="text-body text-fg">
@@ -248,45 +247,44 @@ export default function SpirometryTable({
                 <TableCell>
                   <div className="flex items-center gap-1">
                     {/* View Trends */}
-                    {canViewPatient && (
+                    {/* {canViewPatient && (
                       <button
                         type="button"
                         className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors"
                         onClick={() =>
                           onViewPatient(
                             userId,
-                            s?.patient_username ?? s?.patient_name,
+                            s?.patient_username ?? s?.patient_name
                           )
                         }
                         title="View trends"
                       >
                         <TrendingUp className="h-4 w-4 text-brand-600" />
                       </button>
-                    )}
+                    )} */}
 
                     {/* View Bronchodilator Report */}
                     {canViewReport && (
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         disabled={isReportLoading}
-                        className={`inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) transition-colors ${
-                          isReportLoading
-                            ? 'cursor-wait opacity-60'
-                            : 'cursor-pointer hover:bg-surface-raised'
-                        }`}
                         onClick={() => {
                           if (!isReportLoading && observationId != null) {
                             onViewReport(observationId);
                           }
                         }}
-                        title="View bronchodilator report"
+                        className="gap-1.5"
                       >
                         {isReportLoading ? (
-                          <Loader2 className="h-4 w-4 text-fg-muted animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <FileText className="h-4 w-4 text-brand-600" />
+                          <FileText className="h-4 w-4" />
                         )}
-                      </button>
+
+                        {isReportLoading ? 'Loading...' : 'View Report'}
+                      </Button>
                     )}
                   </div>
                 </TableCell>

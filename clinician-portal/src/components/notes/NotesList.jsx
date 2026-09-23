@@ -80,7 +80,6 @@ export default function NotesList({
                           })}
                         </span>
 
-                        {/* ✅ Patient chip — clicking narrows the whole list to this patient */}
                         {showPatientColumn && (
                           <button
                             type="button"
@@ -90,7 +89,7 @@ export default function NotesList({
                               if (canSelectPatient) {
                                 onSelectPatient(
                                   note.patient_id,
-                                  note.patient_username || note.patient_name,
+                                  note.patient_username || note.patient_name
                                 );
                               }
                             }}
@@ -101,7 +100,9 @@ export default function NotesList({
                             }`}
                           >
                             <UserRound className="h-3 w-3" />
-                            {note.patient_name || note.patient_username || note.patient_id}
+                            {note.patient_name ||
+                              note.patient_username ||
+                              note.patient_id}
                           </button>
                         )}
                       </div>

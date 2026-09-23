@@ -1,10 +1,6 @@
 import { ArrowLeft, BookOpen, Download, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -19,6 +15,7 @@ import PatientInfoTab from '../components/patients/tabs/PatientInfoTab.jsx';
 import ReportsTab from '../components/patients/tabs/ReportsTab';
 import SessionComparisonTab from '../components/patients/tabs/SessionComparisonTab';
 import SpirometryTab from '../components/patients/tabs/SpirometryTab';
+import AnimatedText from '../components/ui/AnimatedText.jsx';
 
 const TABS = [
   { key: 'patient-info', label: 'Patient Info' },
@@ -165,7 +162,7 @@ export default function PatientDetail() {
       return;
     }
 
-    setTabData(null);
+    // setTabData(null);
     setCurrentParams({});
 
     const defaultParams = getDefaultParamsForTab(activeTab);
@@ -264,8 +261,10 @@ export default function PatientDetail() {
 
           <div className="min-w-0">
             <h1 className="truncate text-heading font-semibold tracking-tight text-fg">
-              {patientName || (
-                <Skeleton className="h-6 w-48 rounded-(--radius-control)" />
+              {patientName ? (
+                <AnimatedText speed={20}>{patientName}</AnimatedText>
+              ) : (
+                <Skeleton className="h-12 w-48 rounded-(--radius-control)" />
               )}
             </h1>
 
@@ -311,22 +310,31 @@ export default function PatientDetail() {
                   key={tab.key}
                   type="button"
                   onClick={() => handleTabChange(tab.key)}
-                  className={`whitespace-nowrap grow rounded-(--radius-control) px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  className={`group relative grow overflow-hidden whitespace-nowrap rounded-(--radius-control) px-4 py-2 text-sm font-medium transition-all duration-300 cursor-pointer ${
                     activeTab === tab.key
-                      ? 'bg-surface text-brand-600 shadow-sm'
+                      ? 'bg-brand-500/15 text-brand-500 shadow-sm'
                       : 'text-fg-muted hover:text-fg'
                   }`}
                 >
-                  {tab.label}
+                  {/* Hover background */}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute inset-y-0 left-0 w-0 rounded-(--radius-control) bg-surface-raised transition-all duration-500 group-hover:w-full ${
+                      activeTab === tab.key ? 'hidden' : ''
+                    }`}
+                  />
+
+                  {/* Label */}
+                  <span className="relative z-10">{tab.label}</span>
                 </button>
               ))}
             </div>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {loading ? (
-            <div className="space-y-3">
-              {[...Array(6)].map((_, i) => (
+          {loading && !tabData ? (
+            <div className="space-y-3 animate-fade-in">
+              {[...Array(10)].map((_, i) => (
                 <Skeleton
                   key={i}
                   className="h-9 w-full rounded-(--radius-control)"
@@ -339,6 +347,7 @@ export default function PatientDetail() {
             <ActiveTabComponent
               patientId={id}
               data={tabData}
+              loading={loading}
               onRefetch={(params) => loadTabData(activeTab, params)}
             />
           ) : null}

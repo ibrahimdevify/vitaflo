@@ -50,7 +50,7 @@ export default function AlertsTable({ alerts, loading, onMarkAsRead }) {
                 <TableHead>Message</TableHead>
                 <TableHead>Patient</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -107,17 +107,20 @@ export default function AlertsTable({ alerts, loading, onMarkAsRead }) {
                       minute: '2-digit',
                     })}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {!alert.is_read && (
+                  <TableCell>
+                    {!alert.is_read ? (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => onMarkAsRead(alert.id)}
-                        className="text-info hover:text-info hover:bg-info/10"
                       >
-                        <Mail className="h-4 w-4 mr-1.5" />
+                        <Mail className="mr-1.5 h-4 w-4" />
                         Mark read
                       </Button>
+                    ) : (
+                      <span className="text-sm text-fg-muted">
+                        Already read
+                      </span>
                     )}
                   </TableCell>
                 </TableRow>

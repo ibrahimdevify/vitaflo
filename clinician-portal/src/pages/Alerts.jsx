@@ -1,23 +1,24 @@
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import AlertsFilterBar from "../components/alerts/AlertsFilterBar";
-import AlertsStats from "../components/alerts/AlertsStats";
-import AlertsTable from "../components/alerts/AlertsTable";
-import Pagination from "../components/ui/pagination";
-import api from "../services/api";
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import AlertsFilterBar from '../components/alerts/AlertsFilterBar';
+import AlertsStats from '../components/alerts/AlertsStats';
+import AlertsTable from '../components/alerts/AlertsTable';
+import AnimatedText from '../components/ui/AnimatedText';
+import Pagination from '../components/ui/pagination';
+import api from '../services/api';
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalAlerts, setTotalAlerts] = useState(0);
   const limit = 10;
 
   // ✅ empty by default — no date filter applied until the user sets one
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
-  const [filterRead, setFilterRead] = useState("all");
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [filterRead, setFilterRead] = useState('all');
 
   useEffect(() => {
     loadAlerts(1);
@@ -38,10 +39,10 @@ export default function Alerts() {
       if (dateRange.end) params.end_date = dateRange.end;
 
       if (search.trim()) params.search = search.trim();
-      if (filterRead === "read") params.is_read = true;
-      else if (filterRead === "unread") params.is_read = false;
+      if (filterRead === 'read') params.is_read = true;
+      else if (filterRead === 'unread') params.is_read = false;
 
-      const res = await api.get("/alerts", { params });
+      const res = await api.get('/alerts', { params });
       const data = res.data.data || [];
       const pagination = res.data.pagination || {};
 
@@ -49,7 +50,7 @@ export default function Alerts() {
       setTotalPages(pagination.pages || 1);
       setTotalAlerts(pagination.total || data.length);
     } catch (err) {
-      toast.error("Failed to load alerts");
+      toast.error('Failed to load alerts');
       setAlerts([]);
     } finally {
       setLoading(false);
@@ -60,22 +61,22 @@ export default function Alerts() {
     try {
       await api.put(`/alerts/${alertId}`, { is_read: true });
       setAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, is_read: true } : a)),
+        prev.map((a) => (a.id === alertId ? { ...a, is_read: true } : a))
       );
-      toast.success("Alert marked as read");
+      toast.success('Alert marked as read');
     } catch (err) {
-      toast.error("Failed to update alert");
+      toast.error('Failed to update alert');
     }
   };
 
   const markAllAsRead = async () => {
     try {
-      await api.put("/alerts/read-all");
+      await api.put('/alerts/read-all');
       setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
-      toast.success("All alerts marked as read");
+      toast.success('All alerts marked as read');
       loadAlerts(1); // Reload to update counts
     } catch (err) {
-      toast.error("Failed to update alerts");
+      toast.error('Failed to update alerts');
     }
   };
 
@@ -86,7 +87,7 @@ export default function Alerts() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-heading font-bold text-fg tracking-tight">
-          Alerts
+          <AnimatedText speed={30}>Alerts</AnimatedText>
         </h1>
         <p className="text-caption text-fg-muted mt-1">
           Stay on top of patient activity that needs your attention

@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import Pagination from '../../ui/pagination';
+import { Skeleton } from '../../ui/skeleton';
 import { formatDateTime } from './format';
 
-export default function AlertsTab({ data, onRefetch }) {
+export default function AlertsTab({ data, onRefetch, loading }) {
   const [startDate, setStartDate] = useState(
     data?.startDate ? String(data.startDate).slice(0, 10) : ''
   );
@@ -24,7 +25,12 @@ export default function AlertsTab({ data, onRefetch }) {
   // valid — it means "no filter", which the backend treats as full history.
   const handleGo = () => {
     if ((startDate && !endDate) || (!startDate && endDate)) return;
-    onRefetch?.({ startDate: startDate || undefined, endDate: endDate || undefined, page: 1, limit });
+    onRefetch?.({
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      page: 1,
+      limit,
+    });
   };
 
   const handleClear = () => {
@@ -34,7 +40,12 @@ export default function AlertsTab({ data, onRefetch }) {
   };
 
   const handlePageChange = (nextPage) => {
-    onRefetch?.({ startDate: startDate || undefined, endDate: endDate || undefined, page: nextPage, limit });
+    onRefetch?.({
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      page: nextPage,
+      limit,
+    });
   };
 
   return (
@@ -75,11 +86,18 @@ export default function AlertsTab({ data, onRefetch }) {
 
       {!hasActiveFilter && (
         <p className="text-xs text-fg-muted">
-          Showing the patient's full alert history. Set a date range above to filter.
+          Showing the patient's full alert history. Set a date range above to
+          filter.
         </p>
       )}
 
-      {history.length === 0 ? (
+      {loading ? (
+        <>
+          <Skeleton className="h-10 w-full rounded-(--radius-control)" />
+          <Skeleton className="h-10 w-full rounded-(--radius-control)" />
+          <Skeleton className="h-10 w-full rounded-(--radius-control)" />
+        </>
+      ) : history.length === 0 ? (
         <div className="rounded-(--radius-card) border border-border bg-surface-raised px-4 py-10 text-center">
           <p className="text-sm font-medium text-fg">No alerts history</p>
           <p className="mt-1 text-xs text-fg-muted">
@@ -93,11 +111,15 @@ export default function AlertsTab({ data, onRefetch }) {
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface-raised text-left">
-                    <th className="px-4 py-3 font-medium text-fg-muted">Date</th>
+                    <th className="px-4 py-3 font-medium text-fg-muted">
+                      Date
+                    </th>
                     <th className="px-4 py-3 font-medium text-fg-muted">
                       Message
                     </th>
-                    <th className="px-4 py-3 font-medium text-fg-muted">Read</th>
+                    <th className="px-4 py-3 font-medium text-fg-muted">
+                      Read
+                    </th>
                     <th className="px-4 py-3 font-medium text-fg-muted">
                       Notifications
                     </th>

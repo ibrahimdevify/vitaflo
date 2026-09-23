@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import NotesAddForm from "../components/notes/NotesAddForm";
-import NotesList from "../components/notes/NotesList";
-import NotesPatientBar from "../components/notes/NotesPatientBar";
-import NotesSearch from "../components/notes/NotesSearch";
-import api from "../services/api";
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import NotesAddForm from '../components/notes/NotesAddForm';
+import NotesList from '../components/notes/NotesList';
+import NotesPatientBar from '../components/notes/NotesPatientBar';
+import NotesSearch from '../components/notes/NotesSearch';
+import AnimatedText from '../components/ui/AnimatedText';
+import api from '../services/api';
 
 export default function Notes() {
-  const [search, setSearch] = useState(""); // empty by default — optional filter
+  const [search, setSearch] = useState(''); // empty by default — optional filter
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -24,7 +25,7 @@ export default function Notes() {
   const [selectedPatient, setSelectedPatient] = useState(null);
 
   // ✅ empty by default — no date filter applied unless the user sets one
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   // ✅ The only fetch function — always hits the clinic-wide list endpoint.
   const fetchList = async (pageNum = 1, overrides = {}) => {
@@ -35,7 +36,7 @@ export default function Notes() {
       setLoading(true);
       setPage(pageNum);
 
-      const res = await api.get("/note-list", {
+      const res = await api.get('/note-list', {
         params: {
           search: effectiveSearch || undefined,
           start_date: effectiveStart || undefined,
@@ -52,7 +53,7 @@ export default function Notes() {
       setTotalPages(pagination.pages || 1);
       setTotalNotes(pagination.total || data.length);
     } catch (err) {
-      toast.error("Failed to load notes");
+      toast.error('Failed to load notes');
       setNotes([]);
       setTotalNotes(0);
       setTotalPages(1);
@@ -81,21 +82,21 @@ export default function Notes() {
 
   const handleSubmit = async (data) => {
     if (!selectedPatient) {
-      toast.error("Select a patient first");
+      toast.error('Select a patient first');
       return;
     }
     try {
       setSubmitting(true);
-      await api.post("/notes", {
+      await api.post('/notes', {
         user_id: selectedPatient.id,
         text: data.text.trim(),
         page: data.page,
       });
-      toast.success("Note created successfully!");
+      toast.success('Note created successfully!');
       setShowForm(false);
       fetchList(1, { search: selectedPatient.label });
     } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to create note");
+      toast.error(err.response?.data?.error || 'Failed to create note');
     } finally {
       setSubmitting(false);
     }
@@ -106,15 +107,16 @@ export default function Notes() {
   };
 
   const distinctPatientIds = new Set(notes.map((n) => n.patient_id));
-  const isSinglePatientView =
-    notes.length > 0 && distinctPatientIds.size === 1;
+  const isSinglePatientView = notes.length > 0 && distinctPatientIds.size === 1;
   const activePatientId =
     selectedPatient?.id ?? (isSinglePatientView ? notes[0].patient_id : null);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-heading font-bold text-fg tracking-tight">Notes</h1>
+        <h1 className="text-heading font-bold text-fg tracking-tight">
+          <AnimatedText speed={30}>Notes</AnimatedText>
+        </h1>
         <p className="text-caption text-fg-muted mt-1">
           Manage clinical notes and observations across your clinic's patients
         </p>
@@ -135,7 +137,9 @@ export default function Notes() {
       {isSinglePatientView && (
         <NotesPatientBar
           patientId={
-            notes[0].patient_name || notes[0].patient_username || activePatientId
+            notes[0].patient_name ||
+            notes[0].patient_username ||
+            activePatientId
           }
           totalNotes={totalNotes}
         />

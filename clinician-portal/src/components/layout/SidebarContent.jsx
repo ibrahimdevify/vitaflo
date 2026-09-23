@@ -1,27 +1,39 @@
-import { Stethoscope } from 'lucide-react';
+import { ArrowUpRight, Globe2 } from 'lucide-react';
 import SidebarNav from './SidebarNav';
-import SidebarProfile from './SidebarProfile';
 
 export default function SidebarContent({ items, onItemClick }) {
   return (
-    <div className="flex h-full flex-col bg-linear-to-b from-brand-900 to-brand-950 text-white">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600/20 ring-1 ring-brand-500/30">
-          <Stethoscope className="h-5 w-5 text-brand-400" />
-        </div>
-        <div>
-          <span className="text-base font-bold leading-tight block">
-            Clinician Portal
-          </span>
-          <span className="text-xs text-brand-400">VitalFlow Health</span>
-        </div>
-      </div>
-
-      <div className="mx-5 h-px bg-white/5" />
-
+    <div
+      className="flex h-full flex-col border border-border rounded-2xl p-4"
+      style={{
+        background: 'var(--menu-glow), var(--menu-background)',
+        WebkitBackdropFilter: 'blur(18px) saturate(150%)',
+        backdropFilter: 'blur(18px) saturate(150%)',
+      }}
+    >
       <SidebarNav items={items} onItemClick={onItemClick} />
-      <SidebarProfile />
+      <div className="mt-auto px-1 pt-3">
+        <a
+          href="https://www.vitalflohealth.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-fg-muted transition-colors duration-200 hover:bg-surface-raised hover:text-fg"
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface-raised">
+            <Globe2 className="h-3.5 w-3.5" />
+          </span>
+
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium">VitalFlo</span>
+
+            <span className="block truncate text-[10px] text-fg-muted">
+              Public website
+            </span>
+          </span>
+
+          <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-fg-muted transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </a>
+      </div>
     </div>
   );
 }

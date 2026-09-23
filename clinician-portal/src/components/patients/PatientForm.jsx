@@ -138,7 +138,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full animate-fade-in">
       <CardHeader className="border-b border-border pb-4">
         <CardTitle className="text-subheading font-semibold text-fg flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-brand-500 to-brand-700">
@@ -161,10 +161,10 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
               Basic Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Field label="First Name *" error={errors.f_name?.message}>
+              <Field label="First Name" error={errors.f_name?.message}>
                 <Input {...register('f_name')} placeholder="John" />
               </Field>
-              <Field label="Last Name *" error={errors.l_name?.message}>
+              <Field label="Last Name" error={errors.l_name?.message}>
                 <Input {...register('l_name')} placeholder="Doe" />
               </Field>
               <Field label="Email (optional)" error={errors.email?.message}>
@@ -394,17 +394,33 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
               </Field>
 
               {/* Auto-assigned clinician info */}
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-surface-raised border border-border">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100">
-                  <UserRound className="h-5 w-5 text-brand-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-fg">
-                    Assigned Clinician: {user?.f_name} {user?.l_name}
-                  </p>
-                  <p className="text-xs text-fg-muted">
-                    You will be automatically assigned to this patient
-                  </p>
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-surface p-4">
+                {/* Subtle brand glow */}
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-brand-500/[0.10] blur-3xl"
+                />
+
+                <div className="relative flex items-center gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/20 bg-brand-500/10 text-accent shadow-[0_0_24px_rgba(6,182,212,0.10)]">
+                    <UserRound
+                      className="h-[19px] w-[19px]"
+                      strokeWidth={1.8}
+                    />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-5 text-fg">
+                      Assigned Clinician:{' '}
+                      <span className="font-medium">
+                        {user?.f_name} {user?.l_name}
+                      </span>
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-fg-muted">
+                      You will be automatically assigned to this patient
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

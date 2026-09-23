@@ -131,7 +131,11 @@ export default function SessionComparisonTab({ data, onRefetch }) {
           />
         </div>
 
-        <Button onClick={handleCompare} className="w-full shrink-0 sm:w-auto">
+        <Button
+          size={'default'}
+          onClick={handleCompare}
+          className="w-full shrink-0 sm:w-auto"
+        >
           Compare
         </Button>
       </div>
@@ -139,19 +143,21 @@ export default function SessionComparisonTab({ data, onRefetch }) {
       {data && (
         <>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <SessionColumn title="Session 1" session={data?.session1} />
+            <SessionColumn title="Session 1" session={data.session1} />
 
-            <SessionColumn title="Session 2" session={data?.session2} />
+            <SessionColumn title="Session 2" session={data.session2} />
           </div>
 
-          <div className="border-t border-border pt-4">
-            <p className="text-sm text-fg-muted">
-              Time between sessions:{' '}
-              <span className="font-medium text-fg">
-                {formatNumber(data?.timeBetweenSessionsHours, 1)} hours
-              </span>
-            </p>
-          </div>
+          {data.timeBetweenSessionsHours != null && (
+            <div className="border-t border-border pt-4">
+              <p className="text-sm text-fg-muted">
+                Time between sessions:{' '}
+                <span className="font-medium text-fg">
+                  {formatNumber(data.timeBetweenSessionsHours, 1)} hours
+                </span>
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>

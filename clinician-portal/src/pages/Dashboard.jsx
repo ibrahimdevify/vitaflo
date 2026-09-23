@@ -5,6 +5,7 @@ import MyPatients from '../components/dashboard/MyPatients';
 import QuickLinks from '../components/dashboard/QuickLinks.jsx';
 import RecentPrescriptions from '../components/dashboard/RecentPrescriptions';
 import StatCards from '../components/dashboard/StatCards';
+import AnimatedText from '../components/ui/AnimatedText.jsx';
 import { useAuth } from '../context/AuthContext';
 import { dashboardAPI } from '../services/api';
 
@@ -53,18 +54,17 @@ export default function Dashboard() {
   return (
     <div className="animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-heading font-bold text-fg tracking-tight">
-            Welcome back, Dr. {user?.f_name || 'Doctor'}
+          <h1 className="text-heading font-bold tracking-tight text-fg">
+            <AnimatedText speed={10}>
+              {`Welcome back, Dr. ${user?.f_name || 'Doctor'}`}
+            </AnimatedText>
           </h1>
-          <p className="text-caption text-fg-muted mt-1">
+
+          <p className="mt-1 text-caption text-fg-muted">
             Here's what's happening with your patients today
           </p>
-        </div>
-        <div className="flex items-center gap-2 text-caption text-fg-muted">
-          <span className="h-2 w-2 rounded-pill bg-success animate-pulse" />
-          Live data
         </div>
       </div>
 

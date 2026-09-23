@@ -8,7 +8,7 @@ import {
   TableRow,
 } from '../../components/ui/table';
 
-export default function PatientsTableSkeleton({ rows = 5 }) {
+export default function PatientsTableSkeleton({ rows = 10 }) {
   return (
     <Table>
       <TableHeader>

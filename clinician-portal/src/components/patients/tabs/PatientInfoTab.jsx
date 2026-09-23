@@ -1,16 +1,10 @@
-import { useEffect, useState } from "react";
-import { Pencil, Trash2, Loader2, Save, X } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "../../ui/button";
-import formatDate from "./format";
-import { patientsAPI } from "../../../services/api";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogClose,
-} from "../../ui/dialog";
+import { Loader2, Pencil, Save, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { patientsAPI } from '../../../services/api';
+import { Button } from '../../ui/button';
+import Modal from '../../ui/Modal';
+import formatDate from './format';
 
 function InfoRow({ label, value }) {
   return (
@@ -18,20 +12,20 @@ function InfoRow({ label, value }) {
       <span className="text-sm font-medium text-fg">{label}</span>
 
       <span className="min-w-0 break-words text-right text-sm text-fg-muted">
-        {value ?? "—"}
+        {value ?? '—'}
       </span>
     </div>
   );
 }
 
-function InputField({ label, value, onChange, type = "text" }) {
+function InputField({ label, value, onChange, type = 'text' }) {
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-fg">{label}</label>
 
       <input
         type={type}
-        value={value ?? ""}
+        value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-(--radius-control) border border-border bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-brand-500"
       />
@@ -51,24 +45,23 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
     if (!data) return;
 
     setForm({
-      f_name: data.f_name || "",
-      l_name: data.l_name || "",
-      email: data.email || "",
-      phone: data.phone || "",
+      name: data.name || '',
+      email: data.email || '',
+      phone: data.phone || '',
 
-      dob: data.dob ? new Date(data.dob).toISOString().split("T")[0] : "",
+      dob: data.dob ? new Date(data.dob).toISOString().split('T')[0] : '',
 
-      address: data.address || "",
-      zip_code: data.zip_code || "",
+      address: data.address || '',
+      zip_code: data.zip_code || '',
 
       height:
-        data.height !== null && data.height !== undefined ? data.height : "",
+        data.height !== null && data.height !== undefined ? data.height : '',
 
       weight:
-        data.weight !== null && data.weight !== undefined ? data.weight : "",
+        data.weight !== null && data.weight !== undefined ? data.weight : '',
 
       smoking: data.smoking ?? false,
-      ethnic_group: data.ethnicity || "",
+      ethnic_group: data.ethnicity || '',
     });
   }, [data]);
 
@@ -88,8 +81,7 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
       setSaving(true);
 
       const payload = {
-        f_name: form.f_name,
-        l_name: form.l_name,
+        name: form.name,
         email: form.email,
         phone: form.phone,
 
@@ -98,9 +90,9 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
         address: form.address,
         zip_code: form.zip_code,
 
-        height: form.height === "" ? null : parseFloat(form.height),
+        height: form.height === '' ? null : parseFloat(form.height),
 
-        weight: form.weight === "" ? null : parseFloat(form.weight),
+        weight: form.weight === '' ? null : parseFloat(form.weight),
 
         smoking: Boolean(form.smoking),
 
@@ -109,7 +101,7 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
 
       await patientsAPI.updatePatient(patientId, payload);
 
-      toast.success("Patient information updated");
+      toast.success('Patient information updated');
 
       setEditing(false);
 
@@ -118,12 +110,12 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
         await onRefetch({});
       }
     } catch (error) {
-      console.error("[PatientInfoTab] Update error:", error);
+      console.error('[PatientInfoTab] Update error:', error);
 
       const message =
         error?.response?.data?.error ||
         error?.response?.data?.message ||
-        "Failed to update patient";
+        'Failed to update patient';
 
       toast.error(message);
     } finally {
@@ -137,18 +129,18 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
 
       await patientsAPI.deletePatient(patientId);
 
-      toast.success("Patient deleted successfully");
+      toast.success('Patient deleted successfully');
 
       setDeleteDialogOpen(false);
 
-      window.location.href = "/patients";
+      window.location.href = '/patients';
     } catch (error) {
-      console.error("[PatientInfoTab] Delete error:", error);
+      console.error('[PatientInfoTab] Delete error:', error);
 
       const message =
         error?.response?.data?.error ||
         error?.response?.data?.message ||
-        "Failed to delete patient";
+        'Failed to delete patient';
 
       toast.error(message);
     } finally {
@@ -208,7 +200,7 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
                 <Save className="h-4 w-4" />
               )}
 
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </>
         )}
@@ -216,76 +208,82 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
 
       {/* EDIT FORM */}
       {editing ? (
-        <div className="space-y-6">
-          <div>
-            <h3 className="mb-4 text-base font-semibold text-fg">
-              Basic Information
-            </h3>
+        <div className="space-y-8 animate-fade-in">
+          {/* Basic Information */}
+          <section>
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-fg">
+                Basic Information
+              </h3>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                Patient identity and contact details
+              </p>
+            </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
               <InputField
-                label="First Name"
-                value={form.f_name}
-                onChange={(value) => updateField("f_name", value)}
-              />
-
-              <InputField
-                label="Last Name"
-                value={form.l_name}
-                onChange={(value) => updateField("l_name", value)}
+                label="Name"
+                value={form.name}
+                onChange={(value) => updateField('name', value)}
               />
 
               <InputField
                 label="Email"
                 type="email"
                 value={form.email}
-                onChange={(value) => updateField("email", value)}
+                onChange={(value) => updateField('email', value)}
               />
 
               <InputField
                 label="Phone"
                 value={form.phone}
-                onChange={(value) => updateField("phone", value)}
+                onChange={(value) => updateField('phone', value)}
               />
 
               <InputField
                 label="Birth Date"
                 type="date"
                 value={form.dob}
-                onChange={(value) => updateField("dob", value)}
+                onChange={(value) => updateField('dob', value)}
               />
             </div>
-          </div>
+          </section>
 
-          <div>
-            <h3 className="mb-4 text-base font-semibold text-fg">
-              Physical Information
-            </h3>
+          {/* Physical Information */}
+          <section className="border-t border-border pt-7">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-fg">
+                Physical Information
+              </h3>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                Physical measurements and lifestyle information
+              </p>
+            </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
               <InputField
                 label="Height"
                 type="number"
                 value={form.height}
-                onChange={(value) => updateField("height", value)}
+                onChange={(value) => updateField('height', value)}
               />
 
               <InputField
                 label="Weight"
                 type="number"
                 value={form.weight}
-                onChange={(value) => updateField("weight", value)}
+                onChange={(value) => updateField('weight', value)}
               />
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-fg">Smoking</label>
 
                 <select
-                  value={form.smoking ? "true" : "false"}
+                  value={form.smoking ? 'true' : 'false'}
                   onChange={(e) =>
-                    updateField("smoking", e.target.value === "true")
+                    updateField('smoking', e.target.value === 'true')
                   }
-                  className="w-full rounded-(--radius-control) border border-border bg-surface px-3 py-2 text-sm text-fg outline-none"
+                  className="w-full rounded-(--radius-control) border border-border bg-surface px-3 py-2 text-sm text-fg outline-none transition-colors focus:border-focus-ring focus:ring-3 focus:ring-focus-ring/20"
                 >
                   <option value="false">False</option>
                   <option value="true">True</option>
@@ -295,65 +293,96 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
               <InputField
                 label="Ethnicity / Race"
                 value={form.ethnic_group}
-                onChange={(value) => updateField("ethnic_group", value)}
+                onChange={(value) => updateField('ethnic_group', value)}
               />
             </div>
-          </div>
+          </section>
 
-          <div>
-            <h3 className="mb-4 text-base font-semibold text-fg">
-              Contact Information
-            </h3>
+          {/* Contact Information */}
+          <section className="border-t border-border pt-7">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-fg">
+                Contact Information
+              </h3>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                Patient address and location details
+              </p>
+            </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
               <InputField
                 label="Address"
                 value={form.address}
-                onChange={(value) => updateField("address", value)}
-              />
-
-              <InputField
-                label="Zip Code"
-                value={form.zip_code}
-                onChange={(value) => updateField("zip_code", value)}
+                onChange={(value) => updateField('address', value)}
               />
             </div>
-          </div>
+          </section>
         </div>
       ) : (
         /* VIEW */
-        <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-2">
-          <div>
-            <InfoRow label="Name" value={data.name} />
+        <div className="space-y-8 animate-fade-in">
+          {/* Personal */}
+          <section>
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-fg">
+                Personal Information
+              </h3>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                Basic patient information
+              </p>
+            </div>
 
-            <InfoRow label="Username" value={data.username} />
+            <div className="grid grid-cols-1 gap-x-12 lg:grid-cols-2">
+              <div>
+                <InfoRow label="Name" value={data.name} />
 
-            <InfoRow label="Sex at Birth" value={data.sexAtBirth} />
+                <InfoRow label="Username" value={data.username} />
 
-            <InfoRow label="Birth Date" value={formatDate(data.dob)} />
+                <InfoRow label="Sex at Birth" value={data.sexAtBirth} />
 
-            <InfoRow label="Age" value={data.age} />
-          </div>
+                <InfoRow label="Birth Date" value={formatDate(data.dob)} />
 
-          <div>
-            <InfoRow label="Height" value={data.height} />
+                <InfoRow label="Age" value={data.age} />
+              </div>
 
-            <InfoRow label="Weight" value={data.weight} />
+              <div>
+                <InfoRow label="Height" value={data.height} />
 
-            <InfoRow
-              label="Smoking"
-              value={
-                data.smoking === null ? null : data.smoking ? "True" : "False"
-              }
-            />
+                <InfoRow label="Weight" value={data.weight} />
 
-            <InfoRow label="Ethnicity / Race" value={data.ethnicity} />
+                <InfoRow
+                  label="Smoking"
+                  value={
+                    data.smoking === null
+                      ? null
+                      : data.smoking
+                        ? 'True'
+                        : 'False'
+                  }
+                />
 
-            <InfoRow label="Start Date" value={formatDate(data.startDate)} />
-          </div>
+                <InfoRow label="Ethnicity / Race" value={data.ethnicity} />
 
-          <div className="border-t border-border pt-4 lg:col-span-2">
-            <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-2">
+                <InfoRow
+                  label="Start Date"
+                  value={formatDate(data.startDate)}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Contact & Treatment */}
+          <section className="border-dashed border-t border-border pt-7">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-fg">
+                Contact & Treatment
+              </h3>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                Contact details and current treatment information
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-x-12 lg:grid-cols-2">
               <div>
                 <InfoRow label="Address" value={data.address} />
 
@@ -367,71 +396,64 @@ export default function PatientInfoTab({ patientId, data, onRefetch }) {
                   label="Medications"
                   value={
                     data.medications && data.medications.length > 0
-                      ? data.medications.join(", ")
-                      : "None"
+                      ? data.medications.join(', ')
+                      : 'None'
                   }
                 />
 
                 <InfoRow label="Status" value={data.status} />
               </div>
             </div>
-          </div>
+          </section>
         </div>
       )}
-      <Dialog
-  open={deleteDialogOpen}
-  onOpenChange={setDeleteDialogOpen}
->
-  <DialogContent className="max-w-md">
-    <DialogHeader>
-      <DialogTitle>Delete Patient?</DialogTitle>
 
-      <DialogClose
-        onClick={() => setDeleteDialogOpen(false)}
-      />
-    </DialogHeader>
+      <Modal
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title="Delete Patient?"
+        className="max-w-md"
+        ariaLabel="Delete Patient Confirmation"
+      >
+        <div>
+          <p className="text-sm text-fg-muted">
+            Are you sure you want to delete{' '}
+            <strong className="text-fg">{data?.name || 'this patient'}</strong>?
+          </p>
 
-    <div className="p-6">
-      <p className="text-sm text-fg-muted">
-        Are you sure you want to delete{" "}
-        <strong className="text-fg">
-          {data?.name || "this patient"}
-        </strong>
-        ?
-      </p>
+          <p className="mt-3 text-sm text-fg-muted">
+            The patient will be removed from the active patient list. Their
+            clinical data will remain in the system.
+          </p>
 
-      <p className="mt-3 text-sm text-fg-muted">
-        The patient will be removed from the active patient
-        list. Their clinical data will remain in the system.
-      </p>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
 
-      <div className="mt-6 flex justify-end gap-3">
-        <Button
-          variant="outline"
-          onClick={() => setDeleteDialogOpen(false)}
-          disabled={deleting}
-        >
-          Cancel
-        </Button>
-
-        <Button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="bg-red-600 hover:bg-red-700 text-white"
-        >
-          {deleting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Deleting...
-            </>
-          ) : (
-            "Delete Patient"
-          )}
-        </Button>
-      </div>
-    </div>
-  </DialogContent>
-</Dialog>
+            <Button
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Patient'
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

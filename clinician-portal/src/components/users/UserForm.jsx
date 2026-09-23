@@ -1,12 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Save, UserRound } from 'lucide-react';
+import { Loader2, Save } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import Field from '../shared/Field';
 import { Button } from '../ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
+import Modal from '../ui/modal';
 
 // ut_id_fk / us_id_fk dropdowns removed: createClinicianUser hardcodes
 // ut_id_fk: 3 server-side (ignores anything sent from the client), and
@@ -27,7 +27,7 @@ const getUserSchema = (isEditing) =>
     is_profile_completed: z.boolean().optional(),
   });
 
-export default function UserForm({ onSubmit, onCancel, initialData }) {
+export default function UserForm({ open, onSubmit, onCancel, initialData }) {
   const isEditing = !!initialData;
 
   const {
@@ -75,67 +75,66 @@ export default function UserForm({ onSubmit, onCancel, initialData }) {
   };
 
   return (
-    <Card>
-      <CardHeader className="border-b border-border pb-4">
-        <CardTitle className="text-subheading font-semibold flex items-center gap-2.5 text-fg">
-          <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-info to-info/70">
-            <UserRound className="h-3.5 w-3.5 text-white" />
-          </div>
-          {isEditing ? 'Edit Clinician' : 'Add New Clinician'}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="First Name *" error={errors.f_name?.message}>
-              <Input {...register('f_name')} placeholder="John" />
-            </Field>
-            <Field label="Last Name *" error={errors.l_name?.message}>
-              <Input {...register('l_name')} placeholder="Doe" />
-            </Field>
-            <Field label="Email *" error={errors.email?.message}>
-              <Input
-                {...register('email')}
-                type="email"
-                placeholder="john@example.com"
-              />
-            </Field>
-            <Field label="Phone *" error={errors.phone?.message}>
-              <Input {...register('phone')} placeholder="1234567890" />
-            </Field>
-            <Field
-              label={`Password ${!isEditing ? '*' : ''}`}
-              error={errors.password?.message}
-            >
-              <Input
-                {...register('password')}
-                type="password"
-                placeholder={
-                  isEditing ? 'Leave blank to keep current' : 'Enter password'
-                }
-              />
-            </Field>
-          </div>
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={isEditing ? 'Edit Clinician' : 'Add New Clinician'}
+      className="max-w-2xl"
+      ariaLabel={isEditing ? 'Edit Clinician' : 'Add New Clinician'}
+    >
+      <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="First Name *" error={errors.f_name?.message}>
+            <Input {...register('f_name')} placeholder="John" />
+          </Field>
 
-          
+          <Field label="Last Name *" error={errors.l_name?.message}>
+            <Input {...register('l_name')} placeholder="Doe" />
+          </Field>
 
-          <div className="flex gap-2 pt-2 border-t border-border mt-6">
-            <Button type="submit" disabled={isSubmitting} className="gap-1.5">
-              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              <Save className="h-4 w-4" />
-              {isEditing ? 'Update Clinician' : 'Create Clinician'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              className="border-border"
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+          <Field label="Email *" error={errors.email?.message}>
+            <Input
+              {...register('email')}
+              type="email"
+              placeholder="john@example.com"
+            />
+          </Field>
+
+          <Field label="Phone *" error={errors.phone?.message}>
+            <Input {...register('phone')} placeholder="1234567890" />
+          </Field>
+
+          <Field
+            label={`Password ${!isEditing ? '*' : ''}`}
+            error={errors.password?.message}
+          >
+            <Input
+              {...register('password')}
+              type="password"
+              placeholder={
+                isEditing ? 'Leave blank to keep current' : 'Enter password'
+              }
+            />
+          </Field>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            className="border-border"
+          >
+            Cancel
+          </Button>
+
+          <Button type="submit" disabled={isSubmitting} className="gap-1.5">
+            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Save className="h-4 w-4" />
+            {isEditing ? 'Update Clinician' : 'Create Clinician'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

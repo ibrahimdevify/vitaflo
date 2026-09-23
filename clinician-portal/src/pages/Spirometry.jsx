@@ -1,22 +1,23 @@
-import { TrendingUp, Users } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import EmptyState from "../components/shared/EmptyState";
-import SpirometryChart from "../components/spirometry/SpirometryChart";
-import SpirometrySearch from "../components/spirometry/SpirometrySearch";
-import SpirometryStats from "../components/spirometry/SpirometryStats";
-import SpirometryTable from "../components/spirometry/SpirometryTable";
+import { TrendingUp, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import EmptyState from '../components/shared/EmptyState';
+import SpirometryChart from '../components/spirometry/SpirometryChart';
+import SpirometrySearch from '../components/spirometry/SpirometrySearch';
+import SpirometryStats from '../components/spirometry/SpirometryStats';
+import SpirometryTable from '../components/spirometry/SpirometryTable';
+import AnimatedText from '../components/ui/AnimatedText';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "../components/ui/card";
-import Pagination from "../components/ui/pagination";
-import { spirometryAPI } from "../services/api";
+} from '../components/ui/card';
+import Pagination from '../components/ui/pagination';
+import { spirometryAPI } from '../services/api';
 
 export default function Spirometry() {
-  const [search, setSearch] = useState(""); // now an optional filter, not required
+  const [search, setSearch] = useState(''); // now an optional filter, not required
   const [spirometryData, setSpirometryData] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,8 +25,8 @@ export default function Spirometry() {
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [order, setOrder] = useState("desc");
-  const [dateRange, setDateRange] = useState({ start: "", end: "" }); // empty = no date filter by default
+  const [order, setOrder] = useState('desc');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' }); // empty = no date filter by default
   const [reportLoadingId, setReportLoadingId] = useState(null);
 
   // ✅ Fetches the clinic-wide list. `search`/`start`/`end` are optional filters;
@@ -57,10 +58,10 @@ export default function Spirometry() {
 
       const chart = data
         .map((d) => ({
-          date: new Date(d.dbdate).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "2-digit",
+          date: new Date(d.dbdate).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: '2-digit',
           }),
           fev1: d.fev1 ? parseFloat(d.fev1.toFixed(2)) : null,
           fvc: d.fvc ? parseFloat(d.fvc.toFixed(2)) : null,
@@ -72,7 +73,7 @@ export default function Spirometry() {
         .sort((a, b) => a.fullDate - b.fullDate);
       setChartData(chart);
     } catch (err) {
-      toast.error("Failed to load spirometry data");
+      toast.error('Failed to load spirometry data');
       setSpirometryData([]);
       setChartData([]);
       setTotal(0);
@@ -106,39 +107,49 @@ export default function Spirometry() {
 
   const handleViewReport = async (observationId) => {
     if (!observationId) {
-      toast.error("This record has no observation to report on");
+      toast.error('This record has no observation to report on');
       return;
     }
     try {
       setReportLoadingId(observationId);
       const res = await spirometryAPI.getReportPDF(observationId);
-      const blob = new Blob([res.data], { type: "application/pdf" });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.open(url, '_blank', 'noopener,noreferrer');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      toast.error("Failed to generate report");
+      toast.error('Failed to generate report');
     } finally {
       setReportLoadingId(null);
     }
   };
 
-  const bestFEV1 = spirometryData.reduce((max, s) => (s.fev1 > max ? s.fev1 : max), 0);
-  const bestFVC = spirometryData.reduce((max, s) => (s.fvc > max ? s.fvc : max), 0);
-  const bestPEFR = spirometryData.reduce((max, s) => (s.pefr > max ? s.pefr : max), 0);
+  const bestFEV1 = spirometryData.reduce(
+    (max, s) => (s.fev1 > max ? s.fev1 : max),
+    0
+  );
+  const bestFVC = spirometryData.reduce(
+    (max, s) => (s.fvc > max ? s.fvc : max),
+    0
+  );
+  const bestPEFR = spirometryData.reduce(
+    (max, s) => (s.pefr > max ? s.pefr : max),
+    0
+  );
 
   // ✅ When every visible row belongs to the same patient (e.g. after filtering
   // by username), show the trend chart + patient header — otherwise it's a
   // clinic-wide multi-patient list and those don't apply.
   const distinctPatientIds = new Set(spirometryData.map((s) => s.patient_id));
-  const isSinglePatientView = spirometryData.length > 0 && distinctPatientIds.size === 1;
+  const isSinglePatientView =
+    spirometryData.length > 0 && distinctPatientIds.size === 1;
   const singlePatient = isSinglePatientView ? spirometryData[0] : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-heading font-bold text-fg tracking-tight">
-          Spirometry
+          <AnimatedText speed={20}>Spirometry</AnimatedText>
         </h1>
         <p className="text-caption text-fg-muted mt-1">
           Track and analyze lung function data across your clinic's patients
@@ -160,12 +171,14 @@ export default function Spirometry() {
         <Card>
           <CardContent className="p-4 flex items-center gap-4 flex-wrap">
             <div className="flex h-10 w-10 items-center justify-center rounded-pill bg-linear-to-br from-brand-500 to-brand-700 text-white font-semibold">
-              {singlePatient.patient_name?.[0] || "P"}
+              {singlePatient.patient_name?.[0] || 'P'}
             </div>
             <div>
-              <p className="font-semibold text-fg">{singlePatient.patient_name}</p>
+              <p className="font-semibold text-fg">
+                {singlePatient.patient_name}
+              </p>
               <p className="text-caption text-fg-muted">
-                Username: {singlePatient.patient_username || "N/A"}
+                Username: {singlePatient.patient_username || 'N/A'}
               </p>
             </div>
           </CardContent>
@@ -203,7 +216,7 @@ export default function Spirometry() {
           </CardTitle>
           {(dateRange.start || dateRange.end) && (
             <span className="text-caption text-fg-muted">
-              {dateRange.start || "…"} → {dateRange.end || "…"}
+              {dateRange.start || '…'} → {dateRange.end || '…'}
             </span>
           )}
         </CardHeader>
@@ -224,9 +237,9 @@ export default function Spirometry() {
                 reportLoadingId={reportLoadingId}
                 order={order}
                 onToggleOrder={() =>
-                  handleOrderChange(order === "desc" ? "asc" : "desc")
+                  handleOrderChange(order === 'desc' ? 'asc' : 'desc')
                 }
-                showPatientColumn={!isSinglePatientView} // ✅
+                showPatientColumn={!isSinglePatientView}
               />
               <Pagination
                 page={page}

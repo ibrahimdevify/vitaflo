@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import PatientDetailModal from '../components/patients/PatientDetailModal';
 import PatientsTable from '../components/patients/PatientsTable';
+import AnimatedText from '../components/ui/AnimatedText';
 import { Button } from '../components/ui/button';
 import {
   Card,
@@ -112,9 +113,9 @@ export default function Patients() {
     loadPatients();
   }, [loadPatients]);
 
- const viewPatient = async (id) => {
-  navigate('/patients-details', { state: { patientId: id } });
-};
+  const viewPatient = async (id) => {
+    navigate('/patients-details', { state: { patientId: id } });
+  };
 
   const closeModal = () => {
     setSelectedPatient(null);
@@ -156,7 +157,7 @@ export default function Patients() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            {pageTitle}
+            <AnimatedText speed={20}>{pageTitle}</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1 hidden sm:block">
             {stateClinicianName
@@ -165,6 +166,7 @@ export default function Patients() {
           </p>
         </div>
         <Button
+          size={'sm'}
           onClick={() => navigate('/patients/add')}
           className="gap-2 bg-brand-600 hover:bg-brand-700"
         >
@@ -203,27 +205,36 @@ export default function Patients() {
                   className="pl-9"
                 />
               </div>
+              {showFilters ? (
+                <div
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="p-2 rounded-xl hover:bg-surface-raised transform duration-150 active:scale-90 cursor-pointer"
+                >
+                  <X className=" w-5 h-5 " />
+                </div>
+              ) : (
+                <Button
+                  size={'default'}
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`shrink-0 gap-2 ${
+                    hasActiveFilters
+                      ? 'border-brand-200 bg-brand-50 text-brand-700'
+                      : 'border-border'
+                  }`}
+                >
+                  <Filter className="h-4 w-4" />
+                  <span className="hidden sm:inline">Filters</span>
 
-              <Button
-                variant="outline"
-                onClick={() => setShowFilters(!showFilters)}
-                className={`shrink-0 gap-2 ${
-                  hasActiveFilters
-                    ? 'border-brand-200 bg-brand-50 text-brand-700'
-                    : 'border-border'
-                }`}
-              >
-                <Filter className="h-4 w-4" />
-                <span className="hidden sm:inline">Filters</span>
-
-                {hasActiveFilters && (
-                  <span className="h-2 w-2 rounded-full bg-brand-600" />
-                )}
-              </Button>
+                  {hasActiveFilters && (
+                    <span className="h-2 w-2 rounded-full bg-brand-600" />
+                  )}
+                </Button>
+              )}
             </div>
           </div>
           {showFilters && (
-            <div className="mt-4 p-4 bg-surface-raised rounded-lg border border-border space-y-4">
+            <div className="mt-4 p-4 bg-surface rounded-lg border border-border space-y-4 animate-fade-in">
               <div className="flex items-center justify-between">
                 <h3 className="text-body font-semibold text-fg">
                   Advanced Filters

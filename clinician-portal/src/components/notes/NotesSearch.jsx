@@ -1,7 +1,7 @@
-import { FileText, Search } from "lucide-react";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent } from "../../components/ui/card";
-import { Input } from "../../components/ui/input";
+import { FileText, Search } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent } from '../../components/ui/card';
+import { Input } from '../../components/ui/input';
 
 export default function NotesSearch({
   search,
@@ -15,7 +15,7 @@ export default function NotesSearch({
   showForm,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") onSearch();
+    if (e.key === 'Enter') onSearch();
   };
 
   return (
@@ -23,30 +23,43 @@ export default function NotesSearch({
       <CardContent className="p-5">
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1 max-w-lg">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
-              <Input
-                placeholder="Filter by Patient Username (optional)..."
-                value={search}
-                onChange={(e) => onSearchChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="pl-10"
-              />
-            </div>
-            <Button onClick={onSearch} disabled={loading}>
-              <FileText className="h-4 w-4 mr-2" />
-              {loading ? "Loading..." : "Filter"}
-            </Button>
-            {canCreate && (
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+              {/* Search */}
+              <div className="relative min-w-0 flex-2">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
+
+                <Input
+                  placeholder="Filter by Patient Username (optional)..."
+                  value={search}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full pl-10"
+                />
+              </div>
+
+              {/* Filter */}
               <Button
-                variant="outline"
-                onClick={onToggleForm}
-                className="border-border gap-2"
+                size="default"
+                onClick={onSearch}
+                disabled={loading}
+                className="shrink-0 flex-1"
               >
-                <FileText className="h-4 w-4" />
-                {showForm ? "Cancel" : "Add Note"}
+                <FileText className="mr-2 h-4 w-4" />
+                {loading ? 'Loading...' : 'Filter'}
               </Button>
-            )}
+
+              {/* Add Note */}
+              {canCreate && (
+                <Button
+                  variant="outline"
+                  onClick={onToggleForm}
+                  className="shrink-0 gap-2 border-border flex-1"
+                >
+                  <FileText className="h-4 w-4" />
+                  {showForm ? 'Cancel' : 'Add Note'}
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="h-px bg-border" />
@@ -64,7 +77,7 @@ export default function NotesSearch({
                   start: e.target.value,
                 }))
               }
-              className="w-40 h-9 text-caption"
+              className="w-40 h-9 text-caption flex-1"
             />
             <span className="text-caption text-fg-muted">to</span>
             <Input
@@ -73,14 +86,9 @@ export default function NotesSearch({
               onChange={(e) =>
                 onDateRangeChange((prev) => ({ ...prev, end: e.target.value }))
               }
-              className="w-40 h-9 text-caption"
+              className="w-40 h-9 text-caption flex-1"
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onSearch}
-              className="text-brand-600 hover:text-brand-700"
-            >
+            <Button variant="default" size="default" onClick={onSearch}>
               Apply Filter
             </Button>
           </div>

@@ -1,9 +1,8 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { useState } from 'react';
+import { NavLink } from 'react-router';
+import { useLocation } from 'react-router-dom';
 
-// [CONFIG] Add a new resource by adding one line here + dropping the
-// matching PDF into `public/resources/` in the frontend project.
 const RESOURCES = [
   { label: 'Assessing Asthma', file: 'assessing-asthma.pdf' },
   { label: 'Asthma Action Plan', file: 'asthma-action-plan.pdf' },
@@ -13,70 +12,73 @@ const RESOURCES = [
 ];
 
 function NavGroup({ item, isChildActive, onItemClick }) {
-  const location = useLocation();
   const [open, setOpen] = useState(isChildActive);
   const { icon: Icon, label, children } = item;
 
   return (
-    <div>
+    <div className={`smooth-open-trigger ${open ? 'is-open' : ''}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-          isChildActive
-            ? 'text-white'
-            : 'text-brand-300 hover:bg-white/5 hover:text-white'
+        className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all cursor-pointer ${
+          isChildActive ? '' : 'text-(--menu-color) hover:text-brand-500'
         }`}
       >
-        {isChildActive && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-brand-400" />
-        )}
         <Icon
           className={`h-4 w-4 shrink-0 transition-colors ${
             isChildActive
-              ? 'text-brand-400'
-              : 'text-brand-400/60 group-hover:text-brand-400'
+              ? ''
+              : 'text-(--menu-color) group-hover:text-brand-500'
           }`}
         />
-        <span className="flex-1 text-left">{label}</span>
+        <span className="flex-1 text-left uppercase font-semibold">
+          {label}
+        </span>
         {open ? (
-          <ChevronUp className="h-4 w-4 text-brand-400/60" />
+          <>
+            <span className="flex flex-col items-center gap-0">
+              <ChevronUp className="h-4 w-4 text-brand-500" />
+              <span className="h-px w-3 rounded-full bg-brand-500 blink" />
+            </span>
+          </>
         ) : (
-          <ChevronDown className="h-4 w-4 text-brand-400/60" />
+          <ChevronDown className="h-4 w-4 text-(--menu-color) group-hover:text-brand-500" />
         )}
       </button>
 
-      {open && (
-        <div className="mt-0.5 space-y-0.5 pl-4">
-          {children.map((child) => {
-            const isActive = location.pathname === child.path;
-            return (
-              <Link
+      <div className="smooth-open">
+        <div>
+          <div className="mt-0.5 space-y-0.5 pl-4">
+            {children.map((child) => (
+              <NavLink
                 key={child.path}
                 to={child.path}
                 onClick={onItemClick}
-                className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-white/10 text-white'
-                    : 'text-brand-300 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-brand-400" />
-                )}
-                <child.icon
-                  className={`h-4 w-4 shrink-0 transition-colors ${
+                className={({ isActive }) =>
+                  `group relative flex items-center gap-3 rounded-lg px-3 py-1.25 text-sm font-medium transition-all ${
                     isActive
-                      ? 'text-brand-400'
-                      : 'text-brand-400/60 group-hover:text-brand-400'
-                  }`}
-                />
-                {child.label}
-              </Link>
-            );
-          })}
+                      ? 'bg-brand-400/15 text-brand-500'
+                      : 'text-(--sub-menu-color) hover:bg-surface-raised hover:text-brand-500'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <child.icon
+                      className={`h-4 w-4 shrink-0 transition-colors ${
+                        isActive
+                          ? 'text-brand-500'
+                          : 'text-(--sub-menu-color) hover:bg-surface-raised group-hover:text-brand-500'
+                      }`}
+                    />
+                    {child.label}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -89,10 +91,11 @@ export default function SidebarNav({ items, onItemClick }) {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   return (
-    <nav className="flex-1 space-y-0.5 p-3 pt-4 overflow-auto">
-      <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-brand-400/70">
+    <nav className="flex-1 space-y-0.5 overflow-auto pt-4">
+      <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-brand-500">
         Main Menu
       </p>
+
       {items.map((item) => {
         if (item.children) {
           const isChildActive = item.children.some(
@@ -108,69 +111,79 @@ export default function SidebarNav({ items, onItemClick }) {
           );
         }
 
-        const isActive = location.pathname === item.path;
         return (
-          <Link
+          <NavLink
             key={item.path}
             to={item.path}
-            className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-              isActive
-                ? 'bg-white/10 text-white'
-                : 'text-brand-300 hover:bg-white/5 hover:text-white'
-            }`}
             onClick={onItemClick}
-          >
-            {isActive && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-brand-400" />
-            )}
-            <item.icon
-              className={`h-4 w-4 shrink-0 transition-colors ${
+            className={({ isActive }) =>
+              `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 isActive
-                  ? 'text-brand-400'
-                  : 'text-brand-400/60 group-hover:text-brand-400'
-              }`}
-            />
-            {item.label}
-          </Link>
+                  ? 'text-brand-500'
+                  : 'text-(--menu-color) hover:text-brand-500'
+              }`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <item.icon
+                  className={`h-4 w-4 shrink-0 transition-colors ${
+                    isActive
+                      ? 'text-brand-500'
+                      : 'text-(--menu-color) group-hover:text-brand-500'
+                  }`}
+                />
+                <span className="uppercase font-semibold">{item.label}</span>
+              </>
+            )}
+          </NavLink>
         );
       })}
 
       {/* Resources section */}
-      <div className="pt-3">
+      <div className={`smooth-open-trigger ${resourcesOpen ? 'is-open' : ''}`}>
         <button
           type="button"
           onClick={() => setResourcesOpen((o) => !o)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
+          className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all cursor-pointer"
         >
-          <FileText className="h-4 w-4 shrink-0 text-brand-400/60" />
-          <span className="flex-1 text-left">Resources</span>
+          <FileText className="h-4 w-4 shrink-0 text-(--menu-color) group-hover:text-brand-500" />
+
+          <span className="flex-1 text-left uppercase font-semibold text-(--menu-color) group-hover:text-brand-500">
+            Resources
+          </span>
+
           {resourcesOpen ? (
-            <ChevronUp className="h-4 w-4 text-brand-400/60" />
+            <span className="flex flex-col items-center gap-0">
+              <ChevronUp className="h-4 w-4 text-brand-500" />
+              <span className="h-px w-3 rounded-full bg-brand-500 blink" />
+            </span>
           ) : (
-            <ChevronDown className="h-4 w-4 text-brand-400/60" />
+            <ChevronDown className="h-4 w-4 text-(--menu-color) group-hover:text-brand-500" />
           )}
         </button>
 
-        {resourcesOpen && (
-          <div className="mt-0.5 space-y-0.5 pl-4">
-            {RESOURCES.map((r) => (
-              <a
-                key={r.file}
-                href={`${API_URL}/${r.file}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-300 transition-all hover:bg-white/5 hover:text-white"
-                onClick={(e) => {
-                  // Optional: Close mobile menu if needed
-                  if (onItemClick) onItemClick();
-                }}
-              >
-                <FileText className="h-4 w-4 shrink-0 text-brand-400/60 transition-colors group-hover:text-brand-400" />
-                {r.label}
-              </a>
-            ))}
+        <div className="smooth-open">
+          <div>
+            <div className="mt-0.5 space-y-0.5 pl-4">
+              {RESOURCES.map((r) => (
+                <a
+                  key={r.file}
+                  href={`${API_URL}/${r.file}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-3 rounded-lg px-3 py-1.25 text-sm font-medium text-(--sub-menu-color) transition-all hover:bg-surface-raised hover:text-brand-500"
+                  onClick={() => {
+                    if (onItemClick) onItemClick();
+                  }}
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-(--sub-menu-color) transition-colors group-hover:text-brand-500" />
+                  {r.label}
+                </a>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </nav>
   );

@@ -1,5 +1,6 @@
 import { Calendar } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
+import AnimatedText from '../ui/AnimatedText';
 
 export default function ProfileHero({ profileData, initials }) {
   const joinedDate = profileData.reg_date
@@ -23,7 +24,9 @@ export default function ProfileHero({ profileData, initials }) {
       {/* Info */}
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-heading font-bold leading-tight tracking-tight text-fg">
-          {profileData.f_name} {profileData.l_name}
+          <AnimatedText speed={30}>
+            {profileData.f_name} {profileData.l_name}
+          </AnimatedText>
         </h1>
 
         <div className="mt-2 flex items-center gap-3 flex-wrap">

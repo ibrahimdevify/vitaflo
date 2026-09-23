@@ -2,12 +2,13 @@ import { ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
+import { Skeleton } from '../../ui/skeleton';
 import MiniLineChart from './MiniLineChart';
 import { formatDate, formatNumber } from './format';
 
 const VARIABLES = ['FEV1', 'FVC', 'PEFR', 'FEF2575', 'FEV1/FVC'];
 
-export default function AnalysisTab({ data, onRefetch }) {
+export default function AnalysisTab({ data, onRefetch, loading }) {
   const [variable, setVariable] = useState(data?.variable || 'FEV1');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -16,7 +17,11 @@ export default function AnalysisTab({ data, onRefetch }) {
   // valid — it means "no filter", which the backend treats as full history.
   const handleGo = () => {
     if ((startDate && !endDate) || (!startDate && endDate)) return;
-    onRefetch({ startDate: startDate || undefined, endDate: endDate || undefined, variable });
+    onRefetch({
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      variable,
+    });
   };
 
   const handleClear = () => {
@@ -78,26 +83,41 @@ export default function AnalysisTab({ data, onRefetch }) {
 
       <div className="space-y-6">
         {/* Most Recent */}
-        <div className="rounded-(--radius-card) border border-border bg-surface-raised px-5 py-4">
-          <p className="text-sm text-fg-muted">
-            Most Recent:{' '}
-            <span className="font-medium text-fg">{data?.variable}</span>
-          </p>
+        {loading ? (
+          <div className="rounded-(--radius-card) border border-border bg-surface-raised px-5 py-4">
+            <Skeleton className="h-4 w-28 rounded-(--radius-control)" />
 
-          <p className="mt-1 text-3xl font-semibold tracking-tight text-fg">
-            {data?.mostRecent != null ? formatNumber(data.mostRecent) : 'N/A'}
-          </p>
-        </div>
+            <Skeleton className="mt-2 h-9 w-24 rounded-(--radius-control)" />
+          </div>
+        ) : (
+          <div className="rounded-(--radius-card) border border-border bg-surface-raised px-5 py-4">
+            <p className="text-sm text-fg-muted">
+              Most Recent:{' '}
+              <span className="font-medium text-fg">{data?.variable}</span>
+            </p>
+
+            <p className="mt-1 text-3xl font-semibold tracking-tight text-fg">
+              {data?.mostRecent != null ? formatNumber(data.mostRecent) : 'N/A'}
+            </p>
+          </div>
+        )}
 
         {/* Trend */}
         <div>
-          {data?.trend?.length > 0 ? (
+          {loading ? (
+            <div className="min-w-0 overflow-hidden rounded-(--radius-card) border border-border p-3 sm:p-4">
+              <Skeleton className="h-72 w-full rounded-(--radius-control)" />
+            </div>
+          ) : data?.trend?.length > 0 ? (
             <div className="min-w-0 overflow-hidden rounded-(--radius-card) border border-border p-3 sm:p-4">
               <MiniLineChart
                 series={[
                   {
                     label: data.variable,
-                    points: data.trend.map((t, i) => ({ x: i, y: t.value })),
+                    points: data.trend.map((t, i) => ({
+                      x: i,
+                      y: t.value,
+                    })),
                   },
                 ]}
                 xLabel="Session"
@@ -121,7 +141,11 @@ export default function AnalysisTab({ data, onRefetch }) {
             </h3>
           </div>
 
-          {data?.indoorAirQuality?.length > 0 ? (
+          {loading ? (
+            <div className="min-w-0 overflow-hidden rounded-(--radius-card) border border-border p-3 sm:p-4">
+              <Skeleton className="px-4 py-6 w-full rounded-(--radius-control)" />
+            </div>
+          ) : data?.indoorAirQuality?.length > 0 ? (
             <div className="overflow-hidden rounded-(--radius-card) border border-border">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[620px] text-sm">
