@@ -22,11 +22,8 @@ function calculateAge(dobValue) {
   if (!dobValue) return null;
   const birthDate = new Date(dobValue);
   if (Number.isNaN(birthDate.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age -= 1;
-  return age;
+  // Match Django: currentYear - birthYear, integer, no birthday correction
+  return new Date().getFullYear() - birthDate.getFullYear();
 }
 
 function buildPredictedMap(predictedValues) {
@@ -70,7 +67,9 @@ function pickBestSpirometryValues(spirometries) {
   const fields = ['fev1', 'fvc', 'pefr', 'fef2575', 'fev6'];
   const best = {};
   for (const field of fields) {
-    const values = spirometries.map((s) => normalizeSpirometryValue(s[field])).filter((v) => v !== null);
+    const values = spirometries
+      .map((s) => normalizeSpirometryValue(s[field]))
+      .filter((v) => v !== null);
     best[field] = values.length > 0 ? Math.max(...values) : null;
   }
   best.fev1FvcRatio =
@@ -103,9 +102,7 @@ function buildPagination(page, limit, total) {
   return { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) };
 }
 
-async function ensurePatientExists(userId) {
-  return patientRepository.findPatientCore(userId);
-}
+async function ensurePatientExists(userId) { return patientRepository.findPatientCore(userId); }
 
 async function getPatientsList() {
   const patients = await patientRepository.findPatientsList();
@@ -134,6 +131,7 @@ async function getPatientInfoTab(userId) {
     dob: attributes?.dob || null,
     age: calculateAge(attributes?.dob),
     ethnicity: attributes?.ethnic_group || null,
+    lookupTable: attributes?.lookup_table || null,
     startDate: attributes?.start_date || null,
     address: address
       ? `${address.street || ''} ${address.city || ''}, ${address.state || ''} ${address.zip || ''}`
@@ -144,14 +142,31 @@ async function getPatientInfoTab(userId) {
   };
 }
 
-async function loadGliDemographics(userId) {
+/**
+ * Loads demographics for GLI-2012 in the same way Django does.
+ * @param {number} userId
+ * @param {number|null} observationHeight  portal_observation.height — preferred
+ */
+async function loadGliDemographics(userId, observationHeight = null) {
   try {
     const profile = await patientRepository.findPatientProfile(userId);
     if (!profile) return { age: 40, height: 170, sex: 1, ethnicity: 5 };
     const attrs = profile.patient_details?.attributes || {};
+
+    const height =
+      observationHeight ??
+      attrs.height ??
+      profile.patient_details?.height ??
+      170;
+
     return toGliDemographics({
       age: calculateAge(attrs.dob),
-      attributes: { height: attrs.height, gender: attrs.gender, ethnic_group: attrs.ethnic_group },
+      lookup_table: attrs.lookup_table,   // ← Django uses this
+      attributes: {
+        height: Number(height),
+        gender: attrs.gender,
+        ethnic_group: attrs.ethnic_group,
+      },
       patient_details: profile.patient_details,
     });
   } catch (_err) {
@@ -161,25 +176,27 @@ async function loadGliDemographics(userId) {
 
 async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 20 }) {
   const skip = (page - 1) * limit;
-  const [total, observations, demo] = await Promise.all([
+  const [total, observations] = await Promise.all([
     patientRepository.countObservations(userId, startDate, endDate),
     patientRepository.findObservationsPage(userId, {
       startDate, endDate, skip, take: limit, includeCurves: true,
     }),
-    loadGliDemographics(userId),
   ]);
 
-  const rows = observations.map((observation) => {
-    const spirometries = observation.spirometries || [];
-    const best = pickBestSpirometryValues(spirometries);
-    return {
-      observationId: observation.id,
-      date: observation.dbdate,
-      testsCount: spirometries.length,
-      results: buildResultRows(best, demo),
-      ...buildChartSeries(spirometries),
-    };
-  });
+  const rows = await Promise.all(
+    observations.map(async (observation) => {
+      const demo = await loadGliDemographics(userId, observation.height);
+      const spirometries = observation.spirometries || [];
+      const best = pickBestSpirometryValues(spirometries);
+      return {
+        observationId: observation.id,
+        date: observation.dbdate,
+        testsCount: spirometries.length,
+        results: buildResultRows(best, demo),
+        ...buildChartSeries(spirometries),
+      };
+    })
+  );
 
   return {
     startDate: startDate || null,
@@ -224,8 +241,9 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
   if (!session1 || !session2 || session1.user_id !== userId || session2.user_id !== userId) {
     throw new ValidationError('One or both sessions were not found for this patient');
   }
-  const demo = await loadGliDemographics(userId);
-  const buildSessionSummary = (observation) => {
+
+  const buildSessionSummary = async (observation) => {
+    const demo = await loadGliDemographics(userId, observation.height);
     const best = pickBestSpirometryValues(observation.spirometries);
     return {
       observationId: observation.id,
@@ -235,27 +253,33 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
       ...buildChartSeries(observation.spirometries),
     };
   };
+
   return {
-    session1: buildSessionSummary(session1),
-    session2: buildSessionSummary(session2),
-    timeBetweenSessionsHours: Math.abs(new Date(session2.dbdate) - new Date(session1.dbdate)) / (1000 * 60 * 60),
+    session1: await buildSessionSummary(session1),
+    session2: await buildSessionSummary(session2),
+    timeBetweenSessionsHours:
+      Math.abs(new Date(session2.dbdate) - new Date(session1.dbdate)) / (1000 * 60 * 60),
   };
 }
 
 async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 }) {
   const skip = (page - 1) * limit;
-  const [total, observations, demo] = await Promise.all([
+  const [total, observations] = await Promise.all([
     patientRepository.countObservations(userId, startDate, endDate),
-    patientRepository.findObservationsPage(userId, { startDate, endDate, skip, take: limit, includeCurves: false }),
-    loadGliDemographics(userId),
+    patientRepository.findObservationsPage(userId, {
+      startDate, endDate, skip, take: limit, includeCurves: false,
+    }),
   ]);
   if (total === 0) {
     return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, 0), rows: [] };
   }
-  const rows = observations.map((observation) => {
-    const best = pickBestSpirometryValues(observation.spirometries);
-    return { observationId: observation.id, date: observation.dbdate, results: buildResultRows(best, demo) };
-  });
+  const rows = await Promise.all(
+    observations.map(async (observation) => {
+      const demo = await loadGliDemographics(userId, observation.height);
+      const best = pickBestSpirometryValues(observation.spirometries);
+      return { observationId: observation.id, date: observation.dbdate, results: buildResultRows(best, demo) };
+    })
+  );
   return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, total), rows };
 }
 

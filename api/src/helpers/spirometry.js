@@ -56,15 +56,7 @@ const toGliSex = (sexAtBirth) => {
   return 1; // default male
 };
 
-const toGliEthnicity = (ethnicGroup) => {
-  const e = String(ethnicGroup || '').trim().toLowerCase();
-  if (!e) return 5;
-  if (e.includes('cauc') || e.includes('white')) return 1;
-  if (e.includes('afr') || e.includes('black')) return 2;
-  if (e.includes('ne asian') || e.includes('chinese') || e.includes('japan') || e.includes('korea')) return 3;
-  if (e.includes('se asian') || e.includes('indian') || e.includes('filip') || e.includes('thai')) return 4;
-  return 5;
-};
+
 
 const normalizeDemo = (demo = {}) => ({
   age: Number.isFinite(demo.age) && demo.age > 0 ? Number(demo.age) : 40,
@@ -73,15 +65,28 @@ const normalizeDemo = (demo = {}) => ({
   ethnicity: demo.ethnicity >= 1 && demo.ethnicity <= 5 ? demo.ethnicity : toGliEthnicity(demo.ethnicity),
 });
 
+const toGliEthnicity = (lookupTable) => {
+  const v = String(lookupTable || '').trim();
+  if (v === 'Caucasian')         return 1;
+  if (v === 'AfricanAmerican')   return 2;
+  if (v === 'NEAsian')           return 3;
+  if (v === 'SEAsian')           return 4;
+  return 5; // 'other' — MexicanAmerican, empty, unknown, etc.
+};
+
 const toGliDemographics = (profile) => {
   if (!profile) return { age: 40, height: 170, sex: 1, ethnicity: 5 };
   const attrs = profile.attributes || {};
   const details = profile.patient_details || {};
+
+  // Prefer lookup_table (Django does this); fall back to ethnic_group
+  const ethnicitySource = profile.lookup_table || attrs.lookup_table || attrs.ethnic_group;
+
   return {
     age: Number.isFinite(profile.age) && profile.age > 0 ? profile.age : 40,
     height: attrs.height ?? details.height ?? 170,
     sex: toGliSex(attrs.gender || profile.sexAtBirth),
-    ethnicity: toGliEthnicity(attrs.ethnic_group || profile.ethnicity),
+    ethnicity: toGliEthnicity(ethnicitySource),
   };
 };
 

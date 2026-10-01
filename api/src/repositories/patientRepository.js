@@ -35,6 +35,7 @@ async function findPatientProfile(userId) {
       email: true,
       phone: true,
       userName: true,
+     
       user_status: { select: { name: true } },
       patient_details: {
         select: {
@@ -48,6 +49,7 @@ async function findPatientProfile(userId) {
               weight: true,
               gender: true,
               ethnic_group: true,
+              lookup_table: true,
               smoking: true,
               start_date: true,
               addresses: {
