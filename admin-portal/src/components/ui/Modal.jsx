@@ -1,9 +1,9 @@
-import { X } from 'lucide-react';
-import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { cn } from '../../lib/utils';
-import { Button } from './button';
-import { Card, CardContent, CardHeader } from './card';
+import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { cn } from "../../lib/utils";
+import { Button } from "./button";
+import { Card, CardContent, CardHeader } from "./card";
 export default function Modal({
   open,
   onClose,
@@ -11,34 +11,38 @@ export default function Modal({
   title,
   className,
   overlayClassName,
-  role = 'dialog',
+  role = "dialog",
   ariaModal = true,
   ariaLabel,
 }) {
+  const [mounted, setMounted] = useState(open);
+  const [closing, setClosing] = useState(false);
+
   useEffect(() => {
-    if (!open) return;
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    const originalBodyOverflow = document.body.style.overflow;
-    const originalHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = originalBodyOverflow;
-      document.documentElement.style.overflow = originalHtmlOverflow;
-    };
-  }, [open, onClose]);
-  if (!open) return null;
+    if (open) {
+      setMounted(true);
+      setClosing(false);
+      return;
+    }
+
+    if (!mounted) return;
+
+    setClosing(true);
+
+    const timer = setTimeout(() => {
+      setMounted(false);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [open]);
+
+  if (!mounted) return null;
   return createPortal(
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4',
-        overlayClassName
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 transition-opacity duration-150 ease-out",
+        closing ? "opacity-0" : "opacity-100",
+        overlayClassName,
       )}
       role={role}
       aria-modal={ariaModal}
@@ -46,7 +50,11 @@ export default function Modal({
       onClick={onClose}
     >
       <div
-        className={cn('w-full max-h-[85vh]', className)}
+        className={cn(
+          closing ? "animate-sheet-out" : "animate-sheet-in",
+          "w-full max-h-[85vh]",
+          className,
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         <Card className="flex max-h-[85vh] flex-col overflow-hidden">
@@ -69,6 +77,6 @@ export default function Modal({
         </Card>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

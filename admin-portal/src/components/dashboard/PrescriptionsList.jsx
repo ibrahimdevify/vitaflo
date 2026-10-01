@@ -1,10 +1,13 @@
-import { ClipboardList, Pill } from 'lucide-react';
-import { Badge } from '../ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { ArrowUpRight, ClipboardList } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Badge } from "../ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import EmptyState from "../shared/EmptyState";
+import { avatarTones, toneClasses } from "./dashboard";
 
 export default function PrescriptionsList({ prescriptions }) {
   return (
-    <Card>
+    <Card className="lg:col-span-2 overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
         <CardTitle className="text-subheading font-semibold flex items-center gap-2.5 text-fg">
           <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-brand-500 to-brand-700">
@@ -13,51 +16,57 @@ export default function PrescriptionsList({ prescriptions }) {
           Recent Prescriptions
           <Badge variant="brand">{prescriptions?.length || 0}</Badge>
         </CardTitle>
+        <Link
+          to="/prescriptions"
+          className="text-caption font-medium text-fg-muted hover:text-brand-600 flex items-center gap-0.5 transition-colors"
+        >
+          View all <ArrowUpRight className="h-3 w-3" />
+        </Link>
       </CardHeader>
-      <CardContent className="pt-4">
+
+      <CardContent className="pt-3">
         {prescriptions?.length > 0 ? (
-          <div className="space-y-2">
-            {prescriptions.map((p, i) => (
-              <div
-                key={i}
-                className="p-3 hover:bg-surface-raised rounded-card transition-colors border border-border"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="font-medium text-fg text-body">
-                    {p.patient?.f_name} {p.patient?.l_name}
-                  </p>
-                  <span className="text-caption text-fg-muted">
-                    {new Date(p.pr_date).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-body text-fg-muted">{p.diagnosis}</p>
-                  {p.medicines?.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {p.medicines.slice(0, 3).map((m, j) => (
-                        <Badge key={j} variant="brand">
-                          <Pill className="h-3 w-3 mr-1" />
-                          {m.drug}
-                        </Badge>
-                      ))}
+          <div className="divide-y divide-border">
+            {prescriptions.slice(0, 5).map((p, i) => {
+              const tone = toneClasses[avatarTones[i % avatarTones.length]];
+              return (
+                <div
+                  key={p.pr_id ?? i}
+                  className="flex justify-between gap-3 px-1 py-3.5 hover:bg-surface-raised transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-pill text-body font-semibold text-white bg-linear-to-br ${tone.gradient}`}
+                    >
+                      {p.patient?.f_name?.[0]}
+                      {p.patient?.l_name?.[0]}
                     </div>
-                  )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-fg text-body truncate">
+                        {p.patient?.f_name} {p.patient?.l_name}
+                      </p>
+                      <p className="text-caption text-fg-muted truncate">
+                        {p.diagnosis}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.medicines?.slice(0, 3).map((m, j) => (
+                      <Badge key={m.pm_id ?? j} variant="outline">
+                        {m.drug}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="h-12 w-12 rounded-pill bg-surface-raised flex items-center justify-center mb-3">
-              <ClipboardList className="h-5 w-5 text-fg-muted" />
-            </div>
-            <p className="text-body font-medium text-fg">
-              No prescriptions yet
-            </p>
-          </div>
+          <EmptyState
+            icon={ClipboardList}
+            title="No recent prescriptions"
+            description="New prescriptions will appear here"
+          />
         )}
       </CardContent>
     </Card>

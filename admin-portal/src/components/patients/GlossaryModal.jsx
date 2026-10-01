@@ -1,60 +1,60 @@
-import { X } from 'lucide-react';
-import { useEffect } from 'react';
-import { Button } from '../ui/button';
-import { Card, CardContent, CardHeader } from '../ui/card';
+import { X } from "lucide-react";
+import { useEffect } from "react";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader } from "../ui/card";
 
 // Hardcoded per the source glossary content — edit here if terms change.
 const GLOSSARY_SECTIONS = [
   {
-    title: 'Expiratory',
+    title: "Expiratory",
     rows: [
       {
-        variable: 'FVC',
-        fullName: 'Forced Vital Capacity (L)',
+        variable: "FVC",
+        fullName: "Forced Vital Capacity (L)",
         definition:
-          'Maximum volume of air that a patient can exhale after maximal inhale',
+          "Maximum volume of air that a patient can exhale after maximal inhale",
       },
       {
-        variable: 'FEV1',
-        fullName: 'Forced Expiratory Volume 1 (L)',
+        variable: "FEV1",
+        fullName: "Forced Expiratory Volume 1 (L)",
         definition:
-          'Volume measured in the first second of the spirometry blow',
+          "Volume measured in the first second of the spirometry blow",
       },
       {
-        variable: 'FEVx',
-        fullName: 'Forced Expiratory Volume X (L)',
-        definition: 'Volume of air exhaled in 1 second of the spirometry blow',
+        variable: "FEVx",
+        fullName: "Forced Expiratory Volume X (L)",
+        definition: "Volume of air exhaled in 1 second of the spirometry blow",
       },
       {
-        variable: 'FEV1/FVC',
-        fullName: '',
-        definition: 'Proportion of FEV1 to FVC shown as a ratio',
+        variable: "FEV1/FVC",
+        fullName: "",
+        definition: "Proportion of FEV1 to FVC shown as a ratio",
       },
       {
-        variable: 'FEF25-75',
-        fullName: 'Forced Expiratory Flow (L/sec) measured from 25% to 75%',
+        variable: "FEF25-75",
+        fullName: "Forced Expiratory Flow (L/sec) measured from 25% to 75%",
         definition:
-          'Flow rate (change in volume over change in time) for the middle range of the spirometry blow',
+          "Flow rate (change in volume over change in time) for the middle range of the spirometry blow",
       },
       {
-        variable: 'PEFR',
-        fullName: 'Peak Expiratory Flow Rate (L/sec)',
-        definition: 'Maximum flow rate (change in volume over change in time)',
+        variable: "PEFR",
+        fullName: "Peak Expiratory Flow Rate (L/sec)",
+        definition: "Maximum flow rate (change in volume over change in time)",
       },
       {
-        variable: 'FET',
-        fullName: 'Forced Expiratory Time (s)',
-        definition: 'Length of the spirometry blow',
+        variable: "FET",
+        fullName: "Forced Expiratory Time (s)",
+        definition: "Length of the spirometry blow",
       },
       {
-        variable: 'LLN',
-        fullName: 'Lower Limit of Normal',
-        definition: '1.645 standard deviations below the mean value',
+        variable: "LLN",
+        fullName: "Lower Limit of Normal",
+        definition: "1.645 standard deviations below the mean value",
       },
       {
-        variable: '% Predicted',
-        fullName: '',
-        definition: 'Observed value as a percentage of the predicted value',
+        variable: "% Predicted",
+        fullName: "",
+        definition: "Observed value as a percentage of the predicted value",
       },
     ],
   },
@@ -65,10 +65,10 @@ export default function GlossaryModal({ open, onClose }) {
     if (!open) return undefined;
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === "Escape") onClose();
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
   if (!open) return null;

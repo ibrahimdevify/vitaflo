@@ -1,15 +1,15 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertTriangle, Loader2, X } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import Field from '../shared/Field';
-import { Button } from '../ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Input } from '../ui/input';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AlertTriangle, Loader2, X } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import Field from "../shared/Field";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
 
 const alertSchema = z.object({
-  user_id: z.string().min(1, 'Patient ID is required'),
-  message: z.string().min(1, 'Message is required'),
+  user_id: z.string().min(1, "Patient ID is required"),
+  message: z.string().min(1, "Message is required"),
 });
 
 export default function CreateAlertForm({ submitting, onSubmit, onCancel }) {
@@ -19,7 +19,7 @@ export default function CreateAlertForm({ submitting, onSubmit, onCancel }) {
     formState: { errors },
   } = useForm({
     resolver: zodResolver(alertSchema),
-    defaultValues: { user_id: '', message: '' },
+    defaultValues: { user_id: "", message: "" },
   });
 
   return (
@@ -38,11 +38,11 @@ export default function CreateAlertForm({ submitting, onSubmit, onCancel }) {
       <CardContent className="pt-4">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Patient ID *" error={errors.user_id?.message}>
-            <Input {...register('user_id')} placeholder="Enter patient ID" />
+            <Input {...register("user_id")} placeholder="Enter patient ID" />
           </Field>
           <Field label="Message *" error={errors.message?.message}>
             <Input
-              {...register('message')}
+              {...register("message")}
               placeholder="e.g., FEV1 below 80% threshold"
             />
           </Field>
@@ -50,14 +50,9 @@ export default function CreateAlertForm({ submitting, onSubmit, onCancel }) {
             <Button type="submit" disabled={submitting} className="gap-1.5">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <AlertTriangle className="h-4 w-4" />
-              {submitting ? 'Creating...' : 'Create Alert'}
+              {submitting ? "Creating..." : "Create Alert"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              className="border-border"
-            >
+            <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
           </div>

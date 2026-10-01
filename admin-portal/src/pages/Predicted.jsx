@@ -2,9 +2,10 @@ import { Brain, Plus, Search, UserRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import AddPredictionForm from "../components/predicted/AddPredictionForm";
-
 import PredictedStats from "../components/predicted/PredictedStats";
 import PredictedTable from "../components/predicted/PredictedTable";
+import EmptyState from "../components/shared/EmptyState";
+import AnimatedText from "../components/ui/AnimatedText";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -14,7 +15,6 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import EmptyState from "../components/shared/EmptyState";
 import { predictedAPI } from "../services/api";
 
 export default function Predicted() {
@@ -59,7 +59,7 @@ export default function Predicted() {
     try {
       setSubmitting(true);
       await predictedAPI.create({
-        user_id: userId, // ✅ Send username string, backend will resolve
+        user_id: userId,
         variables: [
           {
             ...data,
@@ -99,17 +99,18 @@ export default function Predicted() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Predicted Values (GLI)
+            <AnimatedText speed={30}>Predicted Values (GLI)</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage GLI predicted reference values for patients
           </p>
         </div>
         {patientInfo && (
-          <Button onClick={() => setShowForm(true)} className="gap-2">
+          <Button onClick={() => setShowForm(true)} className="gap-2 w-fit">
             <Plus className="h-4 w-4" /> Add Prediction
           </Button>
         )}

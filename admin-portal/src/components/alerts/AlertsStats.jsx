@@ -1,5 +1,5 @@
-import { AlertTriangle, Bell, CheckCircle, Clock } from 'lucide-react';
-import { Card, CardContent } from '../ui/card';
+import { AlertTriangle, Bell, CheckCircle, Clock } from "lucide-react";
+import { Card, CardContent } from "../ui/card";
 
 export default function AlertsStats({
   total,
@@ -9,32 +9,32 @@ export default function AlertsStats({
 }) {
   const stats = [
     {
-      label: 'Total Alerts',
+      label: "Total Alerts",
       value: total,
       icon: Bell,
-      gradient: 'from-info to-info/70',
-      wash: 'from-info/10',
+      gradient: "from-info to-info/70",
+      wash: "from-info/10",
     },
     {
-      label: 'Unread',
+      label: "Unread",
       value: unreadCount,
       icon: AlertTriangle,
-      gradient: 'from-danger to-danger/70',
-      wash: 'from-danger/10',
+      gradient: "from-danger to-danger/70",
+      wash: "from-danger/10",
     },
     {
-      label: 'Read',
+      label: "Read",
       value: readCount,
       icon: CheckCircle,
-      gradient: 'from-success to-success/70',
-      wash: 'from-success/10',
+      gradient: "from-success to-success/70",
+      wash: "from-success/10",
     },
     {
-      label: 'This Page',
+      label: "This Page",
       value: pageCount,
       icon: Clock,
-      gradient: 'from-brand-500 to-brand-700',
-      wash: 'from-brand-500/10',
+      gradient: "from-brand-500 to-brand-700",
+      wash: "from-brand-500/10",
     },
   ];
 

@@ -1,6 +1,6 @@
-import { Mail, Phone, X } from 'lucide-react';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
+import { Mail, Phone, X } from "lucide-react";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 
 export default function PatientDetailModal({ open, onClose, patient }) {
   if (!open) return null;
@@ -9,7 +9,7 @@ export default function PatientDetailModal({ open, onClose, patient }) {
 
   return (
     <div
-      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
@@ -36,19 +36,19 @@ export default function PatientDetailModal({ open, onClose, patient }) {
                   </h2>
                   <div className="flex gap-4 text-caption text-fg-muted mt-1">
                     <span className="flex items-center gap-1">
-                      <Mail className="h-3 w-3" /> {patient.email || 'N/A'}
+                      <Mail className="h-3 w-3" /> {patient.email || "N/A"}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {patient.phone || 'N/A'}
+                      <Phone className="h-3 w-3" /> {patient.phone || "N/A"}
                     </span>
                   </div>
                   <Badge
                     variant={
-                      details.status === 'active' ? 'success' : 'warning'
+                      details.status === "active" ? "success" : "warning"
                     }
                     className="mt-2 capitalize"
                   >
-                    {details.status || 'unknown'}
+                    {details.status || "unknown"}
                   </Badge>
                 </div>
               </div>
@@ -59,21 +59,21 @@ export default function PatientDetailModal({ open, onClose, patient }) {
                   </h3>
                   <div className="space-y-1 text-body">
                     <p>
-                      <span className="text-fg-muted">Chart No:</span>{' '}
+                      <span className="text-fg-muted">Chart No:</span>{" "}
                       <span className="text-fg">
-                        {details.chart_no || 'N/A'}
+                        {details.chart_no || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Blood:</span>{' '}
+                      <span className="text-fg-muted">Blood:</span>{" "}
                       <span className="text-fg">
-                        {details.blood_group || 'N/A'}
+                        {details.blood_group || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">RPM:</span>{' '}
+                      <span className="text-fg-muted">RPM:</span>{" "}
                       <span className="text-fg">
-                        {details.rpm_consent ? 'Yes' : 'No'}
+                        {details.rpm_consent ? "Yes" : "No"}
                       </span>
                     </p>
                   </div>
@@ -84,23 +84,23 @@ export default function PatientDetailModal({ open, onClose, patient }) {
                   </h3>
                   <div className="space-y-1 text-body">
                     <p>
-                      <span className="text-fg-muted">Group:</span>{' '}
+                      <span className="text-fg-muted">Group:</span>{" "}
                       <span className="text-fg">
-                        {details.patient_group?.name || 'N/A'}
+                        {details.patient_group?.name || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Clinician:</span>{' '}
+                      <span className="text-fg-muted">Clinician:</span>{" "}
                       <span className="text-fg">
-                        {details.assigned_clinician?.f_name || 'Not assigned'}
+                        {details.assigned_clinician?.f_name || "Not assigned"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Joined:</span>{' '}
+                      <span className="text-fg-muted">Joined:</span>{" "}
                       <span className="text-fg">
                         {patient.reg_date
                           ? new Date(patient.reg_date).toLocaleDateString()
-                          : 'N/A'}
+                          : "N/A"}
                       </span>
                     </p>
                   </div>
@@ -113,37 +113,37 @@ export default function PatientDetailModal({ open, onClose, patient }) {
                   </h3>
                   <div className="grid grid-cols-3 gap-2 text-body">
                     <p>
-                      <span className="text-fg-muted">DOB:</span>{' '}
+                      <span className="text-fg-muted">DOB:</span>{" "}
                       <span className="text-fg">
-                        {details.attributes.dob || 'N/A'}
+                        {details.attributes.dob || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Gender:</span>{' '}
+                      <span className="text-fg-muted">Gender:</span>{" "}
                       <span className="text-fg">
-                        {details.attributes.gender || 'N/A'}
+                        {details.attributes.gender || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Height:</span>{' '}
+                      <span className="text-fg-muted">Height:</span>{" "}
                       <span className="text-fg">
                         {details.attributes.height
                           ? `${details.attributes.height}cm`
-                          : 'N/A'}
+                          : "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Weight:</span>{' '}
+                      <span className="text-fg-muted">Weight:</span>{" "}
                       <span className="text-fg">
                         {details.attributes.weight
                           ? `${details.attributes.weight}kg`
-                          : 'N/A'}
+                          : "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Smoking:</span>{' '}
+                      <span className="text-fg-muted">Smoking:</span>{" "}
                       <span className="text-fg">
-                        {details.attributes.smoking ? 'Yes' : 'No'}
+                        {details.attributes.smoking ? "Yes" : "No"}
                       </span>
                     </p>
                   </div>

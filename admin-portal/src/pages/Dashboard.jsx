@@ -1,10 +1,10 @@
 import {
+  Activity,
   FileText,
   Stethoscope,
   TrendingUp,
   UserRound,
   Users,
-  Activity,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -12,12 +12,7 @@ import DashboardSkeleton from "../components/dashboard/DashboardSkeleton";
 import DashboardStats from "../components/dashboard/DashboardStats";
 import PatientsList from "../components/dashboard/PatientsList";
 import PrescriptionsList from "../components/dashboard/PrescriptionsList";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import AnimatedText from "../components/ui/AnimatedText";
 import { Badge } from "../components/ui/badge";
 import { useAuth } from "../context/AuthContext";
 import { dashboardAPI } from "../services/api";
@@ -56,6 +51,7 @@ export default function Dashboard() {
 
   const counts = stats?.counts || {};
 
+  // ✅ Admin ka DashboardStats format (gradient + wash)
   const statCards = [
     {
       title: "Total Patients",
@@ -107,83 +103,73 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="animate-fade-in">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-heading font-bold text-fg tracking-tight">
-            {isAdmin ? "Admin Dashboard" : "Dashboard"}
+          <h1 className="text-heading font-bold tracking-tight text-fg">
+            <AnimatedText speed={10}>
+              {isAdmin
+                ? `Welcome back, ${user?.f_name || "Admin"}`
+                : `Welcome back, Dr. ${user?.f_name || "Doctor"}`}
+            </AnimatedText>
           </h1>
-          <p className="text-caption text-fg-muted mt-1">
+          <p className="mt-1 text-caption text-fg-muted">
             {isAdmin
               ? "System-wide overview and management"
-              : "Your patient overview at a glance"}
+              : "Here's what's happening with your patients today"}
           </p>
         </div>
-        <Badge variant="info" className="gap-1.5">
+
+        <Badge variant="info" className="gap-1.5 w-fit">
           <Activity className="h-3.5 w-3.5" />
           {isAdmin ? "System Overview" : "Clinician View"}
         </Badge>
       </div>
 
+      {/* Stat Cards — Admin ka DashboardStats (gradient + wash) */}
       <DashboardStats cards={statCards} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="border-b border-border pb-4">
-            <CardTitle className="text-subheading font-semibold flex items-center gap-2 text-fg">
-              <Users className="h-4 w-4 text-brand-500" />
-              {isAdmin ? "Recent Patients" : "My Patients"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <PatientsList
-              patients={stats?.my_patients || stats?.recent_registrations || []}
-              isAdmin={isAdmin}
-            />
-          </CardContent>
-        </Card>
+      {/* Main Grid — Clinician jaisa 3-col (2 + 1) */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Prescriptions — bada */}
+        <div className="lg:col-span-2">
+          <PrescriptionsList
+            prescriptions={stats?.recent_prescriptions || []}
+          />
+        </div>
 
-        <Card>
-          <CardHeader className="border-b border-border pb-4">
-            <CardTitle className="text-subheading font-semibold flex items-center gap-2 text-fg">
-              <FileText className="h-4 w-4 text-info" />
-              Recent Prescriptions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <PrescriptionsList
-              prescriptions={stats?.recent_prescriptions || []}
-            />
-          </CardContent>
-        </Card>
+        {/* Patients — chhota */}
+        <div className="lg:col-span-1">
+          <PatientsList
+            patients={stats?.my_patients || stats?.recent_registrations || []}
+            isAdmin={isAdmin}
+          />
+        </div>
       </div>
 
-      {/* Users by Type */}
+      {/* Users by Type — Admin only */}
       {isAdmin && stats?.users_by_type && stats.users_by_type.length > 0 && (
-        <Card>
-          <CardHeader className="border-b border-border pb-4">
-            <CardTitle className="text-subheading font-semibold text-fg">
-              Users by Type
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {stats.users_by_type.map((item, i) => (
-                <div
-                  key={i}
-                  className="text-center p-4 bg-surface-raised rounded-card"
-                >
-                  <p className="text-subheading font-bold text-brand-600 tabular-nums">
-                    {item.count}
-                  </p>
-                  <p className="text-caption text-fg-muted capitalize mt-1">
-                    {item.type?.replace("_", " ")}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mt-6 rounded-2xl border border-border bg-surface p-6">
+          <h2 className="text-subheading font-semibold text-fg mb-4">
+            Users by Type
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {stats.users_by_type.map((item, i) => (
+              <div
+                key={i}
+                className="text-center p-4 bg-surface-raised rounded-card"
+              >
+                <p className="text-subheading font-bold text-brand-600 tabular-nums">
+                  {item.count}
+                </p>
+                <p className="text-caption text-fg-muted capitalize mt-1">
+                  {item.type?.replace("_", " ")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

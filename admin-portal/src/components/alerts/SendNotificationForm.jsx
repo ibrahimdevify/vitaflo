@@ -1,16 +1,16 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Bell, Loader2, Send, X } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import Field from '../shared/Field';
-import { Button } from '../ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Input } from '../ui/input';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Bell, Loader2, Send, X } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import Field from "../shared/Field";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
 
 const notifySchema = z.object({
-  user_id: z.string().min(1, 'Patient ID is required'),
-  title: z.string().min(1, 'Title is required'),
-  body: z.string().min(1, 'Body is required'),
+  user_id: z.string().min(1, "Patient ID is required"),
+  title: z.string().min(1, "Title is required"),
+  body: z.string().min(1, "Body is required"),
 });
 
 export default function SendNotificationForm({
@@ -24,7 +24,7 @@ export default function SendNotificationForm({
     formState: { errors },
   } = useForm({
     resolver: zodResolver(notifySchema),
-    defaultValues: { user_id: '', title: '', body: '' },
+    defaultValues: { user_id: "", title: "", body: "" },
   });
 
   return (
@@ -44,15 +44,15 @@ export default function SendNotificationForm({
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Patient ID *" error={errors.user_id?.message}>
-              <Input {...register('user_id')} placeholder="Enter patient ID" />
+              <Input {...register("user_id")} placeholder="Enter patient ID" />
             </Field>
             <Field label="Title *" error={errors.title?.message}>
-              <Input {...register('title')} placeholder="e.g., Health Alert" />
+              <Input {...register("title")} placeholder="e.g., Health Alert" />
             </Field>
           </div>
           <Field label="Body *" error={errors.body?.message}>
             <textarea
-              {...register('body')}
+              {...register("body")}
               className="w-full rounded-(--radius-control) border border-border bg-surface text-fg px-3 py-2 text-body min-h-25 resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/30 placeholder:text-fg-muted"
               placeholder="e.g., Your FEV1 has dropped below 80%. Please contact your doctor."
             />
@@ -61,14 +61,9 @@ export default function SendNotificationForm({
             <Button type="submit" disabled={submitting} className="gap-1.5">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <Send className="h-4 w-4" />
-              {submitting ? 'Sending...' : 'Send Notification'}
+              {submitting ? "Sending..." : "Send Notification"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              className="border-border"
-            >
+            <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
           </div>

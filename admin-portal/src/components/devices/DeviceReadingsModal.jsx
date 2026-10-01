@@ -1,6 +1,6 @@
-import { Activity, X } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
+import { Activity, X } from "lucide-react";
+import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 import {
   Table,
   TableBody,
@@ -8,7 +8,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table';
+} from "../ui/table";
 
 export default function DeviceReadingsModal({
   open,
@@ -21,7 +21,7 @@ export default function DeviceReadingsModal({
 
   return (
     <div
-      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
@@ -33,7 +33,7 @@ export default function DeviceReadingsModal({
             <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-info to-info/70">
               <Activity className="h-3.5 w-3.5 text-white" />
             </div>
-            {deviceName || 'Device'} Readings
+            {deviceName || "Device"} Readings
           </h2>
           <Button variant="ghost" size="icon-sm" onClick={onClose}>
             <X className="h-5 w-5" />
@@ -70,22 +70,22 @@ export default function DeviceReadingsModal({
                         {new Date(r.timestamp).toLocaleString()}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {r.pm25 ?? '—'}
+                        {r.pm25 ?? "—"}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {r.pm10 ?? '—'}
+                        {r.pm10 ?? "—"}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {r.temperature ?? '—'}
+                        {r.temperature ?? "—"}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {r.humidity ? `${r.humidity}%` : '—'}
+                        {r.humidity ? `${r.humidity}%` : "—"}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {r.co2 ?? '—'}
+                        {r.co2 ?? "—"}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {r.voc ?? '—'}
+                        {r.voc ?? "—"}
                       </TableCell>
                     </TableRow>
                   ))}

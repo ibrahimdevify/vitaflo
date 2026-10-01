@@ -1,7 +1,7 @@
-import { Mail, Phone, X } from 'lucide-react';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
+import { Mail, Phone, X } from "lucide-react";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 
 export default function ClinicianDetailModal({
   open,
@@ -15,7 +15,7 @@ export default function ClinicianDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
@@ -55,10 +55,10 @@ export default function ClinicianDetailModal({
                   </h2>
                   <div className="flex gap-4 text-caption text-fg-muted mt-1">
                     <span className="flex items-center gap-1">
-                      <Mail className="h-3 w-3" /> {clinician.email || 'N/A'}
+                      <Mail className="h-3 w-3" /> {clinician.email || "N/A"}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {clinician.phone || 'N/A'}
+                      <Phone className="h-3 w-3" /> {clinician.phone || "N/A"}
                     </span>
                   </div>
                   <div className="flex gap-2 mt-2">
@@ -66,9 +66,9 @@ export default function ClinicianDetailModal({
                       <Badge variant="brand">Specialist</Badge>
                     )}
                     <Badge
-                      variant={clinician.is_availible ? 'success' : 'danger'}
+                      variant={clinician.is_availible ? "success" : "danger"}
                     >
-                      {clinician.is_availible ? 'Available' : 'Offline'}
+                      {clinician.is_availible ? "Available" : "Offline"}
                     </Badge>
                   </div>
                 </div>
@@ -80,27 +80,27 @@ export default function ClinicianDetailModal({
                   </h3>
                   <div className="space-y-1 text-body">
                     <p>
-                      <span className="text-fg-muted">License:</span>{' '}
+                      <span className="text-fg-muted">License:</span>{" "}
                       <span className="text-fg">
-                        {details.license_no || 'N/A'}
+                        {details.license_no || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Experience:</span>{' '}
+                      <span className="text-fg-muted">Experience:</span>{" "}
                       <span className="text-fg">
-                        {details.experience || 'N/A'}
+                        {details.experience || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Education:</span>{' '}
+                      <span className="text-fg-muted">Education:</span>{" "}
                       <span className="text-fg">
-                        {details.education || 'N/A'}
+                        {details.education || "N/A"}
                       </span>
                     </p>
                     <p>
-                      <span className="text-fg-muted">Hospital:</span>{' '}
+                      <span className="text-fg-muted">Hospital:</span>{" "}
                       <span className="text-fg">
-                        {details.hospital?.name || 'N/A'}
+                        {details.hospital?.name || "N/A"}
                       </span>
                     </p>
                   </div>
@@ -110,7 +110,7 @@ export default function ClinicianDetailModal({
                     About
                   </h3>
                   <p className="text-body text-fg-muted">
-                    {details.about_doctor || 'No description'}
+                    {details.about_doctor || "No description"}
                   </p>
                 </div>
               </div>

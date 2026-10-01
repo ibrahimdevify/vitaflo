@@ -32,7 +32,7 @@ export function DialogContent({ className, children, ...props }) {
     <div
       className={cn(
         "bg-surface rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto m-4",
-        className
+        className,
       )}
       {...props}
     >
@@ -46,7 +46,7 @@ export function DialogHeader({ className, children, ...props }) {
     <div
       className={cn(
         "sticky top-0 bg-surface border-b border-border px-6 py-4 flex items-center justify-between z-10",
-        className
+        className,
       )}
       {...props}
     >
@@ -57,10 +57,7 @@ export function DialogHeader({ className, children, ...props }) {
 
 export function DialogTitle({ className, children, ...props }) {
   return (
-    <h2
-      className={cn("text-xl font-bold text-fg", className)}
-      {...props}
-    >
+    <h2 className={cn("text-xl font-bold text-fg", className)} {...props}>
       {children}
     </h2>
   );
@@ -72,7 +69,7 @@ export function DialogClose({ onClick, className, children, ...props }) {
       onClick={onClick}
       className={cn(
         "p-1 rounded-lg hover:bg-surface-raised transition-colors",
-        className
+        className,
       )}
       {...props}
     >

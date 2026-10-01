@@ -1,24 +1,25 @@
-import { UserPlus, Users as UsersIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { Button } from '../components/ui/button';
+import { UserPlus, Users as UsersIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import AnimatedText from "../components/ui/AnimatedText";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import Pagination from '../components/ui/pagination';
-import UserForm from '../components/users/UserForm';
-import UsersFilters from '../components/users/UsersFilters';
-import UsersTable from '../components/users/UsersTable';
-import { usersAPI } from '../services/api';
+} from "../components/ui/card";
+import Pagination from "../components/ui/pagination";
+import UserForm from "../components/users/UserForm";
+import UsersFilters from "../components/users/UsersFilters";
+import UsersTable from "../components/users/UsersTable";
+import { usersAPI } from "../services/api";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
@@ -27,8 +28,8 @@ export default function Users() {
   const [userStatuses, setUserStatuses] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [filterType, setFilterType] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterType, setFilterType] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
   const debounceRef = useRef(null);
 
   useEffect(() => {
@@ -43,16 +44,16 @@ export default function Users() {
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const params = { page, limit, sort_by: 'reg_date', sort_dir: 'desc' };
+      const params = { page, limit, sort_by: "reg_date", sort_dir: "desc" };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (filterType !== 'all') params.ut_id_fk = parseInt(filterType);
-      if (filterStatus !== 'all') params.us_id_fk = parseInt(filterStatus);
+      if (filterType !== "all") params.ut_id_fk = parseInt(filterType);
+      if (filterStatus !== "all") params.us_id_fk = parseInt(filterStatus);
       const res = await usersAPI.getAll(params);
       setUsers(res.data.data || []);
       setTotal(res.data.pagination?.total || 0);
       setTotalPages(res.data.pagination?.pages || 1);
     } catch (err) {
-      toast.error('Failed to load users');
+      toast.error("Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -61,6 +62,7 @@ export default function Users() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
   useEffect(() => {
     usersAPI
       .getTypes()
@@ -75,44 +77,45 @@ export default function Users() {
   const handleCreate = async (data) => {
     try {
       await usersAPI.create(data);
-      toast.success('User created');
+      toast.success("User created");
       setShowForm(false);
       loadUsers();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || "Failed");
     }
   };
 
   const handleUpdate = async (data) => {
     try {
       await usersAPI.update(editingUser.user_id, data);
-      toast.success('User updated');
+      toast.success("User updated");
       setEditingUser(null);
       setShowForm(false);
       loadUsers();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || "Failed");
     }
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Deactivate this user?')) {
+    if (confirm("Deactivate this user?")) {
       try {
         await usersAPI.delete(id);
-        toast.success('User deactivated');
+        toast.success("User deactivated");
         loadUsers();
       } catch (err) {
-        toast.error('Failed');
+        toast.error("Failed");
       }
     }
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Users
+            <AnimatedText speed={30}>Users</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage system users and their roles
@@ -123,7 +126,7 @@ export default function Users() {
             setEditingUser(null);
             setShowForm(true);
           }}
-          className="gap-2"
+          className="gap-2 w-fit"
         >
           <UserPlus className="h-4 w-4" /> Add User
         </Button>

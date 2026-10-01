@@ -1,4 +1,4 @@
-import { Skeleton } from '../ui/skeleton';
+import { Skeleton } from "../../components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -6,9 +6,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table';
+} from "../../components/ui/table";
 
-export default function PatientsTableSkeleton({ rows = 8 }) {
+export default function PatientsTableSkeleton({ rows = 10 }) {
   return (
     <Table>
       <TableHeader>
@@ -38,7 +38,7 @@ export default function PatientsTableSkeleton({ rows = 8 }) {
               <Skeleton className="h-4 w-16 rounded-(--radius-control)" />
             </TableCell>
             <TableCell>
-              <Skeleton className="h-5 w-20 rounded-full" />
+              <Skeleton className="h-5 w-16 rounded-full" />
             </TableCell>
             <TableCell>
               <Skeleton className="h-4 w-20 rounded-(--radius-control)" />

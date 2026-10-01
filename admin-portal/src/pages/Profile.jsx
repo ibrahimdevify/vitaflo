@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import ProfileContact from '../components/profile/ProfileContact';
-import ProfileEditForm from '../components/profile/ProfileEditForm';
-import ProfileEmpty from '../components/profile/ProfileEmpty';
-import ProfileHero from '../components/profile/ProfileHero';
-import ProfileSecurity from '../components/profile/ProfileSecurity';
-import ProfileSkeleton from '../components/profile/ProfileSkeleton';
-import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import ProfileContact from "../components/profile/ProfileContact";
+import ProfileEditForm from "../components/profile/ProfileEditForm";
+import ProfileEmpty from "../components/profile/ProfileEmpty";
+import ProfileHero from "../components/profile/ProfileHero";
+import ProfileSecurity from "../components/profile/ProfileSecurity";
+import ProfileSkeleton from "../components/profile/ProfileSkeleton";
+import { useAuth } from "../context/AuthContext";
+import api from "../services/api";
 
 export default function Profile() {
   const { user, setUser } = useAuth();
@@ -29,14 +29,14 @@ export default function Profile() {
         setPageLoading(false);
         return;
       }
-      const res = await api.get('/auth/me');
+      const res = await api.get("/auth/me");
       const userData = res.data?.user || res.data;
       if (userData?.user_id) {
         setProfileData(userData);
         if (setUser) setUser(userData);
       }
     } catch (err) {
-      console.error('Failed to load profile:', err);
+      console.error("Failed to load profile:", err);
     } finally {
       setPageLoading(false);
     }
@@ -45,14 +45,14 @@ export default function Profile() {
   const handlePasswordChange = async (data) => {
     try {
       setSubmittingPassword(true);
-      const res = await api.post('/auth/change-password', {
+      const res = await api.post("/auth/change-password", {
         current_password: data.current,
         new_password: data.new,
       });
-      toast.success(res.data?.message || 'Password changed!');
+      toast.success(res.data?.message || "Password changed!");
       setChangingPassword(false);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to change password');
+      toast.error(err.response?.data?.error || "Failed to change password");
     } finally {
       setSubmittingPassword(false);
     }
@@ -63,29 +63,29 @@ export default function Profile() {
       setSubmittingProfile(true);
       const userId = profileData?.user_id;
       const res = await api.put(`/users/${userId}`, data);
-      toast.success(res.data?.message || 'Profile updated!');
+      toast.success(res.data?.message || "Profile updated!");
       setEditingProfile(false);
       const updated = { ...profileData, ...data };
       setProfileData(updated);
       if (setUser) setUser((prev) => ({ ...prev, ...updated }));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to update profile');
+      toast.error(err.response?.data?.error || "Failed to update profile");
     } finally {
       setSubmittingProfile(false);
     }
   };
 
   const getInitials = () => {
-    const first = profileData?.f_name?.[0] || '';
-    const last = profileData?.l_name?.[0] || '';
-    return (first + last).toUpperCase() || '?';
+    const first = profileData?.f_name?.[0] || "";
+    const last = profileData?.l_name?.[0] || "";
+    return (first + last).toUpperCase() || "?";
   };
 
   if (pageLoading) return <ProfileSkeleton />;
   if (!profileData) return <ProfileEmpty />;
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in px-4">
+    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
       <div className="pt-2">
         <p className="text-caption text-fg-muted font-medium uppercase tracking-wider">
           Profile Settings

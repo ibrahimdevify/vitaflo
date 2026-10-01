@@ -1,17 +1,17 @@
-import { Check, ChevronDown, Filter, Search } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { Check, ChevronDown, Filter, Search } from "lucide-react";
+import { cn } from "../../lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { Input } from '../ui/input';
+} from "../ui/dropdown-menu";
+import { Input } from "../ui/input";
 
 const filterOptions = [
-  { value: 'all', label: 'All Status' },
-  { value: 'unread', label: 'Unread Only' },
-  { value: 'read', label: 'Read Only' },
+  { value: "all", label: "All Status" },
+  { value: "unread", label: "Unread Only" },
+  { value: "read", label: "Read Only" },
 ];
 
 export default function AlertsFilters({
@@ -38,7 +38,7 @@ export default function AlertsFilters({
         <DropdownMenuTrigger asChild>
           <div className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
             <Filter className="h-3.5 w-3.5" />
-            {selected?.label || 'All Status'}
+            {selected?.label || "All Status"}
             <ChevronDown className="h-3 w-3 ml-1" />
           </div>
         </DropdownMenuTrigger>
@@ -48,8 +48,8 @@ export default function AlertsFilters({
               key={o.value}
               onClick={() => onFilterReadChange(o.value)}
               className={cn(
-                'cursor-pointer',
-                filterRead === o.value && 'bg-surface-raised font-medium'
+                "cursor-pointer",
+                filterRead === o.value && "bg-surface-raised font-medium",
               )}
             >
               {o.label}

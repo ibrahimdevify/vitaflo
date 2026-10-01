@@ -2,6 +2,7 @@ import { useState } from "react";
 import ModulesPanel from "../components/roles/ModulesPanel";
 import PermissionsMatrix from "../components/roles/PermissionsMatrix";
 import RolesPanel from "../components/roles/RolesPanel";
+import AnimatedText from "../components/ui/AnimatedText";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 
 const TABS = [
@@ -20,11 +21,16 @@ export default function Roles() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-heading font-bold text-fg tracking-tight">Role Management</h1>
-        <p className="text-caption text-fg-muted mt-1">
-          Manage roles, modules, and who can view or edit what
-        </p>
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-heading font-bold text-fg tracking-tight">
+            <AnimatedText speed={30}>Role Management</AnimatedText>
+          </h1>
+          <p className="text-caption text-fg-muted mt-1">
+            Manage roles, modules, and who can view or edit what
+          </p>
+        </div>
       </div>
 
       <Card>
@@ -35,7 +41,7 @@ export default function Roles() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
                   activeTab === tab.key
                     ? "border-brand-600 text-brand-700"
                     : "border-transparent text-fg-muted hover:text-fg"
@@ -47,9 +53,15 @@ export default function Roles() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {activeTab === "permissions" && <PermissionsMatrix key={matrixVersion} />}
-          {activeTab === "roles" && <RolesPanel onRolesChanged={refreshMatrix} />}
-          {activeTab === "modules" && <ModulesPanel onModulesChanged={refreshMatrix} />}
+          {activeTab === "permissions" && (
+            <PermissionsMatrix key={matrixVersion} />
+          )}
+          {activeTab === "roles" && (
+            <RolesPanel onRolesChanged={refreshMatrix} />
+          )}
+          {activeTab === "modules" && (
+            <ModulesPanel onModulesChanged={refreshMatrix} />
+          )}
         </CardContent>
       </Card>
     </div>

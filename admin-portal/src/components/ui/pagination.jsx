@@ -1,11 +1,11 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from './button';
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "./button";
 
 export default function Pagination({
   page,
   totalPages,
   total,
-  label = 'items',
+  label = "items",
   loading = false,
   onPageChange,
 }) {
@@ -44,27 +44,25 @@ export default function Pagination({
         >
           <ChevronLeft className="h-4 w-4 mr-1" /> Previous
         </Button>
-
         {getPageNumbers().map((pageNum) => {
           const isCurrent = pageNum === page;
           return (
             <Button
               key={pageNum}
-              variant={isCurrent ? 'default' : 'outline'}
+              variant={isCurrent ? "default" : "outline"}
               size="sm"
               onClick={() => onPageChange(pageNum)}
               disabled={loading}
               className={
                 isCurrent
-                  ? 'bg-brand-600 hover:bg-brand-700 text-white border-brand-600'
-                  : 'border-border'
+                  ? "bg-brand-600 hover:bg-brand-700 text-white border-brand-600"
+                  : "border-border"
               }
             >
               {pageNum}
             </Button>
           );
         })}
-
         <Button
           variant="outline"
           size="sm"

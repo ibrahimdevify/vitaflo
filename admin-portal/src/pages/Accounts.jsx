@@ -1,17 +1,18 @@
-import { Building2, Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import AccountDetailModal from '../components/accounts/AccountDetailModal';
-import AccountForm from '../components/accounts/AccountForm';
-import AccountsTable from '../components/accounts/AccountsTable';
-import { Button } from '../components/ui/button';
+import { Building2, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import AccountDetailModal from "../components/accounts/AccountDetailModal";
+import AccountForm from "../components/accounts/AccountForm";
+import AccountsTable from "../components/accounts/AccountsTable";
+import AnimatedText from "../components/ui/AnimatedText";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import { accountsAPI } from '../services/api';
+} from "../components/ui/card";
+import { accountsAPI } from "../services/api";
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
@@ -29,7 +30,7 @@ export default function Accounts() {
       const res = await accountsAPI.getAll();
       setAccounts(res.data.data || []);
     } catch (err) {
-      toast.error('Failed to load accounts');
+      toast.error("Failed to load accounts");
     } finally {
       setLoading(false);
     }
@@ -49,7 +50,7 @@ export default function Accounts() {
       ]);
       setAccountDetail({ ...detailRes.data.data, stats: statsRes.data.data });
     } catch (err) {
-      toast.error('Failed to load account details');
+      toast.error("Failed to load account details");
     } finally {
       setLoadingDetail(false);
     }
@@ -60,16 +61,16 @@ export default function Accounts() {
       setSubmitting(true);
       if (editingAccount) {
         await accountsAPI.update(editingAccount.id, data);
-        toast.success('Account updated!');
+        toast.success("Account updated!");
       } else {
         await accountsAPI.create(data);
-        toast.success('Account created!');
+        toast.success("Account created!");
       }
       setShowForm(false);
       setEditingAccount(null);
       loadAccounts();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || "Failed");
     } finally {
       setSubmitting(false);
     }
@@ -77,10 +78,11 @@ export default function Accounts() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Accounts
+            <AnimatedText speed={30}>Accounts</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage organization accounts and features
@@ -91,7 +93,7 @@ export default function Accounts() {
             setEditingAccount(null);
             setShowForm(true);
           }}
-          className="gap-2"
+          className="gap-2 w-fit"
         >
           <Plus className="h-4 w-4" /> Add Account
         </Button>

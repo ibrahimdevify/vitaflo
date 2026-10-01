@@ -1,31 +1,31 @@
-import { Plus, Users } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-// import PatientForm from '../components/PatientForm';
-import PatientDetailModal from '../components/patients/PatientDetailModal';
-import PatientForm from '../components/patients/PatientForm';
-import PatientsFilters from '../components/patients/PatientsFilters';
-import PatientsTable from '../components/patients/PatientsTable';
-import { Button } from '../components/ui/button';
+import { Plus, Users } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import PatientDetailModal from "../components/patients/PatientDetailModal";
+import PatientForm from "../components/patients/PatientForm";
+import PatientsFilters from "../components/patients/PatientsFilters";
+import PatientsTable from "../components/patients/PatientsTable";
+import AnimatedText from "../components/ui/AnimatedText";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import Pagination from '../components/ui/pagination';
-import { patientsAPI } from '../services/api';
+} from "../components/ui/card";
+import Pagination from "../components/ui/pagination";
+import { patientsAPI } from "../services/api";
 
 export default function Patients() {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -47,13 +47,13 @@ export default function Patients() {
       setLoading(true);
       const params = { page, limit };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (filterStatus !== 'all') params.status = filterStatus;
+      if (filterStatus !== "all") params.status = filterStatus;
       const res = await patientsAPI.getAll(params);
       setPatients(res.data.data || []);
       setTotal(res.data.pagination?.total || 0);
       setTotalPages(res.data.pagination?.pages || 1);
     } catch (err) {
-      toast.error('Failed to load patients');
+      toast.error("Failed to load patients");
     } finally {
       setLoading(false);
     }
@@ -63,21 +63,22 @@ export default function Patients() {
     loadPatients();
   }, [loadPatients]);
 
- const viewPatient = (patient) => {
-  if (!patient) return;
-  setSelectedPatient(patient);
-};
+  const viewPatient = (patient) => {
+    if (!patient) return;
+    setSelectedPatient(patient);
+  };
 
   const closeModal = () => {
-  setSelectedPatient(null);
-};
+    setSelectedPatient(null);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Patients
+            <AnimatedText speed={30}>Patients</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage all system patients
@@ -88,7 +89,7 @@ export default function Patients() {
             setEditingPatient(null);
             setShowForm(true);
           }}
-          className="gap-2"
+          className="gap-2 w-fit"
         >
           <Plus className="h-4 w-4" /> Add Patient
         </Button>
@@ -110,10 +111,10 @@ export default function Patients() {
       )}
 
       <PatientDetailModal
-  open={!!selectedPatient}
-  onClose={closeModal}
-  patient={selectedPatient}
-/>
+        open={!!selectedPatient}
+        onClose={closeModal}
+        patient={selectedPatient}
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
