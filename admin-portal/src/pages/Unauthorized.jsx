@@ -1,6 +1,7 @@
-import { Clock, LogIn } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Button } from '../components/ui/button';
+import { Clock, LogIn } from "lucide-react";
+import { Link } from "react-router-dom";
+import AnimatedText from "../components/ui/AnimatedText";
+import { Button } from "../components/ui/button";
 
 export default function Unauthorized() {
   return (
@@ -25,7 +26,9 @@ export default function Unauthorized() {
         </span>
 
         {/* Title */}
-        <h1 className="text-heading font-bold text-fg mb-2">Session Expired</h1>
+        <h1 className="text-heading font-bold text-fg mb-2">
+          <AnimatedText speed={30}>Session Expired</AnimatedText>
+        </h1>
 
         {/* Description */}
         <p className="text-body text-fg-muted mb-8 max-w-sm">

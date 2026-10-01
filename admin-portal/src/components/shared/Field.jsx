@@ -1,11 +1,11 @@
-export default function Field({ label, error, children }) {
+import { cn } from "../../lib/utils";
+
+export default function Field({ label, error, children, className }) {
   return (
-    <div>
-      <label className="text-caption font-medium text-fg-muted mb-1.5 block">
-        {label}
-      </label>
+    <div className={cn("flex flex-col gap-2", className)}>
+      <label className="block text-sm font-medium text-fg">{label}</label>
       {children}
-      {error && <p className="text-caption text-danger mt-1">{error}</p>}
+      {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   );
 }

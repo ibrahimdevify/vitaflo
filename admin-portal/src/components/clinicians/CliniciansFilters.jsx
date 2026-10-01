@@ -1,17 +1,17 @@
-import { Check, ChevronDown, Filter, Search } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { Check, ChevronDown, Filter, Search } from "lucide-react";
+import { cn } from "../../lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { Input } from '../ui/input';
+} from "../ui/dropdown-menu";
+import { Input } from "../ui/input";
 
 const filterOptions = [
-  { value: 'all', label: 'All Types' },
-  { value: 'true', label: 'Specialist' },
-  { value: 'false', label: 'Non-Specialist' },
+  { value: "all", label: "All Types" },
+  { value: "true", label: "Specialist" },
+  { value: "false", label: "Non-Specialist" },
 ];
 
 export default function CliniciansFilters({
@@ -38,7 +38,7 @@ export default function CliniciansFilters({
         <DropdownMenuTrigger asChild>
           <div className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
             <Filter className="h-3.5 w-3.5" />
-            {selected?.label || 'All Types'}
+            {selected?.label || "All Types"}
             <ChevronDown className="h-3 w-3 ml-1" />
           </div>
         </DropdownMenuTrigger>
@@ -48,8 +48,8 @@ export default function CliniciansFilters({
               key={o.value}
               onClick={() => onFilterSpecialistChange(o.value)}
               className={cn(
-                'cursor-pointer',
-                filterSpecialist === o.value && 'bg-surface-raised font-medium'
+                "cursor-pointer",
+                filterSpecialist === o.value && "bg-surface-raised font-medium",
               )}
             >
               {o.label}

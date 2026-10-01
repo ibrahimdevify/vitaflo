@@ -1,15 +1,15 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Building2, Loader2, Save } from 'lucide-react';
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import Field from '../shared/Field';
-import { Button } from '../ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Input } from '../ui/input';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Building2, Loader2, Save } from "lucide-react";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import Field from "../shared/Field";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
 
 const accountSchema = z.object({
-  name: z.string().min(1, 'Account name is required'),
+  name: z.string().min(1, "Account name is required"),
   breezometer: z.boolean().optional(),
   awair: z.boolean().optional(),
   bronchodilator_responsiveness_testing: z.boolean().optional(),
@@ -17,15 +17,15 @@ const accountSchema = z.object({
 });
 
 const features = [
-  { key: 'breezometer', label: 'Breezometer' },
-  { key: 'awair', label: 'Awair' },
+  { key: "breezometer", label: "Breezometer" },
+  { key: "awair", label: "Awair" },
   {
-    key: 'bronchodilator_responsiveness_testing',
-    label: 'Bronchodilator Test',
+    key: "bronchodilator_responsiveness_testing",
+    label: "Bronchodilator Test",
   },
   {
-    key: 'clinical_decision_support_flowchart',
-    label: 'Clinical Decision Support',
+    key: "clinical_decision_support_flowchart",
+    label: "Clinical Decision Support",
   },
 ];
 
@@ -45,7 +45,7 @@ export default function AccountForm({
   } = useForm({
     resolver: zodResolver(accountSchema),
     defaultValues: {
-      name: '',
+      name: "",
       breezometer: true,
       awair: true,
       bronchodilator_responsiveness_testing: true,
@@ -57,7 +57,7 @@ export default function AccountForm({
     if (initialData) {
       const attrs = initialData.account_attributes || {};
       reset({
-        name: initialData.name || '',
+        name: initialData.name || "",
         breezometer: attrs.breezometer ?? true,
         awair: attrs.awair ?? true,
         bronchodilator_responsiveness_testing:
@@ -75,13 +75,13 @@ export default function AccountForm({
           <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-info to-info/70">
             <Building2 className="h-3.5 w-3.5 text-white" />
           </div>
-          {isEditing ? 'Edit Account' : 'Create Account'}
+          {isEditing ? "Edit Account" : "Create Account"}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-4">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <Field label="Account Name *" error={errors.name?.message}>
-            <Input {...register('name')} placeholder="Hospital Name" />
+            <Input {...register("name")} placeholder="Hospital Name" />
           </Field>
 
           <div>
@@ -109,14 +109,9 @@ export default function AccountForm({
             <Button type="submit" disabled={submitting} className="gap-1.5">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               <Save className="h-4 w-4" />
-              {isEditing ? 'Update Account' : 'Create Account'}
+              {isEditing ? "Update Account" : "Create Account"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              className="border-border"
-            >
+            <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
           </div>

@@ -1,4 +1,4 @@
-function PageLoader({ message = 'Loading...' }) {
+function PageLoader({ message = "Loading..." }) {
   return (
     <div className="flex min-h-[calc(100vh-100px)] flex-col items-center justify-center gap-5 bg-surface">
       <svg

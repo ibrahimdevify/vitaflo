@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../lib/utils";
 import { patientsAPI } from "../../services/api";
 import Field from "../shared/Field";
@@ -28,10 +29,11 @@ import { Input } from "../ui/input";
 const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const genderOptions = ["M", "F"];
 
+// ⚠️ Schema EXACT same — koi naya field nahi
 const patientSchema = z.object({
   f_name: z.string().min(1, "First name is required"),
   l_name: z.string().min(1, "Last name is required"),
-  email: z.string().optional(),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
   phone: z.string().min(1, "Phone is required"),
   password: z.string().optional(),
   dob: z.string().optional(),
@@ -42,20 +44,18 @@ const patientSchema = z.object({
   gender: z.string().optional(),
   status: z.string().optional(),
   patient_group_id: z.string().optional(),
-  assigned_clinician_id: z.string().optional(),
 });
 
 export default function PatientForm({ onCancel, onSuccess, initialData }) {
   const isEditing = !!initialData;
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const maxStep = 3;
-  const [clinicians, setClinicians] = useState([]);
   const [patientGroups, setPatientGroups] = useState([]);
 
   const {
     register,
     handleSubmit,
-    watch,
     reset,
     control,
     formState: { errors, isSubmitting },
@@ -75,18 +75,10 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
       gender: "M",
       status: "active",
       patient_group_id: "",
-      assigned_clinician_id: "",
     },
   });
 
   useEffect(() => {
-    // Load clinicians for dropdown
-    patientsAPI
-      .getClinicians?.()
-      .then((res) => setClinicians(res.data.data || []))
-      .catch(() => setClinicians([]));
-
-    // Load patient groups
     patientsAPI
       .getGroups()
       .then((res) => setPatientGroups(res.data.data || []))
@@ -112,12 +104,11 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
         status: initialData.patient_details?.status || "active",
         patient_group_id:
           initialData.patient_details?.patient_group_id?.toString() || "",
-        assigned_clinician_id:
-          initialData.patient_details?.assigned_clinician_id?.toString() || "",
       });
     }
   }, [initialData, reset]);
 
+  // ⚠️ onSubmit EXACT same — koi naya field nahi
   const onSubmit = async (data) => {
     try {
       const payload = {
@@ -138,23 +129,26 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
         patient_group_id: data.patient_group_id
           ? parseInt(data.patient_group_id)
           : null,
-        assigned_clinician_id: data.assigned_clinician_id
-          ? parseInt(data.assigned_clinician_id)
-          : null,
+        assigned_clinician_id: user?.user_id || user?.id, // ✅ Auto-assign same
       };
 
       await patientsAPI.create(payload);
-      toast.success("Patient created successfully!");
+      toast.success(
+        isEditing
+          ? "Patient updated successfully!"
+          : "Patient created successfully!",
+      );
       if (onSuccess) onSuccess();
     } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to create patient");
+      toast.error(
+        err.response?.data?.error ||
+          (isEditing ? "Failed to update patient" : "Failed to create patient"),
+      );
     }
   };
 
-  const formValues = watch();
-
   return (
-    <Card>
+    <Card className="w-full animate-fade-in">
       <CardHeader className="border-b border-border pb-4">
         <div className="flex items-center justify-center gap-2">
           {[1, 2, 3].map((s, idx, arr) => (
@@ -202,7 +196,7 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                 <Field label="Last Name *" error={errors.l_name?.message}>
                   <Input {...register("l_name")} placeholder="Doe" />
                 </Field>
-                <Field label="Email (optional)">
+                <Field label="Email (optional)" error={errors.email?.message}>
                   <Input
                     {...register("email")}
                     type="email"
@@ -402,6 +396,12 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                           align="start"
                           className="w-(--anchor-width)"
                         >
+                          <DropdownMenuItem
+                            onClick={() => field.onChange("")}
+                            className="cursor-pointer text-fg-muted"
+                          >
+                            No Group
+                          </DropdownMenuItem>
                           {patientGroups.map((g) => (
                             <DropdownMenuItem
                               key={g.id}
@@ -423,58 +423,33 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                     )}
                   />
                 </Field>
-                <Field label="Assigned Clinician">
-                  <Controller
-                    name="assigned_clinician_id"
-                    control={control}
-                    render={({ field }) => (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <div className="flex w-full items-center justify-between h-9 px-3 text-sm rounded-(--radius-control) border border-border bg-surface text-fg cursor-pointer hover:bg-surface-raised transition-colors">
-                            <span
-                              className={
-                                !field.value ? "text-fg-muted" : "text-fg"
-                              }
-                            >
-                              {clinicians.find(
-                                (c) => c.user_id.toString() === field.value,
-                              )
-                                ? `${clinicians.find((c) => c.user_id.toString() === field.value).f_name} ${clinicians.find((c) => c.user_id.toString() === field.value).l_name}`
-                                : "Select Clinician"}
-                            </span>
-                            <ChevronDown className="h-4 w-4 text-fg-muted" />
-                          </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="start"
-                          className="w-(--anchor-width) max-h-60 overflow-y-auto"
-                        >
-                          {clinicians.map((c) => (
-                            <DropdownMenuItem
-                              key={c.user_id}
-                              onClick={() =>
-                                field.onChange(c.user_id.toString())
-                              }
-                              className={cn(
-                                "cursor-pointer",
-                                field.value === c.user_id.toString() &&
-                                  "bg-surface-raised font-medium",
-                              )}
-                            >
-                              {c.f_name} {c.l_name}
-                              <span className="text-caption text-fg-muted ml-2">
-                                ({c.email})
-                              </span>
-                              {field.value === c.user_id.toString() && (
-                                <Check className="h-3.5 w-3.5 ml-auto text-brand-600" />
-                              )}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+
+                {/* ✅ Auto-assign card SAME — bilkul waisa hi rakha */}
+                <div className="relative overflow-hidden rounded-2xl border border-border bg-surface p-4">
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-brand-500/[0.10] blur-3xl"
                   />
-                </Field>
+                  <div className="relative flex items-center gap-3.5">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/20 bg-brand-500/10 text-accent shadow-[0_0_24px_rgba(6,182,212,0.10)]">
+                      <UserRound
+                        className="h-[19px] w-[19px]"
+                        strokeWidth={1.8}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold leading-5 text-fg">
+                        Assigned Clinician:{" "}
+                        <span className="font-medium">
+                          {user?.f_name} {user?.l_name}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-fg-muted">
+                        You will be automatically assigned to this patient
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -497,7 +472,8 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
                 "Saving..."
               ) : step >= maxStep ? (
                 <>
-                  <Save className="h-4 w-4" /> Create Patient
+                  <Save className="h-4 w-4" />{" "}
+                  {isEditing ? "Update Patient" : "Create Patient"}
                 </>
               ) : (
                 <>

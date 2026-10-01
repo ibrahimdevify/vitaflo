@@ -6,6 +6,7 @@ import ClinicianDetailModal from "../components/clinicians/ClinicianDetailModal"
 import ClinicianForm from "../components/clinicians/ClinicianForm";
 import CliniciansFilters from "../components/clinicians/CliniciansFilters";
 import CliniciansTable from "../components/clinicians/CliniciansTable";
+import AnimatedText from "../components/ui/AnimatedText";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -84,10 +85,11 @@ export default function Clinicians() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Clinicians
+            <AnimatedText speed={30}>Clinicians</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage all system clinicians
@@ -98,7 +100,7 @@ export default function Clinicians() {
             setEditingClinician(null);
             setShowForm(true);
           }}
-          className="gap-2"
+          className="gap-2 w-fit"
         >
           <Plus className="h-4 w-4" /> Add Clinician
         </Button>
@@ -151,7 +153,8 @@ export default function Clinicians() {
             }}
           />
         </CardHeader>
-        <CardContent className="pt-4">
+        {/* ✅ px-4 added — table card ke andar properly aligned hoga */}
+        <CardContent className="px-4 pt-4">
           <CliniciansTable
             clinicians={clinicians}
             loading={loading}

@@ -1,18 +1,18 @@
-import { Building2, Check, X, X as XIcon } from 'lucide-react';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
+import { Building2, Check, X, X as XIcon } from "lucide-react";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 
 const featureLabels = [
-  { key: 'breezometer', label: 'Breezometer' },
-  { key: 'awair', label: 'Awair' },
+  { key: "breezometer", label: "Breezometer" },
+  { key: "awair", label: "Awair" },
   {
-    key: 'bronchodilator_responsiveness_testing',
-    label: 'Bronchodilator Test',
+    key: "bronchodilator_responsiveness_testing",
+    label: "Bronchodilator Test",
   },
   {
-    key: 'clinical_decision_support_flowchart',
-    label: 'Clinical Decision Support',
+    key: "clinical_decision_support_flowchart",
+    label: "Clinical Decision Support",
   },
 ];
 
@@ -26,7 +26,7 @@ export default function AccountDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
@@ -38,7 +38,7 @@ export default function AccountDetailModal({
             <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-info to-info/70">
               <Building2 className="h-3.5 w-3.5 text-white" />
             </div>
-            {account?.name || 'Account'} Details
+            {account?.name || "Account"} Details
           </h2>
           <Button variant="ghost" size="icon-sm" onClick={onClose}>
             <X className="h-5 w-5" />

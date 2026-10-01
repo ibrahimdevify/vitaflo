@@ -6,12 +6,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import Pagination from "../ui/pagination";
 import EmptyState from "../shared/EmptyState";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { cliniciansAPI, clinicianAdminsAPI } from "../../services/api";
 
 const avatarTones = ["brand", "info", "success", "warning", "danger"];
@@ -36,7 +31,12 @@ function AdminRowSkeleton() {
   );
 }
 
-export default function AssignAdminModal({ open, clinician, onClose, onAssigned }) {
+export default function AssignAdminModal({
+  open,
+  clinician,
+  onClose,
+  onAssigned,
+}) {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assigningId, setAssigningId] = useState(null);
@@ -176,7 +176,10 @@ export default function AssignAdminModal({ open, clinician, onClose, onAssigned 
                       </p>
                     </div>
                     {a._count?.managed_clinicians > 0 && (
-                      <Badge variant="outline" className="shrink-0 whitespace-nowrap hidden sm:inline-flex">
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 whitespace-nowrap hidden sm:inline-flex"
+                      >
                         {a._count.managed_clinicians} clinician
                         {a._count.managed_clinicians === 1 ? "" : "s"}
                       </Badge>

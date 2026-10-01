@@ -7,6 +7,7 @@ import TrendsSearch from "../components/trends/TrendsSearch";
 import TrendsSkeleton from "../components/trends/TrendsSkeleton";
 import TrendsStats from "../components/trends/TrendsStats";
 import TrendsTabSwitcher from "../components/trends/TrendsTabSwitcher";
+import AnimatedText from "../components/ui/AnimatedText";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
 import { trendsAPI } from "../services/api";
@@ -114,18 +115,18 @@ export default function Trends() {
   if (loading) return <TrendsSkeleton />;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col space-y-6 animate-fade-in min-h-[calc(100vh-200px)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Trends & Analytics
+            <AnimatedText speed={30}>Trends & Analytics</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Analyze patient health data over time
           </p>
         </div>
         {stats && (
-          <Badge variant="info" className="gap-1.5">
+          <Badge variant="info" className="gap-1.5 w-fit">
             <Activity className="h-3.5 w-3.5" />
             {stats.total} Records
           </Badge>
@@ -194,8 +195,8 @@ export default function Trends() {
             </Card>
           </div>
         ) : userId ? (
-          <Card>
-            <CardContent className="pt-4">
+          <Card className="flex-1 flex flex-col">
+            <CardContent className="flex-1 flex items-center justify-center pt-4">
               <EmptyState
                 icon={Activity}
                 title="No spirometry trends found"
@@ -204,8 +205,8 @@ export default function Trends() {
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardContent className="py-12">
+          <Card className="flex-1 flex flex-col">
+            <CardContent className="flex-1 flex items-center justify-center py-12">
               <EmptyState
                 icon={Search}
                 title="Search for a Patient"
@@ -247,14 +248,14 @@ export default function Trends() {
             </Card>
           </div>
         ) : userId ? (
-          <Card>
-            <CardContent className="pt-4">
+          <Card className="flex-1 flex flex-col">
+            <CardContent className="flex-1 flex items-center justify-center pt-4">
               <EmptyState icon={Activity} title="No air quality data found" />
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardContent className="py-12">
+          <Card className="flex-1 flex flex-col">
+            <CardContent className="flex-1 flex items-center justify-center py-12">
               <EmptyState
                 icon={Search}
                 title="Search for a Patient"

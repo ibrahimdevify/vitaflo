@@ -1,5 +1,5 @@
-import { AlertTriangle, Bell, UserRound } from 'lucide-react';
-import EmptyState from '../shared/EmptyState';
+import { AlertTriangle, Bell, UserRound } from "lucide-react";
+import EmptyState from "../shared/EmptyState";
 import {
   Table,
   TableBody,
@@ -7,16 +7,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table';
-import AlertsTableSkeleton from './AlertsTableSkeleton';
+} from "../ui/table";
+import AlertsTableSkeleton from "./AlertsTableSkeleton";
 
-const avatarTones = ['brand', 'info', 'success', 'warning', 'danger'];
+const avatarTones = ["brand", "info", "success", "warning", "danger"];
 const toneGradients = {
-  brand: 'from-brand-500 to-brand-700',
-  info: 'from-info to-info/70',
-  success: 'from-success to-success/70',
-  warning: 'from-warning to-warning/70',
-  danger: 'from-danger to-danger/70',
+  brand: "from-brand-500 to-brand-700",
+  info: "from-info to-info/70",
+  success: "from-success to-success/70",
+  warning: "from-warning to-warning/70",
+  danger: "from-danger to-danger/70",
 };
 
 export default function AlertsTable({ alerts, loading }) {
@@ -51,17 +51,17 @@ export default function AlertsTable({ alerts, loading }) {
             return (
               <TableRow
                 key={alert.id}
-                className={!alert.is_read ? 'bg-danger/5' : ''}
+                className={!alert.is_read ? "bg-danger/5" : ""}
               >
                 <TableCell>
                   <AlertTriangle
-                    className={`h-5 w-5 ${alert.is_read ? 'text-fg-muted' : 'text-danger'}`}
+                    className={`h-5 w-5 ${alert.is_read ? "text-fg-muted" : "text-danger"}`}
                   />
                 </TableCell>
                 <TableCell className="font-medium">
                   <p
                     className={
-                      !alert.is_read ? 'font-semibold text-fg' : 'text-fg'
+                      !alert.is_read ? "font-semibold text-fg" : "text-fg"
                     }
                   >
                     {alert.message}
@@ -90,12 +90,12 @@ export default function AlertsTable({ alerts, loading }) {
                   )}
                 </TableCell>
                 <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                  {new Date(alert.created).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
+                  {new Date(alert.created).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
                   })}
                 </TableCell>
               </TableRow>

@@ -2,12 +2,13 @@ import {
   Activity,
   Calendar,
   Search,
+  SlidersHorizontal,
   TrendingUp,
   UserRound,
   Wind,
   Gauge,
   Timer,
-  X, // ✅ Changed from Clear to X
+  X,
 } from "lucide-react";
 import {
   CartesianGrid,
@@ -21,6 +22,9 @@ import {
 } from "recharts";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import EmptyState from "../components/shared/EmptyState";
+import SpirometryTable from "../components/spirometry/SpirometryTable";
+import AnimatedText from "../components/ui/AnimatedText";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -30,29 +34,17 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
 import Pagination from "../components/ui/pagination";
-import EmptyState from "../components/shared/EmptyState";
-import SpirometryTableSkeleton from "../components/spirometry/SpirometryTableSkeleton";
 import { spirometryAPI } from "../services/api";
-import { useSearchParams } from "react-router-dom"; // ✅ add this
-import SpirometryTable from "../components/spirometry/SpirometryTable";
+import { useSearchParams } from "react-router-dom";
 
 export default function Spirometry() {
-  const [searchParams, setSearchParams] = useSearchParams(); // ✅ add this
+  const [searchParams, setSearchParams] = useSearchParams();
   const [reportLoadingId, setReportLoadingId] = useState(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
   const [spirometryData, setSpirometryData] = useState([]);
-  
   const [chartData, setChartData] = useState([]);
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
@@ -62,8 +54,9 @@ export default function Spirometry() {
     start: "2020-01-01",
     end: "2030-12-31",
   });
+
   const searchPatient = async (pageNum = 1, overrideQuery) => {
-    const query = (overrideQuery ?? search).trim(); // ✅ allow passing query directly
+    const query = (overrideQuery ?? search).trim();
     if (!query) {
       toast.error("Please enter a Patient Username");
       return;
@@ -119,26 +112,24 @@ export default function Spirometry() {
   };
 
   const handleViewReport = async (observationId) => {
-      if (!observationId) {
-        toast.error("This record has no observation to report on");
-        return;
-      }
-      try {
-        setReportLoadingId(observationId);
-        const res = await spirometryAPI.getReportPDF(observationId);
-        const blob = new Blob([res.data], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank", "noopener,noreferrer");
-        // release the blob URL once the browser has had a chance to load it
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      } catch (err) {
-        toast.error("Failed to generate report");
-      } finally {
-        setReportLoadingId(null);
-      }
-    };
+    if (!observationId) {
+      toast.error("This record has no observation to report on");
+      return;
+    }
+    try {
+      setReportLoadingId(observationId);
+      const res = await spirometryAPI.getReportPDF(observationId);
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      toast.error("Failed to generate report");
+    } finally {
+      setReportLoadingId(null);
+    }
+  };
 
-  // ✅ On mount: read ?username=ibbi from URL and auto-search
   useEffect(() => {
     const usernameFromUrl = searchParams.get("username");
     if (usernameFromUrl) {
@@ -146,7 +137,7 @@ export default function Spirometry() {
       searchPatient(1, usernameFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  }, []);
 
   const clearSearch = () => {
     setSearch("");
@@ -156,7 +147,7 @@ export default function Spirometry() {
     setTotal(0);
     setTotalPages(1);
     setPage(1);
-    setSearchParams({}); // ✅ also clear the URL param
+    setSearchParams({});
   };
 
   const handleKeyDown = (e) => {
@@ -165,7 +156,7 @@ export default function Spirometry() {
 
   const handleSearchClick = () => {
     if (search.trim()) {
-      setSearchParams({ username: search.trim() }); // ✅ keep URL in sync
+      setSearchParams({ username: search.trim() });
     }
     searchPatient(1);
   };
@@ -189,12 +180,13 @@ export default function Spirometry() {
     (max, s) => (s.pefr > max ? s.pefr : max),
     0,
   );
+
+  // ✅ KPI cards — 4 cards, no icons (Clinician jaisa)
   const avgFEV1 =
     spirometryData.length > 0
       ? spirometryData.reduce((sum, s) => sum + (s.fev1 || 0), 0) /
         spirometryData.length
       : 0;
-  const lastRecord = spirometryData.length > 0 ? spirometryData[0] : null;
   const postBDCount = spirometryData.filter(
     (s) => s.is_post_bronchodilator,
   ).length;
@@ -203,66 +195,56 @@ export default function Spirometry() {
     {
       title: "Total Tests",
       value: total,
-      icon: Activity,
-      gradient: "from-brand-500 to-brand-700",
       wash: "from-brand-500/10",
       suffix: "",
     },
     {
       title: "Best FEV1",
       value: bestFEV1 ? bestFEV1.toFixed(2) : "—",
-      icon: Wind,
-      gradient: "from-info to-info/70",
       wash: "from-info/10",
       suffix: "L",
     },
     {
       title: "Best FVC",
       value: bestFVC ? bestFVC.toFixed(2) : "—",
-      icon: Gauge,
-      gradient: "from-success to-success/70",
       wash: "from-success/10",
       suffix: "L",
     },
     {
       title: "Best PEFR",
       value: bestPEFR ? bestPEFR.toFixed(0) : "—",
-      icon: Timer,
-      gradient: "from-warning to-warning/70",
       wash: "from-warning/10",
       suffix: "L/s",
     },
     {
       title: "Avg FEV1",
       value: avgFEV1 ? avgFEV1.toFixed(2) : "—",
-      icon: TrendingUp,
-      gradient: "from-danger to-danger/70",
       wash: "from-danger/10",
       suffix: "L",
     },
     {
       title: "Post-BD Tests",
       value: postBDCount,
-      icon: Activity,
-      gradient: "from-purple-500 to-purple-700",
       wash: "from-purple-500/10",
       suffix: "",
     },
   ];
-
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-heading font-bold text-fg tracking-tight">
-          Spirometry
-        </h1>
-        <p className="text-caption text-fg-muted mt-1">
-          Search patient by username to view their lung function data and trends
-        </p>
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-heading font-bold text-fg tracking-tight">
+            <AnimatedText speed={30}>Spirometry</AnimatedText>
+          </h1>
+          <p className="text-caption text-fg-muted mt-1">
+            Search patient by username to view their lung function data and
+            trends
+          </p>
+        </div>
       </div>
 
-      {/* Search Card */}
+      {/* Search Card — Clinician jaisa design */}
       <Card>
         <CardContent className="p-5">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -281,7 +263,10 @@ export default function Spirometry() {
                 type="date"
                 value={dateRange.start}
                 onChange={(e) =>
-                  setDateRange((prev) => ({ ...prev, start: e.target.value }))
+                  setDateRange((prev) => ({
+                    ...prev,
+                    start: e.target.value,
+                  }))
                 }
                 className="w-36 h-9 text-caption"
               />
@@ -290,14 +275,17 @@ export default function Spirometry() {
                 type="date"
                 value={dateRange.end}
                 onChange={(e) =>
-                  setDateRange((prev) => ({ ...prev, end: e.target.value }))
+                  setDateRange((prev) => ({
+                    ...prev,
+                    end: e.target.value,
+                  }))
                 }
                 className="w-36 h-9 text-caption"
               />
             </div>
             <Button onClick={handleSearchClick} disabled={loading}>
-              <Search className="h-4 w-4 mr-2" />
-              {loading ? "Loading..." : "Search"}
+              <SlidersHorizontal className="h-4 w-4 mr-2" />
+              {loading ? "Loading..." : "Filter"}
             </Button>
             {patientInfo && (
               <Button
@@ -314,8 +302,8 @@ export default function Spirometry() {
 
       {/* Empty state when no patient selected */}
       {!patientInfo && !loading && (
-        <Card>
-          <CardContent className="py-12">
+        <Card className="flex-1 flex flex-col min-h-[400px]">
+          <CardContent className="flex-1 flex items-center justify-center py-12">
             <EmptyState
               icon={Activity}
               title="Search for a Patient"
@@ -328,44 +316,25 @@ export default function Spirometry() {
       {/* Patient Info + KPIs + Chart + Table */}
       {patientInfo && (
         <>
-          {/* Patient Info Card */}
+          {/* Patient Info Card — Clinician jaisa simple */}
           <Card>
             <CardContent className="p-4 flex items-center gap-4 flex-wrap">
-              <div className="flex h-12 w-12 items-center justify-center rounded-pill bg-linear-to-br from-brand-500 to-brand-700 text-white font-semibold text-lg">
+              <div className="flex h-10 w-10 items-center justify-center rounded-pill bg-linear-to-br from-brand-500 to-brand-700 text-white font-semibold">
                 {patientInfo.name?.[0] || "P"}
               </div>
               <div>
-                <p className="font-semibold text-fg text-lg">
-                  {patientInfo.name}
-                </p>
-                <p className="text-caption text-fg-muted flex items-center gap-1.5">
-                  <UserRound className="h-3.5 w-3.5" />
+                <p className="font-semibold text-fg">{patientInfo.name}</p>
+                <p className="text-caption text-fg-muted">
                   Username: {patientInfo.userName || "N/A"}
                 </p>
               </div>
               {patientInfo.email && (
                 <Badge variant="outline">{patientInfo.email}</Badge>
               )}
-              {patientInfo.dob && (
-                <Badge variant="secondary">
-                  <Calendar className="h-3 w-3 mr-1" />
-                  DOB: {patientInfo.dob}
-                </Badge>
-              )}
-              {patientInfo.gender && (
-                <Badge variant="secondary">
-                  Gender: {patientInfo.gender === "M" ? "Male" : "Female"}
-                </Badge>
-              )}
-              {lastRecord && (
-                <Badge variant="info" className="ml-auto">
-                  Last Test: {new Date(lastRecord.dbdate).toLocaleDateString()}
-                </Badge>
-              )}
             </CardContent>
           </Card>
 
-          {/* KPI Cards */}
+          {/* KPI Cards — 4 cards, no icons (Clinician jaisa) */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {kpis.map((kpi, i) => (
               <Card key={i} className="relative overflow-hidden">
@@ -373,13 +342,6 @@ export default function Spirometry() {
                   className={`absolute inset-x-0 top-0 h-16 bg-linear-to-b ${kpi.wash} to-transparent pointer-events-none`}
                 />
                 <CardContent className="relative p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-(--radius-control) bg-linear-to-br ${kpi.gradient}`}
-                    >
-                      <kpi.icon className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
                   <p className="text-caption text-fg-muted">{kpi.title}</p>
                   <p className="text-subheading font-bold text-fg tabular-nums mt-0.5">
                     {kpi.value}
@@ -394,15 +356,15 @@ export default function Spirometry() {
             ))}
           </div>
 
-          {/* Chart */}
+          {/* Chart — with patient name in title */}
           {chartData.length > 0 && (
             <Card>
-              <CardHeader className="border-b border-border pb-4">
+              <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
                 <CardTitle className="text-subheading font-semibold flex items-center gap-2.5 text-fg">
                   <div className="flex h-7 w-7 items-center justify-center rounded-(--radius-control) bg-linear-to-br from-info to-info/70">
                     <TrendingUp className="h-3.5 w-3.5 text-white" />
                   </div>
-                  Lung Function Trends
+                  Lung Function Trends — {patientInfo.name}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4">
@@ -418,13 +380,19 @@ export default function Spirometry() {
                       />
                       <XAxis
                         dataKey="date"
-                        tick={{ fontSize: 11, fill: "var(--color-fg-muted)" }}
+                        tick={{
+                          fontSize: 11,
+                          fill: "var(--color-fg-muted)",
+                        }}
                         angle={-45}
                         textAnchor="end"
                         height={60}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "var(--color-fg-muted)" }}
+                        tick={{
+                          fontSize: 11,
+                          fill: "var(--color-fg-muted)",
+                        }}
                       />
                       <Tooltip
                         contentStyle={{
@@ -470,19 +438,20 @@ export default function Spirometry() {
           {/* Records Table */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
-              <CardTitle className="text-subheading font-semibold text-fg">
+              <CardTitle className="text-subheading font-semibold flex items-center gap-2 text-fg">
+                <UserRound className="h-4 w-4 text-fg-muted" />
                 Spirometry Records ({total})
               </CardTitle>
               <span className="text-caption text-fg-muted">
                 {dateRange.start} → {dateRange.end}
               </span>
             </CardHeader>
-           <CardContent className="pt-4">
+            <CardContent className="pt-4">
               <SpirometryTable
                 data={spirometryData}
                 loading={loading}
-                onViewReport={handleViewReport} // ✅ new
-                reportLoadingId={reportLoadingId} // ✅ new
+                onViewReport={handleViewReport}
+                reportLoadingId={reportLoadingId}
               />
 
               <Pagination

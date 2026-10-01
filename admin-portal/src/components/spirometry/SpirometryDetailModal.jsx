@@ -25,7 +25,7 @@ export default function SpirometryDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-(--z-modal) min-h-screen flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div

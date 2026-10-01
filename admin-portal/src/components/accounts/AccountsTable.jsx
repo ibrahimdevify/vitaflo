@@ -1,12 +1,7 @@
-import { Building2, Edit, Eye, MoreHorizontal } from 'lucide-react';
-import EmptyState from '../shared/EmptyState';
-import { Badge } from '../ui/badge';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
+import { Building2, Edit, Eye } from "lucide-react";
+import EmptyState from "../shared/EmptyState";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
   Table,
   TableBody,
@@ -14,8 +9,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table';
-import AccountsTableSkeleton from './AccountsTableSkeleton';
+} from "../ui/table";
+import AccountsTableSkeleton from "./AccountsTableSkeleton";
 
 export default function AccountsTable({ accounts, loading, onView, onEdit }) {
   if (loading) return <AccountsTableSkeleton />;
@@ -34,7 +29,7 @@ export default function AccountsTable({ accounts, loading, onView, onEdit }) {
             <TableHead>Clinicians</TableHead>
             <TableHead>Features</TableHead>
             <TableHead>Created</TableHead>
-            <TableHead className="w-16"></TableHead>
+            <TableHead className="w-32">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -85,34 +80,34 @@ export default function AccountsTable({ accounts, loading, onView, onEdit }) {
                 </div>
               </TableCell>
               <TableCell className="text-caption text-fg-muted whitespace-nowrap">
-                {new Date(account.creation_date).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
+                {new Date(account.creation_date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
                 })}
               </TableCell>
+              {/* ✅ Actions — direct buttons */}
               <TableCell>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <div className="inline-flex items-center justify-center h-8 w-8 rounded-(--radius-control) cursor-pointer hover:bg-surface-raised transition-colors">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </div>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => onView(account.id)}
-                      className="cursor-pointer"
-                    >
-                      <Eye className="h-4 w-4 mr-2" /> View Details
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onEdit(account)}
-                      className="cursor-pointer"
-                    >
-                      <Edit className="h-4 w-4 mr-2" /> Edit
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onView(account.id)}
+                    title="View Details"
+                    className="rounded-lg"
+                  >
+                    <Eye className="h-4 w-4 text-fg-muted" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onEdit(account)}
+                    title="Edit"
+                    className="rounded-lg"
+                  >
+                    <Edit className="h-4 w-4 text-fg-muted" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}

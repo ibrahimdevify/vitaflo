@@ -220,12 +220,7 @@ export default function ClinicianForm({ onCancel, onSuccess, initialData }) {
                 </>
               )}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              className="border-border"
-            >
+            <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
           </div>

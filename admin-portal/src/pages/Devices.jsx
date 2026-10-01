@@ -1,30 +1,31 @@
-import { Plus, Smartphone } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import DeviceForm from '../components/devices/DeviceForm';
-import DeviceReadingsModal from '../components/devices/DeviceReadingsModal';
-import DevicesFilters from '../components/devices/DevicesFilters';
-import DevicesTable from '../components/devices/DevicesTable';
-import { Button } from '../components/ui/button';
+import { Plus, Smartphone } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import DeviceForm from "../components/devices/DeviceForm";
+import DeviceReadingsModal from "../components/devices/DeviceReadingsModal";
+import DevicesFilters from "../components/devices/DevicesFilters";
+import DevicesTable from "../components/devices/DevicesTable";
+import AnimatedText from "../components/ui/AnimatedText";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import Pagination from '../components/ui/pagination';
-import { devicesAPI } from '../services/api';
+} from "../components/ui/card";
+import Pagination from "../components/ui/pagination";
+import { devicesAPI } from "../services/api";
 
 export default function Devices() {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [filterActive, setFilterActive] = useState('all');
+  const [filterActive, setFilterActive] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
   const [selectedDevice, setSelectedDevice] = useState(null);
@@ -47,13 +48,13 @@ export default function Devices() {
       setLoading(true);
       const params = { page, limit };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (filterActive !== 'all') params.is_active = filterActive;
+      if (filterActive !== "all") params.is_active = filterActive;
       const res = await devicesAPI.getAll(params);
       setDevices(res.data.data || []);
       setTotal(res.data.pagination?.total || 0);
       setTotalPages(res.data.pagination?.pages || 1);
     } catch (err) {
-      toast.error('Failed to load devices');
+      toast.error("Failed to load devices");
     } finally {
       setLoading(false);
     }
@@ -70,7 +71,7 @@ export default function Devices() {
       const res = await devicesAPI.getReadings(id);
       setReadings(res.data.data || res.data);
     } catch (err) {
-      toast.error('Failed to load readings');
+      toast.error("Failed to load readings");
     } finally {
       setLoadingReadings(false);
     }
@@ -81,16 +82,16 @@ export default function Devices() {
       setSubmitting(true);
       if (editingDevice) {
         await devicesAPI.update(editingDevice.dev_id, data);
-        toast.success('Device updated!');
+        toast.success("Device updated!");
       } else {
         await devicesAPI.create(data);
-        toast.success('Device created!');
+        toast.success("Device created!");
       }
       setShowForm(false);
       setEditingDevice(null);
       loadDevices();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || "Failed");
     } finally {
       setSubmitting(false);
     }
@@ -100,10 +101,11 @@ export default function Devices() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Header — Clinician jaisa */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-heading font-bold text-fg tracking-tight">
-            Devices
+            <AnimatedText speed={30}>Devices</AnimatedText>
           </h1>
           <p className="text-caption text-fg-muted mt-1">
             Manage IoT devices and air quality monitors
@@ -114,7 +116,7 @@ export default function Devices() {
             setEditingDevice(null);
             setShowForm(true);
           }}
-          className="gap-2"
+          className="gap-2 w-fit"
         >
           <Plus className="h-4 w-4" /> Add Device
         </Button>
