@@ -1,10 +1,8 @@
 // src/services/spirometryEnrich.js
 'use strict';
 
-const {
-  calculateGli2012,
-  normalizeSpirometryValue,
-} = require('../helpers/gli2012');
+const { calculateGli2012 } = require('../helpers/gli2012');
+const { normalizeSpirometryValue } = require('../helpers/spirometry');
 
 /**
  * Build GLI-2012 demographics from the observation and patient attributes,
