@@ -22,7 +22,9 @@ function calculateAge(dobValue) {
   if (!dobValue) return null;
   const birthDate = new Date(dobValue);
   if (Number.isNaN(birthDate.getTime())) return null;
-  // Match Django: currentYear - birthYear, integer, no birthday correction
+
+  // Match Django exactly: currentYear − birthYear.
+  // No birthday-in-year correction. No fractional age.
   return new Date().getFullYear() - birthDate.getFullYear();
 }
 
@@ -151,24 +153,29 @@ async function loadGliDemographics(userId, observationHeight = null) {
   try {
     const profile = await patientRepository.findPatientProfile(userId);
     if (!profile) return { age: 40, height: 170, sex: 1, ethnicity: 5 };
+
     const attrs = profile.patient_details?.attributes || {};
 
+    // Height: observation first, then profile. Skip 0/null.
     const height =
-      observationHeight ??
-      attrs.height ??
-      profile.patient_details?.height ??
+      (observationHeight && Number(observationHeight) > 0
+        ? Number(observationHeight)
+        : null) ??
+      (attrs.height && Number(attrs.height) > 0 ? Number(attrs.height) : null) ??
+      (profile.patient_details?.height && Number(profile.patient_details.height) > 0
+        ? Number(profile.patient_details.height)
+        : null) ??
       170;
 
-    return toGliDemographics({
-      age: calculateAge(attrs.dob),
-      lookup_table: attrs.lookup_table,   // ← Django uses this
-      attributes: {
-        height: Number(height),
-        gender: attrs.gender,
-        ethnic_group: attrs.ethnic_group,
-      },
-      patient_details: profile.patient_details,
-    });
+    // Age: integer
+    const age = calculateAge(attrs.dob) ?? 40;
+
+    return {
+      age,
+      height,
+      sex: toGliSex(attrs.gender),
+      ethnicity: toGliEthnicity(attrs.lookup_table),
+    };
   } catch (_err) {
     return { age: 40, height: 170, sex: 1, ethnicity: 5 };
   }
@@ -188,6 +195,7 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
       const demo = await loadGliDemographics(userId, observation.height);
       const spirometries = observation.spirometries || [];
       const best = pickBestSpirometryValues(spirometries);
+
       return {
         observationId: observation.id,
         date: observation.dbdate,
@@ -238,6 +246,7 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
   const byId = new Map(observations.map((o) => [o.id, o]));
   const session1 = byId.get(sessionId1);
   const session2 = byId.get(sessionId2);
+
   if (!session1 || !session2 || session1.user_id !== userId || session2.user_id !== userId) {
     throw new ValidationError('One or both sessions were not found for this patient');
   }
@@ -270,17 +279,34 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
       startDate, endDate, skip, take: limit, includeCurves: false,
     }),
   ]);
+
   if (total === 0) {
-    return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, 0), rows: [] };
+    return {
+      startDate: startDate || null,
+      endDate: endDate || null,
+      pagination: buildPagination(page, limit, 0),
+      rows: [],
+    };
   }
+
   const rows = await Promise.all(
     observations.map(async (observation) => {
       const demo = await loadGliDemographics(userId, observation.height);
       const best = pickBestSpirometryValues(observation.spirometries);
-      return { observationId: observation.id, date: observation.dbdate, results: buildResultRows(best, demo) };
+      return {
+        observationId: observation.id,
+        date: observation.dbdate,
+        results: buildResultRows(best, demo),
+      };
     })
   );
-  return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, total), rows };
+
+  return {
+    startDate: startDate || null,
+    endDate: endDate || null,
+    pagination: buildPagination(page, limit, total),
+    rows,
+  };
 }
 
 async function getBillingTab(userId, { startDate, endDate, page = 1, limit = 20 }) {

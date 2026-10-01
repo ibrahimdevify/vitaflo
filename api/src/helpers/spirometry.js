@@ -67,20 +67,22 @@ const normalizeDemo = (demo = {}) => ({
 
 const toGliEthnicity = (lookupTable) => {
   const v = String(lookupTable || '').trim();
-  if (v === 'Caucasian')         return 1;
-  if (v === 'AfricanAmerican')   return 2;
-  if (v === 'NEAsian')           return 3;
-  if (v === 'SEAsian')           return 4;
-  return 5; // 'other' — MexicanAmerican, empty, unknown, etc.
+  if (v === 'Caucasian')       return 1;
+  if (v === 'AfricanAmerican') return 2;
+  if (v === 'NEAsian')         return 3;
+  if (v === 'SEAsian')         return 4;
+  return 5; // other
 };
 
 const toGliDemographics = (profile) => {
   if (!profile) return { age: 40, height: 170, sex: 1, ethnicity: 5 };
+
   const attrs = profile.attributes || {};
   const details = profile.patient_details || {};
 
-  // Prefer lookup_table (Django does this); fall back to ethnic_group
-  const ethnicitySource = profile.lookup_table || attrs.lookup_table || attrs.ethnic_group;
+  // Django uses lookup_table exclusively. Fall back to ethnic_group only
+  // if lookup_table is null (which won't happen in Django's flow).
+  const ethnicitySource = profile.lookup_table || attrs.lookup_table;
 
   return {
     age: Number.isFinite(profile.age) && profile.age > 0 ? profile.age : 40,
