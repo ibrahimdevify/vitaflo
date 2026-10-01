@@ -37,10 +37,9 @@ function buildPredictedMap(predictedValues) {
   return map;
 }
 
-/** ASYNC: GLI-2012 calculation returns a Promise. */
-async function buildVariableRow(label, observedValue, demo = {}, variable = 'FEV1') {
+function buildVariableRow(label, observedValue, demo = {}, variable = 'FEV1') {
   const observed = observedValue ?? null;
-  const calculated = await calculatePredictedValues(observed, demo, variable);
+  const calculated = calculatePredictedValues(observed, demo, variable);
   return {
     variable: label,
     observed,
@@ -74,20 +73,18 @@ function pickBestSpirometryValues(spirometries) {
     const values = spirometries.map((s) => normalizeSpirometryValue(s[field])).filter((v) => v !== null);
     best[field] = values.length > 0 ? Math.max(...values) : null;
   }
-  best.fev1FvcRatio = best.fev1 !== null && best.fvc !== null && best.fvc !== 0 ? Number((best.fev1 / best.fvc).toFixed(2)) : null;
+  best.fev1FvcRatio =
+    best.fev1 !== null && best.fvc !== null && best.fvc !== 0
+      ? Number((best.fev1 / best.fvc).toFixed(2))
+      : null;
   return best;
 }
 
-/** ASYNC: builds results array with GLI-2012 values. */
-async function buildResultRows(best, demo = {}) {
-  const fev1FvcCalculated = await calculateFev1FvcPredictedValues(best.fev1FvcRatio, demo);
-  const fev1Row = await buildVariableRow('FEV1', best.fev1, demo, 'FEV1');
-  const fvcRow = await buildVariableRow('FVC', best.fvc, demo, 'FVC');
-  const fef2575Row = await buildVariableRow('FEF2575', best.fef2575, demo, 'FEF2575');
-
+function buildResultRows(best, demo = {}) {
+  const fev1FvcCalculated = calculateFev1FvcPredictedValues(best.fev1FvcRatio, demo);
   return [
-    fev1Row,
-    fvcRow,
+    buildVariableRow('FEV1', best.fev1, demo, 'FEV1'),
+    buildVariableRow('FVC', best.fvc, demo, 'FVC'),
     {
       variable: 'FEV1/FVC',
       observed: best.fev1FvcRatio,
@@ -96,7 +93,7 @@ async function buildResultRows(best, demo = {}) {
       predicted: fev1FvcCalculated.predicted,
       percentPredicted: fev1FvcCalculated.percentPredicted,
     },
-    fef2575Row,
+    buildVariableRow('FEF2575', best.fef2575, demo, 'FEF2575'),
     { variable: 'FEV6', observed: best.fev6 ?? null, lln: null, zScore: null, predicted: null, percentPredicted: null },
     { variable: 'PEFR', observed: best.pefr ?? null, lln: null, zScore: null, predicted: null, percentPredicted: null },
   ];
@@ -106,7 +103,9 @@ function buildPagination(page, limit, total) {
   return { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) };
 }
 
-async function ensurePatientExists(userId) { return patientRepository.findPatientCore(userId); }
+async function ensurePatientExists(userId) {
+  return patientRepository.findPatientCore(userId);
+}
 
 async function getPatientsList() {
   const patients = await patientRepository.findPatientsList();
@@ -136,7 +135,10 @@ async function getPatientInfoTab(userId) {
     age: calculateAge(attributes?.dob),
     ethnicity: attributes?.ethnic_group || null,
     startDate: attributes?.start_date || null,
-    address: address ? `${address.street || ''} ${address.city || ''}, ${address.state || ''} ${address.zip || ''}`.replace(/\s+/g, ' ').trim() : null,
+    address: address
+      ? `${address.street || ''} ${address.city || ''}, ${address.state || ''} ${address.zip || ''}`
+          .replace(/\s+/g, ' ').trim()
+      : null,
     status: profile.user_status?.name || null,
     medications,
   };
@@ -161,23 +163,30 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
   const skip = (page - 1) * limit;
   const [total, observations, demo] = await Promise.all([
     patientRepository.countObservations(userId, startDate, endDate),
-    patientRepository.findObservationsPage(userId, { startDate, endDate, skip, take: limit, includeCurves: true }),
+    patientRepository.findObservationsPage(userId, {
+      startDate, endDate, skip, take: limit, includeCurves: true,
+    }),
     loadGliDemographics(userId),
   ]);
 
-  const rows = await Promise.all(observations.map(async (observation) => {
+  const rows = observations.map((observation) => {
     const spirometries = observation.spirometries || [];
     const best = pickBestSpirometryValues(spirometries);
     return {
       observationId: observation.id,
       date: observation.dbdate,
       testsCount: spirometries.length,
-      results: await buildResultRows(best, demo),
+      results: buildResultRows(best, demo),
       ...buildChartSeries(spirometries),
     };
-  }));
+  });
 
-  return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, total), rows };
+  return {
+    startDate: startDate || null,
+    endDate: endDate || null,
+    pagination: buildPagination(page, limit, total),
+    rows,
+  };
 }
 
 async function getAnalysisTab(userId, startDate, endDate, variable) {
@@ -201,7 +210,9 @@ async function getAnalysisTab(userId, startDate, endDate, variable) {
     endDate: endDate || null,
     mostRecent: trendPoints.length > 0 ? trendPoints[trendPoints.length - 1].value : null,
     trend: trendPoints,
-    indoorAirQuality: airQuality.map((a) => ({ date: a.dbdate, pm25: a.pm25, pm10: a.pm10, temperature: a.temperature, humidity: a.humidity })),
+    indoorAirQuality: airQuality.map((a) => ({
+      date: a.dbdate, pm25: a.pm25, pm10: a.pm10, temperature: a.temperature, humidity: a.humidity,
+    })),
   };
 }
 
@@ -214,19 +225,19 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
     throw new ValidationError('One or both sessions were not found for this patient');
   }
   const demo = await loadGliDemographics(userId);
-  const buildSessionSummary = async (observation) => {
+  const buildSessionSummary = (observation) => {
     const best = pickBestSpirometryValues(observation.spirometries);
     return {
       observationId: observation.id,
       date: observation.dbdate,
       isPostBronchodilator: observation.is_post_bronchodilator,
-      results: await buildResultRows(best, demo),
+      results: buildResultRows(best, demo),
       ...buildChartSeries(observation.spirometries),
     };
   };
   return {
-    session1: await buildSessionSummary(session1),
-    session2: await buildSessionSummary(session2),
+    session1: buildSessionSummary(session1),
+    session2: buildSessionSummary(session2),
     timeBetweenSessionsHours: Math.abs(new Date(session2.dbdate) - new Date(session1.dbdate)) / (1000 * 60 * 60),
   };
 }
@@ -241,10 +252,10 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
   if (total === 0) {
     return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, 0), rows: [] };
   }
-  const rows = await Promise.all(observations.map(async (observation) => {
+  const rows = observations.map((observation) => {
     const best = pickBestSpirometryValues(observation.spirometries);
-    return { observationId: observation.id, date: observation.dbdate, results: await buildResultRows(best, demo) };
-  }));
+    return { observationId: observation.id, date: observation.dbdate, results: buildResultRows(best, demo) };
+  });
   return { startDate: startDate || null, endDate: endDate || null, pagination: buildPagination(page, limit, total), rows };
 }
 

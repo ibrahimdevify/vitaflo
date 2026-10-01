@@ -1,0 +1,21 @@
+{
+  "FEV1": {
+    "male": {
+      "M_a0": 0, "M_a1": 0, "M_a2": 0,
+      "S_b0": 0, "S_b1": 0,
+      "L_c0": 0, "L_c1": 0,
+      "ethnicity_M": { "caucasian": 0, "african_american": 0, "ne_asian": 0, "se_asian": 0, "other": 0 },
+      "ethnicity_S": { "caucasian": 0, "african_american": 0, "ne_asian": 0, "se_asian": 0, "other": 0 },
+      "m_spline_knots": [3,10,18,25,40,55,70,95],
+      "m_spline_values": [0,0,0,0,0,0,0,0],
+      "s_spline_knots": [3,10,18,25,40,55,70,95],
+      "s_spline_values": [0,0,0,0,0,0,0,0],
+      "l_spline_knots": [3,10,18,25,40,55,70,95],
+      "l_spline_values": [0,0,0,0,0,0,0,0]
+    },
+    "female": { "...same shape..." }
+  },
+  "FVC":     { "male": {...}, "female": {...} },
+  "FEV1FVC": { "male": {...}, "female": {...} },
+  "FEF2575": { "male": {...}, "female": {...} }
+}
