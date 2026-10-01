@@ -1,44 +1,17 @@
+// src/controllers/spirometryReport.js
+'use strict';
+
 const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
+
 const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
 const {
   enrichSpirometry,
   buildDemographics,
 } = require('../services/spirometryEnrich');
-const {
-  normalizeSpirometryValue,
-} = require('../helpers/gli2012');
+
 const prisma = new PrismaClient();
-
-/**
- * Finds the portal_predicted_value row for a given variable whose
- * `created` timestamp is closest to the target date. Used because
- * predicted/LLN/z-score are stored per test-occasion, not tied
- * directly to a spirometry_id.
- */
-
-function closestPredictedValue(predictedRows, variable, targetDate) {
-  const matches = predictedRows.filter((p) => p.variable === variable);
-  if (!matches.length || !targetDate) return null;
-  const targetMs = new Date(targetDate).getTime();
-  let best = matches[0];
-  let bestDiff = Math.abs(new Date(matches[0].created).getTime() - targetMs);
-  for (const m of matches) {
-    const diff = Math.abs(new Date(m.created).getTime() - targetMs);
-    if (diff < bestDiff) {
-      best = m;
-      bestDiff = diff;
-    }
-  }
-  return best;
-}
-
-/**
- * Builds the enriched object the template expects (Best/LLN/z-score/%Pred
- * per metric) from a raw portal_spirometry row + the predicted-value table.
- */
-
 
 /**
  * GET /api/spirometry/observation/:observation_id/pdf
@@ -120,7 +93,7 @@ const getSpirometryReportPDF = async (req, res) => {
                   height: true,
                   weight: true,
                   ethnic_group: true,
-                  lookup_table: true,   // ← needed for GLI ethnicity
+                  lookup_table: true,
                   smoking: true,
                 },
               },
@@ -130,9 +103,7 @@ const getSpirometryReportPDF = async (req, res) => {
       }),
     ]);
 
-    // "Best" trial = most recent. (ATS best-pick is done inside the
-    // template's pre/post trial selection in the original code — keep
-    // that behavior here for parity with how the report was designed.)
+    // "Best" trial = most recent. (Matches original report behavior.)
     const preRaw = preSpiroRows[0] || null;
     const postRaw = postSpiroRows[0] || null;
 
@@ -176,9 +147,7 @@ const getSpirometryReportPDF = async (req, res) => {
       name: user ? `${user.f_name ?? ''} ${user.l_name ?? ''}`.trim() : 'N/A',
       id: user?.user_id ?? 'N/A',
       referredBy: 'N/A',
-      testDate: pre?.dbdate
-        ? new Date(pre.dbdate).toLocaleString()
-        : 'N/A',
+      testDate: pre?.dbdate ? new Date(pre.dbdate).toLocaleString() : 'N/A',
       sex: attrs.gender ?? 'N/A',
       reason: 'N/A',
       dob: dob ? dob.toISOString().slice(0, 10) : 'N/A',
@@ -206,7 +175,6 @@ const getSpirometryReportPDF = async (req, res) => {
     );
 
     // --- PDF generation ---
-    const puppeteer = require('puppeteer');
     browser = await puppeteer.launch({
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
