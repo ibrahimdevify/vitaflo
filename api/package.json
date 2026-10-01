@@ -20,6 +20,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@automate-medical/gli2012": "^1.1.0",
     "@prisma/client": "^5.22.0",
     "@sendgrid/mail": "^8.1.6",
     "bcryptjs": "^3.0.3",
