@@ -1,134 +1,91 @@
 // src/helpers/gli2012.js
-//
-// GLI-2012 reference equations (Quanjer et al., Eur Respir J 2012;40:1324-1343).
-//
-// Pure CommonJS. No external dependencies. Fully synchronous.
-//
-// Sex codes:       1 = male, 2 = female
-// Ethnicity codes: 1 = Caucasian, 2 = African-American,
-//                  3 = NE Asian,  4 = SE Asian, 5 = Other/mixed
-// Height:          cm
-// Age:             years (float)
-//
-// LMS method:
-//   z       = ((measured / M)^L - 1) / (L * S)
-//   LLN     = M * (1 + L * S * -1.645)^(1/L)      [5th percentile]
-//   % pred  = measured / M * 100
-//
-// The M (median) term is modelled as exp(...) of a linear combination of
-// ln(height), ln(age), spline terms, plus ethnicity shifts. The L and S
-// terms use their own linear + spline models. Coefficients below are the
-// published GLI-2012 values (Appendix of the ERS report).
-
 'use strict';
-
-// ─────────────────────────────────────────────────────────────
-// Coefficient tables
-// ─────────────────────────────────────────────────────────────
-//
-// Each variable has, per sex, a set of coefficients:
-//   M: intercept + ln(height) + ln(age) + ethnicity offsets + spline knots
-//   S: exp(intercept + ln(age) + ethnicity offsets + spline knots)
-//   L: intercept + ln(age) + spline knots
-//
-// The published tables are large. For a production deploy, generate the
-// full table from the official ERS GLI-2012 Excel calculator and drop it
-// in here as a JSON require. The structure below is what that JSON should
-// export — it is intentionally explicit so the file can be audited.
 
 const COEFFICIENTS = require('./gli2012-coefficients.json');
 
-// ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
 const ETHNICITY_INDEX = {
-  1: 'caucasian',
-  2: 'african_american',
-  3: 'ne_asian',
-  4: 'se_asian',
-  5: 'other',
+  1: 0,  // Caucasian (reference — no offset)
+  2: 1,  // African-American
+  3: 2,  // NE Asian
+  4: 3,  // SE Asian
+  5: 4,  // Other/mixed
 };
-
-// GLI-2012 uses age-spline breakpoints at these ages.
-const AGE_KNOTS = [3, 10, 18, 25, 40, 55, 70, 95];
-
-/**
- * Evaluate a piecewise-linear spline at a given age.
- * knots: array of ages; values: array of spline coefficients (same length).
- */
-function evalSpline(age, knots, values) {
-  if (!Array.isArray(knots) || !Array.isArray(values) || knots.length !== values.length) {
-    return 0;
-  }
-  if (age <= knots[0]) return values[0];
-  if (age >= knots[knots.length - 1]) return values[values.length - 1];
-
-  for (let i = 0; i < knots.length - 1; i += 1) {
-    if (age >= knots[i] && age <= knots[i + 1]) {
-      const t = (age - knots[i]) / (knots[i + 1] - knots[i]);
-      return values[i] * (1 - t) + values[i + 1] * t;
-    }
-  }
-  return 0;
-}
 
 function round2(n) {
   return Number(n.toFixed(2));
 }
 
-// ─────────────────────────────────────────────────────────────
-// Core LMS lookup
-// ─────────────────────────────────────────────────────────────
+/**
+ * Find the two agebound rows that bracket the patient's age, and
+ * linearly interpolate each coefficient between them.
+ */
+function interpolateRow(rows, age) {
+  if (!rows || rows.length === 0) return null;
+  if (age <= rows[0].age) return rows[0];
+  if (age >= rows[rows.length - 1].age) return rows[rows.length - 1];
+
+  for (let i = 0; i < rows.length - 1; i += 1) {
+    const lo = rows[i];
+    const hi = rows[i + 1];
+    if (age >= lo.age && age <= hi.age) {
+      const t = (age - lo.age) / (hi.age - lo.age);
+      const blend = (key) => lo[key] * (1 - t) + hi[key] * t;
+      const keys = [
+        'a0','a1','a2','a3','a4','a5','a6',
+        'p0','p1','p2','p3','p4','p5',
+        'q0','q1','l0','l1','m0','m1','s0','s1',
+      ];
+      const out = { age };
+      for (const k of keys) out[k] = blend(k);
+      return out;
+    }
+  }
+  return rows[rows.length - 1];
+}
 
 /**
- * Returns { M, S, L } for a variable and demographics, or null if the
- * variable/sex combination is not supported by GLI-2012.
+ * Compute L, M, S for a variable + demographics.
  *
- * @param {object} p
- * @param {number} p.age         years
- * @param {number} p.height      cm
- * @param {1|2}    p.sex         1 = male, 2 = female
- * @param {1|2|3|4|5} p.ethnicity
- * @param {'FEV1'|'FVC'|'FEV1FVC'|'FEF2575'} p.variable
+ * Uses the rspiro formulation:
+ *   M = exp( a0 + a1*ln(height_cm) + a2*ln(age) + a3*E2 + a4*E3 + a5*E4 + a6*E5 + m0*m_spline + m1*m_spline2 )
+ *   S = exp( p0 + p1*ln(age) + p2*E2 + p3*E3 + p4*E4 + p5*E5 + s0*s_spline + s1*s_spline2 )
+ *   L = q0 + q1*ln(age) + l0*l_spline + l1*l_spline2
+ *
+ * rspiro packs the spline values into l0/l1, m0/m1, s0/s1 (already evaluated
+ * at the agebound), so we treat them as additive constants after interpolation.
  */
 function gli2012Lookup({ age, height, sex, ethnicity, variable }) {
-  const coeffs = COEFFICIENTS[variable];
-  if (!coeffs) return null;
+  const table = COEFFICIENTS[variable];
+  if (!table) return null;
 
-  const sexKey = sex === 1 ? 'male' : 'female';
-  const block = coeffs[sexKey];
-  if (!block) return null;
+  const rows = sex === 1 ? table.male : table.female;
+  if (!rows || rows.length === 0) return null;
 
-  const ethKey = ETHNICITY_INDEX[ethnicity] || 'other';
-  const ethM = block.ethnicity_M?.[ethKey] ?? 0;
-  const ethS = block.ethnicity_S?.[ethKey] ?? 0;
+  const r = interpolateRow(rows, age);
+  if (!r) return null;
 
-  const lnHeight = Math.log(height);
-  const lnAge = Math.log(age);
+  const eIdx = ETHNICITY_INDEX[ethnicity] ?? 0;
+  const E = [0, 0, 0, 0, 0]; // E2..E5 (Caucasian = reference)
+  if (eIdx >= 1) E[eIdx] = 1;
 
-  // M = exp( a0 + a1*ln(height) + a2*ln(age) + ethM + spline(age) )
-  const mSpline = evalSpline(age, block.m_spline_knots || AGE_KNOTS, block.m_spline_values || []);
-  const mLinear =
-    (block.M_a0 || 0) +
-    (block.M_a1 || 0) * lnHeight +
-    (block.M_a2 || 0) * lnAge +
-    ethM +
-    mSpline;
-  const M = Math.exp(mLinear);
+  const lnH = Math.log(height);
+  const lnA = Math.log(age);
 
-  // S = exp( b0 + b1*ln(age) + ethS + spline(age) )
-  const sSpline = evalSpline(age, block.s_spline_knots || AGE_KNOTS, block.s_spline_values || []);
-  const sLinear =
-    (block.S_b0 || 0) +
-    (block.S_b1 || 0) * lnAge +
-    ethS +
-    sSpline;
-  const S = Math.exp(sLinear);
+  const mLin =
+    r.a0 + r.a1 * lnH + r.a2 * lnA +
+    r.a3 * E[1] + r.a4 * E[2] + r.a5 * E[3] + r.a6 * E[4] +
+    r.m0 + r.m1;
 
-  // L = c0 + c1*ln(age) + spline(age)
-  const lSpline = evalSpline(age, block.l_spline_knots || AGE_KNOTS, block.l_spline_values || []);
-  const L = (block.L_c0 || 0) + (block.L_c1 || 0) * lnAge + lSpline;
+  const sLin =
+    r.p0 + r.p1 * lnA +
+    r.p2 * E[1] + r.p3 * E[2] + r.p4 * E[3] + r.p5 * E[4] +
+    r.s0 + r.s1;
+
+  const lLin = r.q0 + r.q1 * lnA + r.l0 + r.l1;
+
+  const M = Math.exp(mLin);
+  const S = Math.exp(sLin);
+  const L = lLin;
 
   if (!Number.isFinite(M) || M <= 0) return null;
   if (!Number.isFinite(S) || S <= 0) return null;
@@ -137,18 +94,6 @@ function gli2012Lookup({ age, height, sex, ethnicity, variable }) {
   return { M, S, L };
 }
 
-// ─────────────────────────────────────────────────────────────
-// Public API
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Compute predicted / LLN / z-score / % predicted for a single observed value.
- *
- * @param {number} measured
- * @param {object} demo       { age, height, sex, ethnicity }
- * @param {string} variable   'FEV1' | 'FVC' | 'FEV1FVC' | 'FEF2575'
- * @returns {{ predicted: number|null, lln: number|null, zScore: number|null, percentPredicted: number|null }}
- */
 function calculateGli2012(measured, demo, variable) {
   if (!Number.isFinite(measured) || measured <= 0) {
     return { predicted: null, lln: null, zScore: null, percentPredicted: null };
@@ -181,7 +126,4 @@ function calculateGli2012(measured, demo, variable) {
   };
 }
 
-module.exports = {
-  calculateGli2012,
-  gli2012Lookup,
-};
+module.exports = { calculateGli2012, gli2012Lookup };
