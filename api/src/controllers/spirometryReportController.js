@@ -38,26 +38,7 @@ function closestPredictedValue(predictedRows, variable, targetDate) {
  * Builds the enriched object the template expects (Best/LLN/z-score/%Pred
  * per metric) from a raw portal_spirometry row + the predicted-value table.
  */
-function enrichSpirometry(row, predictedRows) {
-  if (!row) return null;
-  const fvcPred = closestPredictedValue(predictedRows, 'fvc', row.dbdate);
-  const fev1Pred = closestPredictedValue(predictedRows, 'fev1', row.dbdate);
-  const ratioPred = closestPredictedValue(predictedRows, 'fev1_fvc', row.dbdate);
 
-  return {
-    ...row,
-    fev1_fvc: row.fvc ? +(row.fev1 / row.fvc).toFixed(2) : null,
-    lln_fvc: fvcPred?.lln ?? null,
-    zscore_fvc: fvcPred?.z_score ?? null,
-    pred_percent_fvc: fvcPred?.percent_predicted ?? null,
-    lln_fev1: fev1Pred?.lln ?? null,
-    zscore_fev1: fev1Pred?.z_score ?? null,
-    pred_percent_fev1: fev1Pred?.percent_predicted ?? null,
-    lln_fev1_fvc: ratioPred?.lln ?? null,
-    zscore_fev1_fvc: ratioPred?.z_score ?? null,
-    fet: null, // not tracked in the current schema
-  };
-}
 
 /**
  * GET /api/spirometry/observation/:observation_id/pdf
