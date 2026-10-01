@@ -17,10 +17,7 @@ const prisma = new PrismaClient();
  * predicted/LLN/z-score are stored per test-occasion, not tied
  * directly to a spirometry_id.
  */
-function getLogoDataUri() {
-  // If you already have a helper in services/reportService.js, use that instead.
-  return null; // falls back to the "VP" badge in the template
-}
+
 function closestPredictedValue(predictedRows, variable, targetDate) {
   const matches = predictedRows.filter((p) => p.variable === variable);
   if (!matches.length || !targetDate) return null;
