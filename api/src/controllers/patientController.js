@@ -140,7 +140,6 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 //   }
 // };
 
-// (adjust the import path above to wherever the helper lives)
 
 const getAllPatients = async (req, res) => {
   try {
