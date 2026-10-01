@@ -164,12 +164,21 @@ const getAllPatients = async (req, res) => {
       last_spirometry_to,
     } = req.query;
 
-    const where = {
-      ut_id_fk: 4,
-      us_id_fk: 1,
-    };
+    // ────────────────────────────────────────────────────────────
+    // Admin detection (security-critical — read from req.user only,
+    // NEVER from req.query/req.body)
+    // ut_id_fk === 2  →  admin / super user → sees ALL patients
+    // ────────────────────────────────────────────────────────────
+    const isAdmin = req.user?.ut_id_fk === 2;
 
+    // Base filter:
+    //  - Admins get no user-type restriction (see every patient)
+    //  - Non-admins stay scoped to the existing patient bucket
+    const where = isAdmin ? {} : { ut_id_fk: 4, us_id_fk: 1 };
+
+    // ────────────────────────────────────────────────────────────
     // Search across multiple fields
+    // ────────────────────────────────────────────────────────────
     if (search) {
       const searchTerm = search.trim();
       const nameParts = searchTerm.split(/\s+/).filter(Boolean);
@@ -207,15 +216,24 @@ const getAllPatients = async (req, res) => {
     // ────────────────────────────────────────────────────────────
     const visibleClinicianIds = await getVisibleClinicianIds(req.user);
 
-    if (visibleClinicianIds.length === 0) {
+    // Only bail out early for non-admins with no visible clinicians.
+    // Admins bypass this gate entirely and see all patients.
+    if (!isAdmin && visibleClinicianIds.length === 0) {
       return res.json({
         data: [],
-        pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: 0,
+          pages: 0,
+        },
         filters: { available_filters: [] },
       });
     }
 
+    // ────────────────────────────────────────────────────────────
     // Build patient_details where clause
+    // ────────────────────────────────────────────────────────────
     let patientDetailsWhere = {};
 
     if (status) {
@@ -226,22 +244,27 @@ const getAllPatients = async (req, res) => {
       patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
     }
 
-    // If a specific clinician was requested, it must be within the
-    // caller's visible set (self, or a clinician they manage).
-    // Otherwise, default to everyone the caller can see.
+    // Clinician assignment filter:
+    //  - If a specific clinician is requested, it must be within the
+    //    caller's visible set (self, or a clinician they manage).
+    //  - Admins can request ANY clinician id.
+    //  - If nothing requested:
+    //      * Non-admins → limited to their visible clinician set
+    //      * Admins     → NO clinician restriction (see everyone)
     if (assigned_clinician_id) {
       const requestedId = parseInt(assigned_clinician_id);
 
-      if (!visibleClinicianIds.includes(requestedId)) {
+      if (!isAdmin && !visibleClinicianIds.includes(requestedId)) {
         return res.status(403).json({
           error: "Not authorized to view this clinician's patients",
         });
       }
 
       patientDetailsWhere.assigned_clinician_id = requestedId;
-    } else {
+    } else if (!isAdmin) {
       patientDetailsWhere.assigned_clinician_id = { in: visibleClinicianIds };
     }
+    // (admin + no assigned_clinician_id → no filter, see all patients)
 
     if (chart_no) {
       patientDetailsWhere.chart_no = { contains: chart_no };
@@ -856,122 +879,444 @@ const getPrescriptions = async (req, res) => {
 // Optional filters: search (username/patient id), start_date, end_date, order.
 
 
-const getPrescriptionsList = async (req, res) => {
+const { getVisibleClinicianIds } = require("./getVisibleClinicianIds");
+// (adjust the import path above to wherever the helper lives)
+
+const getAllPatients = async (req, res) => {
   try {
     const {
-      search,
-      start_date,
-      end_date,
       page = 1,
-      limit = 10,
-      order = "desc",
+      limit = 20,
+      search,
+      status,
+      patient_group_id,
+      assigned_clinician_id,
+      // Filter fields
+      first_name,
+      last_name,
+      dob_from,
+      dob_to,
+      chart_no,
+      clinician_name,
+      spirometry_date_from,
+      spirometry_date_to,
+      last_alert_from,
+      last_alert_to,
+      last_spirometry_from,
+      last_spirometry_to,
     } = req.query;
 
-    const sortOrder = String(order).toLowerCase() === "asc" ? "asc" : "desc";
+    // ────────────────────────────────────────────────────────────
+    // Base filter — always restricted to the patient bucket.
+    // Role-based widening happens via visibleClinicianIds below.
+    // ────────────────────────────────────────────────────────────
+    const where = {
+      ut_id_fk: 4,
+      us_id_fk: 1,
+    };
 
-    // Base: only prescriptions for actual clinic patients
-    const patientFilter = { ut_id_fk: 4 };
+    // ────────────────────────────────────────────────────────────
+    // Search across multiple fields
+    // ────────────────────────────────────────────────────────────
+    if (search) {
+      const searchTerm = search.trim();
+      const nameParts = searchTerm.split(/\s+/).filter(Boolean);
 
-    // 🔒 Visibility scoping via shared helper — same rule as
-    // getAllPatients / getSpirometryList: clinicians (ut_id_fk=3) and
-    // clinician_admins (ut_id_fk=6) only see patients assigned
-    // directly to their own user_id.
-    if (req.user.ut_id_fk === 3 || req.user.ut_id_fk === 6) {
-      const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+      where.OR = [
+        { f_name: { contains: searchTerm } },
+        { l_name: { contains: searchTerm } },
+        { userName: { contains: searchTerm } },
+        { email: { contains: searchTerm } },
+        { phone: { contains: searchTerm } },
+        { patient_details: { chart_no: { contains: searchTerm } } },
+      ];
 
-      if (visibleClinicianIds.length === 0) {
-        return res.json({
-          data: [],
-          pagination: {
-            page: Math.max(parseInt(page) || 1, 1),
-            limit: Math.max(parseInt(limit) || 10, 1),
-            total: 0,
-            pages: 0,
+      if (nameParts.length > 1) {
+        where.OR.push(
+          {
+            AND: [
+              { f_name: { contains: nameParts[0] } },
+              { l_name: { contains: nameParts.slice(1).join(" ") } },
+            ],
           },
-          order: sortOrder,
+          {
+            AND: [
+              { f_name: { contains: nameParts[nameParts.length - 1] } },
+              { l_name: { contains: nameParts.slice(0, -1).join(" ") } },
+            ],
+          },
+        );
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // Visibility scoping.
+    //   - Admin (ut_id_fk = 2) → helper returns ALL clinician ids,
+    //     so the resulting `assigned_clinician_id: { in: ... }`
+    //     filter covers every patient.
+    //   - Plain clinician      → only themselves.
+    //   - Clinician admin      → themselves + managed clinicians.
+    //   - Unknown roles        → empty → early return below.
+    // ────────────────────────────────────────────────────────────
+    const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+
+    if (visibleClinicianIds.length === 0) {
+      return res.json({
+        data: [],
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: 0,
+          pages: 0,
+        },
+        filters: { available_filters: [] },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // Build patient_details where clause
+    // ────────────────────────────────────────────────────────────
+    let patientDetailsWhere = {};
+
+    if (status) {
+      patientDetailsWhere.status = status;
+    }
+
+    if (patient_group_id) {
+      patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // Clinician assignment filter.
+    //   - If a specific clinician was requested, it must be within
+    //     the caller's visible set (admin's set = everyone).
+    //   - Otherwise default to everyone the caller can see.
+    // ────────────────────────────────────────────────────────────
+    if (assigned_clinician_id) {
+      const requestedId = parseInt(assigned_clinician_id);
+
+      if (!visibleClinicianIds.includes(requestedId)) {
+        return res.status(403).json({
+          error: "Not authorized to view this clinician's patients",
         });
       }
 
-      patientFilter.patient_details = {
-        assigned_clinician_id: { in: visibleClinicianIds },
-      };
+      patientDetailsWhere.assigned_clinician_id = requestedId;
+    } else {
+      patientDetailsWhere.assigned_clinician_id = { in: visibleClinicianIds };
     }
 
-    if (search && search.trim()) {
-      const term = search.trim();
-      if (/^\d+$/.test(term)) {
-        patientFilter.user_id = parseInt(term);
-      } else {
-        patientFilter.OR = [
-          { email: term },
-          { phone: term },
-          { userName: term },
-        ];
+    if (chart_no) {
+      patientDetailsWhere.chart_no = { contains: chart_no };
+    }
+
+    if (dob_from || dob_to) {
+      let dobFilter = {};
+
+      if (dob_from) {
+        const fromDate = new Date(dob_from);
+        const fromDateString = fromDate.toISOString().split("T")[0];
+        dobFilter.gte = fromDateString;
+      }
+
+      if (dob_to) {
+        const toDate = new Date(dob_to);
+        const toDateString = toDate.toISOString().split("T")[0];
+        dobFilter.lte = toDateString;
+      }
+
+      if (Object.keys(dobFilter).length > 0) {
+        patientDetailsWhere.attributes = {
+          dob: dobFilter,
+        };
       }
     }
 
-    const where = {
-      is_deleted: false,
-      patient: patientFilter, // ⚠️ adjust relation name — see note below
-    };
-
-    if (start_date || end_date) {
-      where.pr_date = {};
-      if (start_date) where.pr_date.gte = new Date(start_date);
-      if (end_date) where.pr_date.lte = new Date(end_date + "T23:59:59Z");
+    if (Object.keys(patientDetailsWhere).length > 0) {
+      where.patient_details = patientDetailsWhere;
     }
 
-    const pageNum = Math.max(parseInt(page) || 1, 1);
-    const limitNum = Math.max(parseInt(limit) || 10, 1);
+    if (first_name) {
+      where.f_name = { contains: first_name };
+    }
 
-    const [prescriptions, total] = await Promise.all([
-      prisma.dc_ehr_prescriptions.findMany({
-        where,
-        include: {
-          doctor: { select: { user_id: true, f_name: true, l_name: true } },
-          medicines: true,
-          patient: {
-            // ⚠️ same relation name as above
-            select: {
-              user_id: true,
-              f_name: true,
-              l_name: true,
-              userName: true,
+    if (last_name) {
+      where.l_name = { contains: last_name };
+    }
+
+    if (clinician_name) {
+      const clinicianNameParts = clinician_name
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+      if (clinicianNameParts.length > 1) {
+        where.patient_details = {
+          ...(where.patient_details || {}),
+          assigned_clinician: {
+            OR: [
+              {
+                AND: [
+                  { f_name: { contains: clinicianNameParts[0] } },
+                  {
+                    l_name: { contains: clinicianNameParts.slice(1).join(" ") },
+                  },
+                ],
+              },
+              {
+                AND: [
+                  {
+                    f_name: {
+                      contains:
+                        clinicianNameParts[clinicianNameParts.length - 1],
+                    },
+                  },
+                  {
+                    l_name: {
+                      contains: clinicianNameParts.slice(0, -1).join(" "),
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      } else {
+        where.patient_details = {
+          ...(where.patient_details || {}),
+          assigned_clinician: {
+            OR: [
+              { f_name: { contains: clinician_name } },
+              { l_name: { contains: clinician_name } },
+            ],
+          },
+        };
+      }
+    }
+
+    if (spirometry_date_from || spirometry_date_to) {
+      where.observations = {
+        some: {
+          spirometries: {
+            some: {
+              dbdate: {
+                ...(spirometry_date_from && {
+                  gte: new Date(spirometry_date_from),
+                }),
+                ...(spirometry_date_to && {
+                  lte: new Date(spirometry_date_to),
+                }),
+              },
             },
           },
         },
-        orderBy: { pr_date: sortOrder },
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum,
+      };
+    }
+
+    if (last_spirometry_from || last_spirometry_to) {
+      where.observations = {
+        some: {
+          spirometries: {
+            some: {
+              dbdate: {
+                ...(last_spirometry_from && {
+                  gte: new Date(last_spirometry_from),
+                }),
+                ...(last_spirometry_to && {
+                  lte: new Date(last_spirometry_to),
+                }),
+              },
+            },
+          },
+        },
+      };
+    }
+
+    if (last_alert_from || last_alert_to) {
+      where.alerts = {
+        some: {
+          created: {
+            ...(last_alert_from && { gte: new Date(last_alert_from) }),
+            ...(last_alert_to && { lte: new Date(last_alert_to) }),
+          },
+        },
+      };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [patients, total] = await Promise.all([
+      prisma.dc_users.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { reg_date: "desc" },
+        select: {
+          user_id: true,
+          f_name: true,
+          l_name: true,
+          email: true,
+          phone: true,
+          profile_pic: true,
+          is_rpm_allow: true,
+          reg_date: true,
+          userName: true,
+          user_status: { select: { name: true } },
+          patient_details: {
+            select: {
+              pd_id: true,
+              chart_no: true,
+              blood_group: true,
+              status: true,
+              graph_view: true,
+              rpm_consent: true,
+              height: true,
+              weight: true,
+              patient_group: { select: { id: true, name: true } },
+              assigned_clinician: {
+                select: { user_id: true, f_name: true, l_name: true },
+              },
+              attributes: {
+                select: {
+                  id: true,
+                  dob: true,
+                  gender: true,
+                  height: true,
+                  weight: true,
+                  ethnic_group: true,
+                  lookup_table: true,
+                  smoking: true,
+                },
+              },
+            },
+          },
+          alerts: {
+            orderBy: { created: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              message: true,
+              created: true,
+              is_read: true,
+            },
+          },
+          observations: {
+            orderBy: { dbdate: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              dbdate: true,
+              spirometries: {
+                select: {
+                  id: true,
+                  dbdate: true,
+                  fvc: true,
+                  fev1: true,
+                  pefr: true,
+                  fef2575: true,
+                  fev1_perc: true,
+                  quality_message: true,
+                },
+              },
+            },
+          },
+          portal_notes: {
+            orderBy: { dbdate: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              text: true,
+              dbdate: true,
+              page: true,
+            },
+          },
+          _count: {
+            select: {
+              observations: true,
+              alerts: true,
+            },
+          },
+        },
       }),
-      prisma.dc_ehr_prescriptions.count({ where }),
+      prisma.dc_users.count({ where }),
     ]);
 
-    // Flatten patient info onto each row, since this list spans multiple patients
-    const data = prescriptions.map((p) => ({
-      ...p,
-      patient_id: p.patient?.user_id ?? p.patient_id_fk,
-      patient_name: p.patient
-        ? `${p.patient.f_name} ${p.patient.l_name}`.trim()
-        : null,
-      patient_username: p.patient?.userName || null,
-    }));
+    const formattedPatients = patients.map((p) => {
+      const latestAlert = p.alerts?.[0] || null;
+      const latestObservation = p.observations?.[0] || null;
+      const latestSpirometry = latestObservation?.spirometries?.[0] || null;
+      const latestNote = p.portal_notes?.[0] || null;
+
+      return {
+        ...p,
+        attributes: p.patient_details?.attributes || null,
+        last_alert: latestAlert
+          ? {
+              message: latestAlert.message,
+              date: latestAlert.created,
+              is_read: latestAlert.is_read,
+            }
+          : null,
+        last_spirometry: latestSpirometry
+          ? {
+              date: latestSpirometry.dbdate || latestObservation.dbdate,
+              fvc: latestSpirometry.fvc,
+              fev1: latestSpirometry.fev1,
+              pefr: latestSpirometry.pefr,
+              fef2575: latestSpirometry.fef2575,
+              fev1_perc: latestSpirometry.fev1_perc,
+              quality_message: latestSpirometry.quality_message,
+            }
+          : null,
+        last_note: latestNote
+          ? {
+              text: latestNote.text,
+              date: latestNote.dbdate,
+              page: latestNote.page,
+            }
+          : null,
+        total_observations: p._count?.observations || 0,
+        total_alerts: p._count?.alerts || 0,
+      };
+    });
 
     res.json({
-      data,
+      data: formattedPatients,
       pagination: {
-        page: pageNum,
-        limit: limitNum,
+        page: parseInt(page),
+        limit: parseInt(limit),
         total,
-        pages: Math.ceil(total / limitNum),
+        pages: Math.ceil(total / parseInt(limit)),
       },
-      order: sortOrder,
+      filters: {
+        available_filters: [
+          "first_name",
+          "last_name",
+          "dob_from",
+          "dob_to",
+          "chart_no",
+          "clinician_name",
+          "spirometry_date_from",
+          "spirometry_date_to",
+          "last_alert_from",
+          "last_alert_to",
+          "last_spirometry_from",
+          "last_spirometry_to",
+          "status",
+          "patient_group_id",
+          "assigned_clinician_id",
+        ],
+      },
     });
   } catch (error) {
-    console.error("Get prescriptions list error:", error);
-    res.status(500).json({ error: "Failed to fetch prescriptions" });
+    console.error("Get patients error:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch patients", details: error.message });
   }
 };
+
+
 
 
 
