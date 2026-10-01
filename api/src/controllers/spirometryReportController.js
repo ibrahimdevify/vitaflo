@@ -2,6 +2,16 @@ const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
 const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
+const {
+  buildSpirometryReportHtml,
+} = require('../templates/spirometryReport'); // adjust path to your template
+const {
+  enrichSpirometry,
+  buildDemographics,
+} = require('../services/spirometryEnrich');
+const {
+  normalizeSpirometryValue,
+} = require('../helpers/gli2012');
 const prisma = new PrismaClient();
 
 /**
@@ -10,6 +20,10 @@ const prisma = new PrismaClient();
  * predicted/LLN/z-score are stored per test-occasion, not tied
  * directly to a spirometry_id.
  */
+function getLogoDataUri() {
+  // If you already have a helper in services/reportService.js, use that instead.
+  return null; // falls back to the "VP" badge in the template
+}
 function closestPredictedValue(predictedRows, variable, targetDate) {
   const matches = predictedRows.filter((p) => p.variable === variable);
   if (!matches.length || !targetDate) return null;
@@ -63,18 +77,20 @@ const getSpirometryReportPDF = async (req, res) => {
   let browser;
   try {
     const { observation_id } = req.params;
-    const obsId = parseInt(observation_id);
+    const obsId = parseInt(observation_id, 10);
     if (!obsId) {
       return res.status(400).json({ error: 'Invalid observation_id' });
     }
 
-    const anchorObservation = await prisma.portal_observation.findFirst({ where: { id: obsId } });
+    // --- Resolve anchor observation ---
+    const anchorObservation = await prisma.portal_observation.findFirst({
+      where: { id: obsId },
+    });
     if (!anchorObservation) {
       return res.status(404).json({ error: 'Observation not found' });
     }
 
-    // Resolve which observation is PRE and which is POST, regardless of
-    // which one was passed in.
+    // --- Resolve PRE/POST pair ---
     let preObservation = anchorObservation;
     let postObservation = null;
 
@@ -90,15 +106,18 @@ const getSpirometryReportPDF = async (req, res) => {
         where: { id: anchorObservation.linked_pre_post_observation_id },
       });
     } else {
-      // Fallback: look for any post observation that links back to this one
       postObservation = await prisma.portal_observation.findFirst({
-        where: { linked_pre_post_observation_id: obsId, is_post_bronchodilator: true },
+        where: {
+          linked_pre_post_observation_id: obsId,
+          is_post_bronchodilator: true,
+        },
       });
     }
 
     const userId = preObservation.user_id;
 
-    const [preSpiroRows, postSpiroRows, user, predictedRows] = await Promise.all([
+    // --- Fetch everything needed in parallel ---
+    const [preSpiroRows, postSpiroRows, user] = await Promise.all([
       prisma.portal_spirometry.findMany({
         where: { observation_id: preObservation.id },
         orderBy: { dbdate: 'desc' },
@@ -126,6 +145,7 @@ const getSpirometryReportPDF = async (req, res) => {
                   height: true,
                   weight: true,
                   ethnic_group: true,
+                  lookup_table: true,   // ← needed for GLI ethnicity
                   smoking: true,
                 },
               },
@@ -133,53 +153,85 @@ const getSpirometryReportPDF = async (req, res) => {
           },
         },
       }),
-      prisma.portal_predicted_value.findMany({ where: { user_id: userId } }),
     ]);
 
-    const preRaw = preSpiroRows[0] || null; // most recent = "best" trial
+    // "Best" trial = most recent. (ATS best-pick is done inside the
+    // template's pre/post trial selection in the original code — keep
+    // that behavior here for parity with how the report was designed.)
+    const preRaw = preSpiroRows[0] || null;
     const postRaw = postSpiroRows[0] || null;
 
     if (!preRaw) {
-      return res.status(404).json({ error: 'No spirometry trials found for this observation' });
+      return res.status(404).json({
+        error: 'No spirometry trials found for this observation',
+      });
     }
 
-    const pre = enrichSpirometry(preRaw, predictedRows);
-    const post = enrichSpirometry(postRaw, predictedRows);
-
+    // --- Build GLI-2012 demographics using the observation's own height ---
     const attrs = user?.patient_details?.attributes || {};
-    const dob = attrs.dob ? new Date(attrs.dob) : null;
-    const age = dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000)) : null;
 
-    const heightIn = attrs.height || null;
-    const weightLb = attrs.weight || null;
-    const bmi = heightIn && weightLb ? +((703 * weightLb) / (heightIn * heightIn)).toFixed(1) : null;
+    const demoForPre = buildDemographics({
+      observation: preObservation,
+      attributes: attrs,
+    });
+
+    const demoForPost = buildDemographics({
+      observation: postObservation || preObservation,
+      attributes: attrs,
+    });
+
+    // --- Enrich pre and post ---
+    const pre = enrichSpirometry(preRaw, demoForPre);
+    const post = enrichSpirometry(postRaw, demoForPost);
+
+    // --- Patient info (units fixed: cm / kg) ---
+    const dob = attrs.dob ? new Date(attrs.dob) : null;
+    const age = dob
+      ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000))
+      : null;
+
+    const heightCm = attrs.height ? Number(attrs.height) : null;
+    const weightKg = attrs.weight ? Number(attrs.weight) : null;
+    const bmi =
+      heightCm && weightKg
+        ? Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1))
+        : null;
 
     const patient = {
       name: user ? `${user.f_name ?? ''} ${user.l_name ?? ''}`.trim() : 'N/A',
       id: user?.user_id ?? 'N/A',
-      referredBy: 'N/A', // not tracked in the current schema
-      testDate: pre?.dbdate ? new Date(pre.dbdate).toLocaleString() : 'N/A',
+      referredBy: 'N/A',
+      testDate: pre?.dbdate
+        ? new Date(pre.dbdate).toLocaleString()
+        : 'N/A',
       sex: attrs.gender ?? 'N/A',
-      reason: 'N/A', // not tracked in the current schema
+      reason: 'N/A',
       dob: dob ? dob.toISOString().slice(0, 10) : 'N/A',
-      spo2: 'N/A', // not tracked in the current schema
+      spo2: 'N/A',
       age: age ?? 'N/A',
-      height: heightIn ? `${heightIn} in` : 'N/A',
-      ethnicity: attrs.ethnic_group ?? 'N/A',
-      weight: weightLb ? `${weightLb} lbs` : 'N/A',
+      height: heightCm ? `${heightCm.toFixed(1)} cm` : 'N/A',
+      ethnicity: attrs.ethnic_group || attrs.lookup_table || 'N/A',
+      weight: weightKg ? `${weightKg.toFixed(1)} kg` : 'N/A',
       smoking: attrs.smoking ? 'Yes' : 'N/A',
       bmi: bmi ?? 'N/A',
     };
 
-      const html = buildSpirometryReportHtml({
-      patient,
-      pre,
-      post,
-      preFlows: preRaw?.flows,
-      postFlows: postRaw?.flows,
-      preVolumes: preRaw?.volumes,
-      postVolumes: postRaw?.volumes,
-    }, { logoDataUri: getLogoDataUri() });
+    // --- Render HTML ---
+    const html = buildSpirometryReportHtml(
+      {
+        patient,
+        pre,
+        post,
+        preFlows: preRaw?.flows,
+        postFlows: postRaw?.flows,
+        preVolumes: preRaw?.volumes,
+        postVolumes: postRaw?.volumes,
+      },
+      { logoDataUri: getLogoDataUri() }
+    );
+
+    // --- PDF generation ---
+    const puppeteer = require('puppeteer');
     browser = await puppeteer.launch({
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox'],

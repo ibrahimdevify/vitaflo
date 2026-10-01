@@ -1,3 +1,6 @@
+// src/templates/spirometryReport.js
+'use strict';
+
 /**
  * Builds the HTML that gets rendered to PDF for the
  * "ATS Bronchodilator Responsiveness Report", matching the VitalFlo layout.
@@ -6,18 +9,17 @@
  * @param {Object} data.patient  { name, id, referredBy, testDate, sex, reason,
  *                                 dob, spo2, age, height, weight, ethnicity,
  *                                 smoking, bmi }
- * @param {Object} data.pre      spirometry row (is_post_bronchodilator=false)
- * @param {Object} data.post     spirometry row (is_post_bronchodilator=true)
+ * @param {Object} data.pre      enriched spirometry row (is_post_bronchodilator=false)
+ *                               Produced by services/spirometryEnrich.js
+ * @param {Object} data.post     enriched spirometry row (is_post_bronchodilator=true)
  * @param {Array}  data.preFlows   [{volume, flow}]
  * @param {Array}  data.postFlows  [{volume, flow}]
  * @param {Array}  data.preVolumes  [{time, volume}]
  * @param {Array}  data.postVolumes [{time, volume}]
  * @param {Object} [meta]
  * @param {string} [meta.logoDataUri]  `data:<mime>;base64,...` URI for the VitalFlo
- *                                     logo. Get this from services/reportService.js's
- *                                     `getLogoDataUri()` so both PDF systems share the
- *                                     same cached file lookup. Falls back to the
- *                                     original "VP" badge + text if omitted.
+ *                                     logo. Falls back to the "VP" badge + text
+ *                                     if omitted.
  * @returns {string} full HTML document
  */
 
@@ -34,44 +36,80 @@ function toPct(z) {
 function buildSpirometryReportHtml(data, meta = {}) {
   const { patient, pre, post, preFlows, postFlows, preVolumes, postVolumes } = data;
 
-  const fmt = (v, digits = 2) =>
-    v === null || v === undefined || Number.isNaN(v) ? 'N/A' : Number(v).toFixed(digits);
+  const fmt = (v, digits = 2) => {
+    if (v === null || v === undefined) return 'N/A';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 'N/A';
+    return n.toFixed(digits);
+  };
 
-  const pct = (v) => (v === null || v === undefined ? 'N/A' : `${Math.round(v)}%`);
+  const pct = (v) => {
+    if (v === null || v === undefined) return 'N/A';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 'N/A';
+    return `${Math.round(n)}%`;
+  };
 
-  const changeMl = (a, b) =>
-    a === null || b === null || a === undefined || b === undefined ? 'N/A' : `${Math.round((b - a) * 1000)} mL`;
+  const changeMl = (a, b) => {
+    if (a === null || b === null || a === undefined || b === undefined) return 'N/A';
+    const an = Number(a), bn = Number(b);
+    if (!Number.isFinite(an) || !Number.isFinite(bn)) return 'N/A';
+    return `${Math.round((bn - an) * 1000)} mL`;
+  };
 
   const pctChange = (a, b) => {
     if (!a || !b) return 'N/A';
-    const c = ((b - a) / a) * 100;
+    const an = Number(a), bn = Number(b);
+    if (!Number.isFinite(an) || !Number.isFinite(bn) || an === 0) return 'N/A';
+    const c = ((bn - an) / an) * 100;
     return `${c >= 0 ? '+' : ''}${c.toFixed(0)}%`;
   };
 
-  // --- Results table (9 columns: Best/LLN/z/%Pred pre, Best/z/%Pred post, Change, %Chng) ---
+  // --- Results table (10 columns: Best/LLN/z/%Pred pre; Best/z/%Pred post; Change; %Chng) ---
   const metricRows = [
     {
       label: 'FVC (L)',
-      preBest: pre?.fvc, preLln: pre?.lln_fvc, preZ: pre?.zscore_fvc, prePred: pre?.pred_percent_fvc,
-      postBest: post?.fvc, postZ: post?.zscore_fvc, postPred: post?.pred_percent_fvc,
+      preBest: pre?.fvc,
+      preLln: pre?.lln_fvc,
+      preZ: pre?.zscore_fvc,
+      prePred: pre?.pred_percent_fvc,
+      postBest: post?.fvc,
+      postZ: post?.zscore_fvc,
+      postPred: post?.pred_percent_fvc,
       showChange: true,
     },
     {
       label: 'FEV1 (L)',
-      preBest: pre?.fev1, preLln: pre?.lln_fev1, preZ: pre?.zscore_fev1, prePred: pre?.pred_percent_fev1,
-      postBest: post?.fev1, postZ: post?.zscore_fev1, postPred: post?.pred_percent_fev1,
+      preBest: pre?.fev1,
+      preLln: pre?.lln_fev1,
+      preZ: pre?.zscore_fev1,
+      prePred: pre?.pred_percent_fev1,
+      postBest: post?.fev1,
+      postZ: post?.zscore_fev1,
+      postPred: post?.pred_percent_fev1,
       showChange: true,
     },
     {
       label: 'FEV1/FVC',
-      preBest: pre?.fev1_fvc, preLln: pre?.lln_fev1_fvc, preZ: pre?.zscore_fev1_fvc, prePred: null,
-      postBest: post?.fev1_fvc, postZ: post?.zscore_fev1_fvc, postPred: null,
+      preBest: pre?.fev1_fvc,
+      preLln: pre?.lln_fev1_fvc,
+      preZ: pre?.zscore_fev1_fvc,
+      // Was null in original — now uses the enriched %Predicted value
+      prePred: pre?.pred_percent_fev1_fvc,
+      postBest: post?.fev1_fvc,
+      postZ: post?.zscore_fev1_fvc,
+      postPred: post?.pred_percent_fev1_fvc,
       showChange: false,
     },
     {
       label: 'FET (s)',
-      preBest: pre?.fet, preLln: null, preZ: null, prePred: null,
-      postBest: post?.fet, postZ: null, postPred: null,
+      preBest: pre?.fet,
+      preLln: null,
+      preZ: null,
+      prePred: null,
+      postBest: post?.fet,
+      postZ: null,
+      postPred: null,
       showChange: false,
     },
   ];
@@ -82,11 +120,11 @@ function buildSpirometryReportHtml(data, meta = {}) {
       <tr>
         <td class="label">${r.label}</td>
         <td>${fmt(r.preBest)}</td>
-        <td>${r.preLln !== null ? fmt(r.preLln) : '&nbsp;'}</td>
-        <td>${r.preZ !== null ? fmt(r.preZ) : '&nbsp;'}</td>
+        <td>${r.preLln !== null && r.preLln !== undefined ? fmt(r.preLln) : '&nbsp;'}</td>
+        <td>${r.preZ !== null && r.preZ !== undefined ? fmt(r.preZ) : '&nbsp;'}</td>
         <td>${r.prePred !== null && r.prePred !== undefined ? pct(r.prePred) : '&nbsp;'}</td>
         <td>${fmt(r.postBest)}</td>
-        <td>${r.postZ !== null ? fmt(r.postZ) : '&nbsp;'}</td>
+        <td>${r.postZ !== null && r.postZ !== undefined ? fmt(r.postZ) : '&nbsp;'}</td>
         <td>${r.postPred !== null && r.postPred !== undefined ? pct(r.postPred) : '&nbsp;'}</td>
         <td>${r.showChange ? changeMl(r.preBest, r.postBest) : '&nbsp;'}</td>
         <td>${r.showChange ? pctChange(r.preBest, r.postBest) : '&nbsp;'}</td>
@@ -101,7 +139,7 @@ function buildSpirometryReportHtml(data, meta = {}) {
 
     const rowsHtml = rows
       .map((r) => {
-        if (r.z === null || r.z === undefined) {
+        if (r.z === null || r.z === undefined || !Number.isFinite(Number(r.z))) {
           return `
           <div class="zrow">
             <div class="zlabel">${r.label}</div>
@@ -111,7 +149,7 @@ function buildSpirometryReportHtml(data, meta = {}) {
             </div>
           </div>`;
         }
-        const starPct = toPct(r.z);
+        const starPct = toPct(Number(r.z));
         return `
         <div class="zrow">
           <div class="zlabel">${r.label}</div>
