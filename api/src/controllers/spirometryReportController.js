@@ -3,9 +3,6 @@ const { PrismaClient } = require('@prisma/client');
 const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
 const {
-  buildSpirometryReportHtml,
-} = require('../templates/spirometryReport'); // adjust path to your template
-const {
   enrichSpirometry,
   buildDemographics,
 } = require('../services/spirometryEnrich');
