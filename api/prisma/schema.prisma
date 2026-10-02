@@ -577,7 +577,8 @@ model portal_spirometry_trends {
 model portal_predicted_value {
   id                Int      @id @default(autoincrement())
   user_id           Int
-  variable          String   @db.VarChar(50)
+  observation_id    Int?     // 👈 which session this belongs to
+  variable          String   @db.VarChar(50)  // 'FEV1', 'FVC', 'FEV1/FVC', 'FEF25-75'
   predicted         Float?
   lln               Float?
   uln               Float?
@@ -587,5 +588,8 @@ model portal_predicted_value {
 
   user dc_users @relation(fields: [user_id], references: [user_id])
 
+  @@unique([observation_id, variable], name: "obs_variable")
+  @@index([observation_id])
+  @@index([user_id])
   @@map("portal_predicted_value")
 }
