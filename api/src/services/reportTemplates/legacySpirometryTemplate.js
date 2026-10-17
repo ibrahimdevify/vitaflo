@@ -1,5 +1,20 @@
-
 'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+// Use the same logo assets as the existing reportService. No route/service changes.
+function getBrandLogoUri() {
+  const filenames = ['vitalflo-logo.svg', 'vitalflo-logo.png', 'vitalflo-logo.jpg', 'vitalflo-logo.jpeg'];
+  const mimes = { '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+  for (const filename of filenames) {
+    const file = path.join(__dirname, '..', 'assets', filename);
+    if (!fs.existsSync(file)) continue;
+    const mime = mimes[path.extname(file).toLowerCase()];
+    return `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
+  }
+  return null;
+}
 
 const BLUE = '#0b9cf2';
 const NAVY = '#066eaa';
@@ -114,12 +129,20 @@ function renderLegacySpirometryHtml(data = {}) {
         <div class="charts">${curvePanel(test, 'flow')}${curvePanel(test, 'volume')}</div>
       </section>`).join('')
     : '<p class="empty">No spirometry tests recorded in this date range.</p>';
+  const logoUri = getBrandLogoUri();
+  const brand = `<header class="brand-header">${logoUri ? `<img class="brand-logo" src="${logoUri}" alt="VitalFlo logo">` : `<span class="brand-fallback">VF</span>`}<div class="brand-text"><div class="brand-name">VitalFlo</div><div class="brand-subtitle">Spirometry Report</div></div></header>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Spirometry Report</title>
   <style>
     @page { size: A4 portrait; margin: 9mm 9mm 11mm; }
     * { box-sizing: border-box; }
     body { margin:0; padding:0; font-family:Arial,Helvetica,sans-serif; color:#4d5862; background:#f9f9fd; font-size:11px; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
     main { width:100%; }
+    .brand-header { display:flex; align-items:center; gap:10px; border-bottom:1px solid #d5dbe0; padding:3px 0 9px; margin:0 0 12px; break-inside:avoid; page-break-inside:avoid; }
+    .brand-logo { display:block; max-height:36px; max-width:115px; width:auto; height:auto; object-fit:contain; }
+    .brand-fallback { width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:7px; background:#0b9cf2; color:#fff; font-size:15px; font-weight:700; }
+    .brand-text { display:flex; flex-direction:column; gap:2px; }
+    .brand-name { font-size:19px; color:#0877aa; font-weight:700; letter-spacing:.1px; }
+    .brand-subtitle { font-size:10px; color:#64717d; } 
     h1 { font-size:13px; margin:0 0 3px; font-weight:700; }
     .trial { break-inside:avoid; page-break-inside:avoid; margin:0 0 13px; }
     .trial-date { font-size:12px; margin-bottom:3px; }
@@ -136,6 +159,6 @@ function renderLegacySpirometryHtml(data = {}) {
     .key { display:inline-flex; align-items:center; gap:3px; }
     .key i { display:inline-block; width:11px; height:7px; }
     .empty { font-size:14px; padding:24px 0; }
-  </style></head><body><main><h1>Spirometry</h1>${report}</main></body></html>`;
+  </style></head><body><main>${brand}<h1>Spirometry</h1>${report}</main></body></html>`;
 }
 module.exports = { renderLegacySpirometryHtml };
