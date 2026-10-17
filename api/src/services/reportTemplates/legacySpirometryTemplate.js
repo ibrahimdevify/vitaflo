@@ -130,7 +130,7 @@ function renderLegacySpirometryHtml(data = {}) {
       </section>`).join('')
     : '<p class="empty">No spirometry tests recorded in this date range.</p>';
   const logoUri = getBrandLogoUri();
-  const brand = `<header class="brand-header">${logoUri ? `<img class="brand-logo" src="${logoUri}" alt="VitalFlo logo">` : `<span class="brand-fallback">VF</span>`}<div class="brand-text"><div class="brand-name">VitalFlo</div><div class="brand-subtitle">Spirometry Report</div></div></header>`;
+  const brand = `<header class="brand-header">${logoUri ? `<img class="brand-logo" src="${logoUri}" alt="VitalFlo logo">` : `<span class="brand-fallback">VF</span>`}<div class="brand-text"><div class="brand-subtitle">Spirometry Report</div></div></header>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Spirometry Report</title>
   <style>
     @page { size: A4 portrait; margin: 9mm 9mm 11mm; }
