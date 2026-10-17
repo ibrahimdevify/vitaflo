@@ -361,4 +361,56 @@ async function getPatientTabData(tab, params) {
   return handler(params);
 }
 
-module.exports = { ValidationError, ensurePatientExists, getPatientsList, getPatientTabData };
+async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = null } = {}) {
+  const limit = 100;
+  let page = 1;
+  const observations = [];
+
+  while (true) {
+    const skip = (page - 1) * limit;
+    const batch = await patientRepository.findObservationsPage(userId, {
+      startDate, endDate, skip, take: limit, includeCurves: true,
+    });
+    if (!batch.length) break;
+
+    for (const observation of batch) {
+      const demo = await loadGliDemographics(userId, observation.height);
+      const tests = (observation.spirometries || []).map(spirometry => {
+        const bestForThisTrial = pickBestSpirometryValues([spirometry]);
+        const rows = buildResultRows(bestForThisTrial, demo);
+        // portal_spirometry has no FET field in the uploaded schema.
+        // Do not pretend chart duration is clinically validated FET.
+        rows.push({ variable: 'FET', observed: null, lln: null,
+          zScore: null, predicted: null, percentPredicted: null });
+
+        return {
+          id: spirometry.id,
+          date: spirometry.dbdate || observation.dbdate,
+          results: rows,
+          flowPoints: (spirometry.flows || []).map(p => ({
+            volume: normalizeSpirometryValue(p.volume) ?? p.volume,
+            flow: normalizeSpirometryValue(p.value) ?? p.value,
+          })),
+          volumePoints: (spirometry.volumes || []).map(p => ({
+            time: p.time,
+            volume: p.volume,
+          })),
+        };
+      });
+      observations.push({ id: observation.id, date: observation.dbdate, tests });
+    }
+
+    if (batch.length < limit) break;
+    page += 1;
+  }
+
+  // Stable report ordering: oldest to newest, matching the provided PDF.
+  observations.sort((a, b) => new Date(a.date) - new Date(b.date));
+  for (const observation of observations) {
+    observation.tests.sort((a, b) => new Date(a.date) - new Date(b.date));
+  }
+  return { observations, referenceText: 'GLI 2012 Other Lookup Table' };
+}
+
+
+module.exports = { ValidationError, ensurePatientExists, getPatientsList, getPatientTabData, getLegacySpirometryPdfData };

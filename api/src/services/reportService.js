@@ -33,7 +33,21 @@ function getLogoDataUri() {
   cachedLogoDataUri = null;
   return cachedLogoDataUri;
 }
-
+async function generateLegacySpirometryPdf(data) {
+  const { renderLegacySpirometryHtml } = require('./reportTemplates/legacySpirometryTemplate.js');
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setContent(renderLegacySpirometryHtml(data), { waitUntil: 'load' });
+    return await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+      displayHeaderFooter: false,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    });
+  } finally { await page.close(); }
+}
 /** Single shared browser instance, reused across requests (launching Chromium per-request is slow). */
 function getBrowser() {
   if (!browserPromise) {
@@ -109,4 +123,4 @@ async function closeBrowser() {
   }
 }
 
-module.exports = { generateTabReportPdf, closeBrowser, ReportError, getLogoDataUri };
+module.exports = { generateTabReportPdf, closeBrowser, ReportError, getLogoDataUri,generateLegacySpirometryPdf };
