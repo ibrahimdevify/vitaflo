@@ -141,6 +141,43 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 // };
 
 
+class RequestError extends Error {}
+
+function parsePositiveInt(value, field) {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result) || result <= 0) {
+    throw new RequestError(`${field} must be a positive integer`);
+  }
+  return result;
+}
+
+function parseISODate(value, field) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new RequestError(`${field} must be YYYY-MM-DD`);
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new RequestError(`${field} is not a real calendar date`);
+  }
+  return value;
+}
+
+function makeDateTimeRange(from, to, fromField, toField) {
+  const fromISO = from ? parseISODate(from, fromField) : null;
+  const toISO = to ? parseISODate(to, toField) : null;
+  if (fromISO && toISO && fromISO > toISO) {
+    throw new RequestError(`${fromField} must be before or equal to ${toField}`);
+  }
+  const result = {};
+  if (fromISO) result.gte = new Date(`${fromISO}T00:00:00.000Z`);
+  if (toISO) {
+    const nextDay = new Date(`${toISO}T00:00:00.000Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    result.lt = nextDay;
+  }
+  return result;
+}
+
 const getAllPatients = async (req, res) => {
   try {
     const {
@@ -166,13 +203,27 @@ const getAllPatients = async (req, res) => {
     } = req.query;
 
     // ────────────────────────────────────────────────────────────
-    // Base filter — always restricted to the patient bucket.
-    // Role-based widening happens via visibleClinicianIds below.
+    // Base filter: restrict to patient users; authorization below is separate.
     // ────────────────────────────────────────────────────────────
-    const where = {
-      ut_id_fk: 4,
-      us_id_fk: 1,
-    };
+    // Patient-only scope. The original active-user filter is kept intentionally;
+    // for historical inactive accounts use include_inactive=1 as system admin.
+    const where = { ut_id_fk: 4 };
+    const roleId = Number(req.user?.ut_id_fk);
+    const isSystemAdmin = roleId === 2;
+
+    if (![2, 3, 6].includes(roleId)) {
+      return res.status(403).json({ error: 'Not authorized to list patients' });
+    }
+
+    if (!(isSystemAdmin && String(req.query.include_inactive) === '1')) {
+      where.us_id_fk = 1;
+    }
+
+    const currentPage = parsePositiveInt(page, 'page');
+    const pageSize = parsePositiveInt(limit, 'limit');
+    if (currentPage > 100000 || pageSize > 100) {
+      return res.status(400).json({ error: 'page must be <= 100000 and limit must be <= 100' });
+    }
 
     // ────────────────────────────────────────────────────────────
     // Search across multiple fields
@@ -187,7 +238,7 @@ const getAllPatients = async (req, res) => {
         { userName: { contains: searchTerm } },
         { email: { contains: searchTerm } },
         { phone: { contains: searchTerm } },
-        { patient_details: { chart_no: { contains: searchTerm } } },
+        { patient_details: { is: { chart_no: { contains: searchTerm } } } },
       ];
 
       if (nameParts.length > 1) {
@@ -208,60 +259,40 @@ const getAllPatients = async (req, res) => {
       }
     }
 
-    // ────────────────────────────────────────────────────────────
-    // Visibility scoping.
-    //   - Admin (ut_id_fk = 2) → helper returns ALL clinician ids,
-    //     so the resulting `assigned_clinician_id: { in: ... }`
-    //     filter covers every patient.
-    //   - Plain clinician      → only themselves.
-    //   - Clinician admin      → themselves + managed clinicians.
-    //   - Unknown roles        → empty → early return below.
-    // ────────────────────────────────────────────────────────────
-    const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+    // System admin sees all patient users, including unassigned ones.
+    // Clinicians can see only their own patients; clinician admins can
+    // additionally see patients assigned to clinicians in their assignments.
+    const visibleClinicianIds = isSystemAdmin
+      ? []
+      : await getVisibleClinicianIds(req.user);
 
-    if (visibleClinicianIds.length === 0) {
+    if (!isSystemAdmin && visibleClinicianIds.length === 0) {
       return res.json({
         data: [],
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: 0,
-          pages: 0,
-        },
+        pagination: { page: currentPage, limit: pageSize, total: 0, pages: 0 },
         filters: { available_filters: [] },
       });
     }
 
-    // ────────────────────────────────────────────────────────────
-    // Build patient_details where clause
-    // ────────────────────────────────────────────────────────────
-    let patientDetailsWhere = {};
+    // Keep all patient_details conditions in ONE object (prevents overwrites).
+    const patientDetailsWhere = {};
 
-    if (status) {
-      patientDetailsWhere.status = status;
+    if (status) patientDetailsWhere.status = String(status);
+
+    if (patient_group_id !== undefined) {
+      patientDetailsWhere.patient_group_id = parsePositiveInt(patient_group_id, 'patient_group_id');
     }
 
-    if (patient_group_id) {
-      patientDetailsWhere.patient_group_id = parseInt(patient_group_id);
-    }
-
-    // ────────────────────────────────────────────────────────────
-    // Clinician assignment filter.
-    //   - If a specific clinician was requested, it must be within
-    //     the caller's visible set (admin's set = everyone).
-    //   - Otherwise default to everyone the caller can see.
-    // ────────────────────────────────────────────────────────────
-    if (assigned_clinician_id) {
-      const requestedId = parseInt(assigned_clinician_id);
-
-      if (!visibleClinicianIds.includes(requestedId)) {
+    // Optional explicit clinician filter cannot exceed the caller's scope.
+    if (assigned_clinician_id !== undefined) {
+      const requestedId = parsePositiveInt(assigned_clinician_id, 'assigned_clinician_id');
+      if (!isSystemAdmin && !visibleClinicianIds.includes(requestedId)) {
         return res.status(403).json({
           error: "Not authorized to view this clinician's patients",
         });
       }
-
       patientDetailsWhere.assigned_clinician_id = requestedId;
-    } else {
+    } else if (!isSystemAdmin) {
       patientDetailsWhere.assigned_clinician_id = { in: visibleClinicianIds };
     }
 
@@ -270,29 +301,15 @@ const getAllPatients = async (req, res) => {
     }
 
     if (dob_from || dob_to) {
-      let dobFilter = {};
-
-      if (dob_from) {
-        const fromDate = new Date(dob_from);
-        const fromDateString = fromDate.toISOString().split("T")[0];
-        dobFilter.gte = fromDateString;
+      // vf_attributes.dob is VARCHAR in the supplied schema, not DateTime.
+      // Lexical range comparisons are correct only for ISO YYYY-MM-DD strings.
+      const dobFilter = {};
+      if (dob_from) dobFilter.gte = parseISODate(dob_from, 'dob_from');
+      if (dob_to) dobFilter.lte = parseISODate(dob_to, 'dob_to');
+      if (dobFilter.gte && dobFilter.lte && dobFilter.gte > dobFilter.lte) {
+        throw new RequestError('dob_from must not be after dob_to');
       }
-
-      if (dob_to) {
-        const toDate = new Date(dob_to);
-        const toDateString = toDate.toISOString().split("T")[0];
-        dobFilter.lte = toDateString;
-      }
-
-      if (Object.keys(dobFilter).length > 0) {
-        patientDetailsWhere.attributes = {
-          dob: dobFilter,
-        };
-      }
-    }
-
-    if (Object.keys(patientDetailsWhere).length > 0) {
-      where.patient_details = patientDetailsWhere;
+      patientDetailsWhere.attributes = { is: { dob: dobFilter } };
     }
 
     if (first_name) {
@@ -303,112 +320,84 @@ const getAllPatients = async (req, res) => {
       where.l_name = { contains: last_name };
     }
 
-    if (clinician_name) {
-      const clinicianNameParts = clinician_name
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-
-      if (clinicianNameParts.length > 1) {
-        where.patient_details = {
-          ...(where.patient_details || {}),
-          assigned_clinician: {
+    if (clinician_name && String(clinician_name).trim()) {
+      const clinicianNameParts = String(clinician_name).trim().split(/\s+/);
+      const nameMatch = clinicianNameParts.length > 1
+        ? {
             OR: [
-              {
-                AND: [
-                  { f_name: { contains: clinicianNameParts[0] } },
-                  {
-                    l_name: { contains: clinicianNameParts.slice(1).join(" ") },
-                  },
-                ],
-              },
-              {
-                AND: [
-                  {
-                    f_name: {
-                      contains:
-                        clinicianNameParts[clinicianNameParts.length - 1],
-                    },
-                  },
-                  {
-                    l_name: {
-                      contains: clinicianNameParts.slice(0, -1).join(" "),
-                    },
-                  },
-                ],
-              },
+              { AND: [
+                { f_name: { contains: clinicianNameParts[0] } },
+                { l_name: { contains: clinicianNameParts.slice(1).join(' ') } },
+              ] },
+              { AND: [
+                { f_name: { contains: clinicianNameParts[clinicianNameParts.length - 1] } },
+                { l_name: { contains: clinicianNameParts.slice(0, -1).join(' ') } },
+              ] },
             ],
-          },
-        };
-      } else {
-        where.patient_details = {
-          ...(where.patient_details || {}),
-          assigned_clinician: {
+          }
+        : {
             OR: [
-              { f_name: { contains: clinician_name } },
-              { l_name: { contains: clinician_name } },
+              { f_name: { contains: clinicianNameParts[0] } },
+              { l_name: { contains: clinicianNameParts[0] } },
             ],
-          },
-        };
-      }
+          };
+      patientDetailsWhere.assigned_clinician = { is: nameMatch };
     }
 
+    // Prisma one-to-one relation filters use { is: ... }.
+    // Multiple detail filters are combined, never overwritten.
+    if (Object.keys(patientDetailsWhere).length > 0) {
+      where.patient_details = { is: patientDetailsWhere };
+    }
+
+    // Independent filters must be in AND, otherwise a second date filter
+    // would overwrite the first `where.observations` condition.
+    const andFilters = [];
+
     if (spirometry_date_from || spirometry_date_to) {
-      where.observations = {
-        some: {
-          spirometries: {
-            some: {
-              dbdate: {
-                ...(spirometry_date_from && {
-                  gte: new Date(spirometry_date_from),
-                }),
-                ...(spirometry_date_to && {
-                  lte: new Date(spirometry_date_to),
-                }),
-              },
-            },
-          },
-        },
-      };
+      const range = makeDateTimeRange(spirometry_date_from, spirometry_date_to,
+        'spirometry_date_from', 'spirometry_date_to');
+      andFilters.push({ observations: { some: {
+        spirometries: { some: { dbdate: range } },
+      } } });
     }
 
     if (last_spirometry_from || last_spirometry_to) {
-      where.observations = {
-        some: {
-          spirometries: {
-            some: {
-              dbdate: {
-                ...(last_spirometry_from && {
-                  gte: new Date(last_spirometry_from),
-                }),
-                ...(last_spirometry_to && {
-                  lte: new Date(last_spirometry_to),
-                }),
-              },
-            },
-          },
-        },
-      };
+      const range = makeDateTimeRange(last_spirometry_from, last_spirometry_to,
+        'last_spirometry_from', 'last_spirometry_to');
+
+      // A test must occur inside the requested window...
+      andFilters.push({ observations: { some: {
+        spirometries: { some: { dbdate: range } },
+      } } });
+
+      // ...and no test may occur AFTER the window, so the filter refers
+      // to the actual latest spirometry instead of any historical test.
+      if (range.lt) {
+        andFilters.push({ observations: { none: {
+          spirometries: { some: { dbdate: { gte: range.lt } } },
+        } } });
+      }
     }
 
     if (last_alert_from || last_alert_to) {
-      where.alerts = {
-        some: {
-          created: {
-            ...(last_alert_from && { gte: new Date(last_alert_from) }),
-            ...(last_alert_to && { lte: new Date(last_alert_to) }),
-          },
-        },
-      };
+      const range = makeDateTimeRange(last_alert_from, last_alert_to,
+        'last_alert_from', 'last_alert_to');
+      andFilters.push({ alerts: { some: { created: range } } });
+      if (range.lt) {
+        andFilters.push({ alerts: { none: { created: { gte: range.lt } } } });
+      }
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    if (andFilters.length) where.AND = andFilters;
+
+    const skip = (currentPage - 1) * pageSize;
 
     const [patients, total] = await Promise.all([
       prisma.dc_users.findMany({
         where,
         skip,
-        take: parseInt(limit),
+        take: pageSize,
         orderBy: { reg_date: "desc" },
         select: {
           user_id: true,
@@ -460,12 +449,16 @@ const getAllPatients = async (req, res) => {
             },
           },
           observations: {
+            // Find the latest observation that actually contains a spirometry test.
+            where: { spirometries: { some: {} } },
             orderBy: { dbdate: "desc" },
             take: 1,
             select: {
               id: true,
               dbdate: true,
               spirometries: {
+                orderBy: { dbdate: "desc" },
+                take: 1,
                 select: {
                   id: true,
                   dbdate: true,
@@ -542,10 +535,10 @@ const getAllPatients = async (req, res) => {
     res.json({
       data: formattedPatients,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: currentPage,
+        limit: pageSize,
         total,
-        pages: Math.ceil(total / parseInt(limit)),
+        pages: Math.ceil(total / pageSize),
       },
       filters: {
         available_filters: [
@@ -568,12 +561,16 @@ const getAllPatients = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get patients error:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch patients", details: error.message });
+    if (error instanceof RequestError) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Get patients error:', error);
+    return res.status(500).json({ error: 'Failed to fetch patients' });
   }
 };
+
+// Add getAllPatients to your EXISTING module.exports in patientController.js.
+
 
 // Get single patient with full medical details
 function parsePositiveInt(value, fieldName) {

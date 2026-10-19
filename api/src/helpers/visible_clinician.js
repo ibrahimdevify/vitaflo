@@ -1,39 +1,44 @@
-const { PrismaClient } = require("@prisma/client");
+const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const getVisibleClinicianIds = async (user) => {
-  // System admin: sees every clinician (ut_id_fk = 3) in the system,
-  // plus any clinician-admins (ut_id_fk = 6) that patients are
-  // assigned to directly.
-  if (user.ut_id_fk === 2) {
-    const allClinicians = await prisma.dc_users.findMany({
-      where: {
-        ut_id_fk: { in: [3, 6] }, // 👈 FIXED: clinicians + clinician admins
-        us_id_fk: 1,
-      },
+/**
+ * Returns clinician user IDs visible to the authenticated user.
+ * Roles: 2 = system admin, 3 = clinician, 6 = clinician admin.
+ *
+ * IMPORTANT: Patient visibility must still be enforced by the caller.
+ * No inferred clinic/account-wide permissions are granted here.
+ */
+async function getVisibleClinicianIds(user) {
+  const roleId = Number(user?.ut_id_fk);
+  const userId = Number(user?.user_id);
+
+  if (!Number.isSafeInteger(userId) || userId <= 0) return [];
+
+  // Keep backward compatibility for any other callers of this helper.
+  // The patient-list controller does NOT use this list for system admins;
+  // admins must see unassigned patients too.
+  if (roleId === 2) {
+    const clinicians = await prisma.dc_users.findMany({
+      where: { ut_id_fk: { in: [3, 6] } },
       select: { user_id: true },
     });
-
-    return allClinicians.map((c) => c.user_id);
+    return [...new Set(clinicians.map((c) => c.user_id))];
   }
 
-  // Plain clinician: only their own patients.
-  if (user.ut_id_fk === 3) {
-    return [user.user_id];
-  }
+  if (roleId === 3) return [userId];
 
-  // Clinician admin: themselves + every clinician they manage.
-  if (user.ut_id_fk === 6) {
-    const managed = await prisma.dc_clinician_assignments.findMany({
-      where: { clinician_admin_id: user.user_id },
+  if (roleId === 6) {
+    const links = await prisma.dc_clinician_assignments.findMany({
+      where: { clinician_admin_id: userId },
       select: { clinician_id: true },
     });
 
-    const managedIds = managed.map((m) => m.clinician_id);
-    return [user.user_id, ...managedIds];
+    // Don't exclude managed clinicians merely because their user status changed;
+    // patients they were responsible for might be historical research patients.
+    return [...new Set([userId, ...links.map((link) => link.clinician_id)])];
   }
 
   return [];
-};
+}
 
 module.exports = { getVisibleClinicianIds };
