@@ -660,77 +660,70 @@ const calcLungAge = (fev1, heightCm, gender) => {
   }
   return parseFloat(Math.max(15, Math.min(95, lungAge)).toFixed(1));
 };
-// Replace your existing getResults controller function with this function.
-// Uses your existing `prisma`, `calcLungAge`, and `buildBestSpirometry` helpers.
-// Existing route and response keys are unchanged.
-
+// Replace only the getResults function in your existing controller.
+// Uses the existing prisma, calcLungAge, and buildBestSpirometry in that controller.
+// Keeps the same route, URL params, and response keys.
 const getResults = async (req, res) => {
   try {
     const { patient_id, start_date, end_date } = req.params;
     const patientId = Number(patient_id);
-
     if (!Number.isSafeInteger(patientId) || patientId <= 0) {
       return res.status(400).json({ error: 'Invalid patient_id' });
     }
 
-    // Accept both YYYY-MM-DD and the timestamps your current app sends.
-    const parseRouteDate = (input) => {
-      try {
-        const raw = decodeURIComponent(String(input ?? '')).trim().replace(' ', 'T');
-        if (!raw) return null;
-        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
-        const date = new Date(isDateOnly ? `${raw}T00:00:00.000Z` : raw);
-        if (Number.isNaN(date.getTime())) return null;
-        if (isDateOnly && date.toISOString().slice(0, 10) !== raw) return null;
-        return { raw, date, isDateOnly };
-      } catch {
-        return null;
-      }
+    const parseDate = (input) => {
+      let raw;
+      try { raw = decodeURIComponent(String(input || '')).trim().replace(' ', 'T'); }
+      catch { return null; }
+      if (!raw) return null;
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+      const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+      const date = new Date(dateOnly ? `${raw}T00:00:00.000Z` : (hasZone ? raw : `${raw}Z`));
+      if (Number.isNaN(date.getTime())) return null;
+      if (dateOnly && date.toISOString().slice(0, 10) !== raw) return null;
+      const zone = hasZone ? (raw.match(/(Z|[+-]\d{2}:?\d{2})$/i)?.[1] || 'Z') : 'Z';
+      return { date, dateOnly, day: raw.slice(0, 10), zone };
     };
-
-    const from = parseRouteDate(start_date);
-    const to = parseRouteDate(end_date);
-    if (!from || !to) {
+    const startInput = parseDate(start_date);
+    const endInput = parseDate(end_date);
+    if (!startInput || !endInput) {
       return res.status(400).json({ error: 'Invalid date format' });
     }
 
-    let start = from.date;
-    let end = to.date;
-
-    // A single-date picker may send the same timestamp twice. In that case,
-    // query the WHOLE calendar day, not 24 hours after the supplied time.
-    // Date-only end_date also means through the end of that day.
-    // Dates are interpreted as UTC unless the client provides an offset.
-    const sameInstant = start.getTime() === end.getTime();
-    if (sameInstant) {
-      const selectedDay = from.raw.slice(0, 10);
-      start = new Date(`${selectedDay}T00:00:00.000Z`);
-      end = new Date(`${selectedDay}T23:59:59.999Z`);
-    } else if (to.isDateOnly) {
-      end = new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1);
+    let start = startInput.date;
+    let end = endInput.date;
+    // Date picker: one date means the full calendar day (UTC unless an offset
+    // was supplied in the API parameters). Keep the same endpoint parameters.
+    if (start.getTime() === end.getTime()) {
+      start = new Date(`${startInput.day}T00:00:00.000${startInput.zone}`);
+      end = new Date(start.getTime() + 86400000 - 1);
+    } else if (endInput.dateOnly) {
+      end = new Date(end.getTime() + 86400000 - 1);
     }
-
     if (start > end) {
-      return res.status(400).json({ error: 'start_date must be before or equal to end_date' });
+      return res.status(400).json({ error: 'start_date must be <= end_date' });
     }
 
-    const patient = await prisma.dc_users.findFirst({
+    const patient = await prisma.dc_users.findUnique({
       where: { user_id: patientId },
       include: { patient_details: { include: { attributes: true } } },
     });
-    if (!patient) {
-      return res.status(404).json({ error: 'Patient not found' });
-    }
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
     const attr = patient.patient_details?.attributes;
+    const inRange = (value) => {
+      const t = new Date(value).getTime();
+      return Number.isFinite(t) && t >= start.getTime() && t <= end.getTime();
+    };
 
-    // Every observation in the selected date range, newest first.
-    // NOTE: if no matching observation exists, verify how the app saves
-    // portal_observation.dbdate before altering this patient-specific scope.
-    // Within each observation, every blow is also newest first.
+    // KEY FIX: match observations where EITHER the parent observation date
+    // OR the actual spirometry test date falls in the selected range.
     const observations = await prisma.portal_observation.findMany({
       where: {
         user_id: patientId,
-        dbdate: { gte: start, lte: end },
+        OR: [
+          { dbdate: { gte: start, lte: end } },
+          { spirometries: { some: { dbdate: { gte: start, lte: end } } } },
+        ],
       },
       include: {
         spirometries: {
@@ -744,57 +737,62 @@ const getResults = async (req, res) => {
       orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
     });
 
+    const sessions = observations.map((obs) => {
+      // Prefer test timestamps. For legacy rows where only observation date
+      // represents the session date, keep the tests attached to that session.
+      const matchedTests = obs.spirometries.filter((sp) => inRange(sp.dbdate));
+      const tests = matchedTests.length ? matchedTests : (inRange(obs.dbdate) ? obs.spirometries : []);
+      tests.sort((a, b) => new Date(b.dbdate) - new Date(a.dbdate) || b.id - a.id);
+      return { obs, tests };
+    }).filter((s) => s.tests.length > 0).sort((a, b) => {
+      const aTime = new Date(a.tests[0]?.dbdate || a.obs.dbdate).getTime();
+      const bTime = new Date(b.tests[0]?.dbdate || b.obs.dbdate).getTime();
+      return bTime - aTime || b.obs.id - a.obs.id;
+    });
+
+    // No personal/clinical values are logged. Only counts and date boundaries.
+    console.info('[VitalFlo getResults]', {
+      patientId,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      observations: observations.length,
+      sessions: sessions.length,
+      tests: sessions.reduce((total, s) => total + s.tests.length, 0),
+    });
+
     const spirometries = {};
     const bestSpirometries = {};
     const lungAges = {};
+    const best = {
+      fev1: { val: 0, idx: -1 },
+      fvc: { val: 0, idx: -1 },
+      pefr: { val: 0, idx: -1 },
+      fef2575: { val: 0, idx: -1 },
+      fev6: { val: 0, idx: -1 },
+    };
 
-    let bestFev1 = { val: 0, idx: -1 };
-    let bestFvc = { val: 0, idx: -1 };
-    let bestPefr = { val: 0, idx: -1 };
-    let bestFef2575 = { val: 0, idx: -1 };
-    let bestFev6 = { val: 0, idx: -1 };
-
-    observations.forEach((obs, obsIdx) => {
+    sessions.forEach(({ obs, tests }, sessionIdx) => {
       const sessionData = {};
-
-      obs.spirometries.forEach((sp) => {
-        // FIX: obs.dbdate was identical for every blow within this session.
-        // Preserve ISO-date keys expected by the existing frontend, while
-        // avoiding collisions even if MySQL timestamps have second precision.
-        // Newest blows come first; older collisions move back 1 ms.
+      tests.forEach((sp) => {
+        // Each blow needs its own key; obs.dbdate is shared by all blows.
         let keyTime = new Date(sp.dbdate || obs.dbdate).getTime();
         let blowKey = new Date(keyTime).toISOString();
         while (Object.prototype.hasOwnProperty.call(sessionData, blowKey)) {
-          keyTime -= 1;
-          blowKey = new Date(keyTime).toISOString();
+          blowKey = new Date(--keyTime).toISOString();
         }
-
-        const fev1FvcRatio =
-          sp.fev1 != null && sp.fvc != null && sp.fvc !== 0
-            ? Number(((sp.fev1 / sp.fvc) * 100).toFixed(1))
-            : null;
 
         const expiratory = [];
         const inspiratory = [];
+        (sp.flows || []).forEach((f, i) => {
+          const point = {
+            time: Number(f.time) > 0 ? Number(f.time) : Number(((i / (sp.flows.length || 1)) * 2).toFixed(4)),
+            flow: Number(f.value ?? 0),
+            volume: Number(f.volume ?? 0),
+          };
+          if (point.flow >= 0) expiratory.push(point);
+          else inspiratory.push(point);
+        });
 
-        if (sp.flows?.length) {
-          const totalFlows = sp.flows.length;
-          const fallbackFet = 2.0; // The provided Prisma schema has no sp.fet.
-          sp.flows.forEach((f, i) => {
-            const timeVal =
-              f.time > 0
-                ? Number(f.time)
-                : Number(((i / totalFlows) * fallbackFet).toFixed(4));
-            const flowVal = Number(f.value ?? 0); // portal_flow.value
-            const volVal = Number(f.volume ?? 0);
-            const point = { time: timeVal, flow: flowVal, volume: volVal };
-            if (flowVal >= 0) expiratory.push(point);
-            else inspiratory.push(point);
-          });
-        }
-
-        // Kept as in your original controller to avoid changing the contract.
-        // These are placeholders, not clinically valid GLI predictions.
         const predicted = {
           gli: {
             value: sp.fev1 ? Number((sp.fev1 / 0.85).toFixed(2)) : null,
@@ -802,95 +800,54 @@ const getResults = async (req, res) => {
             zscore: 0.1,
           },
         };
-
         sessionData[blowKey] = {
           fev1: { observed: sp.fev1, predicted },
-          fvc: {
-            observed: sp.fvc,
-            predicted: {
-              gli: {
-                value: sp.fvc ? Number((sp.fvc / 0.85).toFixed(2)) : null,
-                lln: sp.fvc ? Number((sp.fvc * 0.8).toFixed(2)) : null,
-              },
-            },
-          },
+          fvc: { observed: sp.fvc, predicted: { gli: {
+            value: sp.fvc ? Number((sp.fvc / 0.85).toFixed(2)) : null,
+            lln: sp.fvc ? Number((sp.fvc * 0.8).toFixed(2)) : null,
+          } } },
           fev1fvc: {
-            observed: fev1FvcRatio,
+            observed: sp.fev1 != null && sp.fvc ? Number((sp.fev1 / sp.fvc * 100).toFixed(1)) : null,
             predicted: { gli: { value: 0.83, lln: 0.7 } },
           },
-          fef2575: {
-            observed: sp.fef2575,
-            predicted: {
-              gli: {
-                value: sp.fef2575 ? Number((sp.fef2575 / 0.85).toFixed(2)) : null,
-              },
-            },
-          },
-          fev6: {
-            observed: sp.fev6,
-            predicted: {
-              gli: { value: sp.fev6 ? Number((sp.fev6 / 0.85).toFixed(2)) : null },
-            },
-          },
-          pefr: {
-            observed: sp.pefr,
-            predicted: {
-              gli: { value: sp.pefr ? Number((sp.pefr / 0.85).toFixed(2)) : null },
-            },
-          },
+          fef2575: { observed: sp.fef2575, predicted: { gli: {
+            value: sp.fef2575 ? Number((sp.fef2575 / 0.85).toFixed(2)) : null,
+          } } },
+          fev6: { observed: sp.fev6, predicted: { gli: {
+            value: sp.fev6 ? Number((sp.fev6 / 0.85).toFixed(2)) : null,
+          } } },
+          pefr: { observed: sp.pefr, predicted: { gli: {
+            value: sp.pefr ? Number((sp.pefr / 0.85).toFixed(2)) : null,
+          } } },
           fet: { observed: null, predicted: { gli: { value: null } } },
           id: sp.id,
           flows: { expiratory, inspiratory },
-          qualityMessage:
-            sp.quality_message != null ? String(sp.quality_message) : 'Good Blow!',
+          qualityMessage: sp.quality_message != null ? String(sp.quality_message) : 'Good Blow!',
           fev1Acceptability: sp.fev1_acceptability ?? null,
           fvcAcceptability: sp.fvc_acceptability ?? null,
         };
 
-        if (sp.fev1 != null && sp.fev1 > bestFev1.val) {
-          bestFev1 = { val: sp.fev1, idx: obsIdx };
-        }
-        if (sp.fvc != null && sp.fvc > bestFvc.val) {
-          bestFvc = { val: sp.fvc, idx: obsIdx };
-        }
-        if (sp.pefr != null && sp.pefr > bestPefr.val) {
-          bestPefr = { val: sp.pefr, idx: obsIdx };
-        }
-        if (sp.fef2575 != null && sp.fef2575 > bestFef2575.val) {
-          bestFef2575 = { val: sp.fef2575, idx: obsIdx };
-        }
-        if (sp.fev6 != null && sp.fev6 > bestFev6.val) {
-          bestFev6 = { val: sp.fev6, idx: obsIdx };
+        for (const field of Object.keys(best)) {
+          const value = sp[field];
+          if (value != null && value > best[field].val) {
+            best[field] = { val: value, idx: sessionIdx };
+          }
         }
       });
 
-      // Because tests are newest-first, first blow is the newest in session.
-      const latestBlow = Object.values(sessionData)[0];
-      const fev1Val = latestBlow?.fev1?.observed;
-      if (fev1Val != null && fev1Val > 0) {
-        const patientHeight = attr?.height || 170;
-        const patientGender = attr?.gender || 'M';
-        lungAges[obsIdx] = calcLungAge(fev1Val, patientHeight, patientGender);
-      }
-
-      if (Object.keys(sessionData).length > 0) {
-        spirometries[obsIdx] = sessionData;
+      spirometries[sessionIdx] = sessionData;
+      const newestTest = tests[0];
+      if (newestTest.fev1 != null && newestTest.fev1 > 0) {
+        lungAges[sessionIdx] = calcLungAge(newestTest.fev1, attr?.height || 170, attr?.gender || 'M');
       }
     });
 
-    // Preserve existing best_spirometries response semantics (max across
-    // the requested range). Best is not necessarily the newest reading.
-    Object.keys(spirometries).forEach((index) => {
-      bestSpirometries[index] = buildBestSpirometry(
-        bestFev1,
-        bestFvc,
-        bestPefr,
-        bestFef2575,
-        bestFev6,
+    for (const sessionIdx of Object.keys(spirometries)) {
+      bestSpirometries[sessionIdx] = buildBestSpirometry(
+        best.fev1, best.fvc, best.pefr, best.fef2575, best.fev6,
       );
-    });
+    }
 
-    // Do not serve a cached GET when a patient has just taken a new test.
     res.set('Cache-Control', 'no-store');
     return res.json({
       spirometries,
@@ -898,7 +855,7 @@ const getResults = async (req, res) => {
       lung_ages: lungAges,
     });
   } catch (error) {
-    console.error('Get results error:', error);
+    console.error('[VitalFlo getResults error]', error);
     return res.status(500).json({ error: 'Failed to fetch results' });
   }
 };
