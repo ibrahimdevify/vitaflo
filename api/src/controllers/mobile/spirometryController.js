@@ -660,7 +660,12 @@ const calcLungAge = (fev1, heightCm, gender) => {
   }
   return parseFloat(Math.max(15, Math.min(95, lungAge)).toFixed(1));
 };
-
+/**
+ * Replace ONLY the existing getResults controller function with this function.
+ * Keep the existing route, prisma instance, calcLungAge, and module.exports.
+ * Uses src/helpers/spirometry.js from a controller in src/controllers/.
+ * Returns only the most recently recorded blow within the requested date range.
+ */
 const getResults = async (req, res) => {
   const {
     normalizeSpirometry,
@@ -670,567 +675,266 @@ const getResults = async (req, res) => {
   } = require('../../helpers/spirometry');
 
   try {
-    const { patient_id, start_date, end_date } = req.params;
-    const patientId = Number(patient_id);
-
+    const patientId = Number(req.params.patient_id);
     if (!Number.isSafeInteger(patientId) || patientId <= 0) {
       return res.status(400).json({ error: 'Invalid patient ID' });
     }
 
-    // Parse dates from the existing API route.
-    const decode = (value) => {
-      if (typeof value !== 'string' || !value.trim()) return '';
+    const parseBoundary = (raw, isEnd) => {
+      if (typeof raw !== 'string') return null;
+      let text;
       try {
-        return decodeURIComponent(value).trim().replace(' ', 'T');
+        text = decodeURIComponent(raw).trim().replace(' ', 'T');
       } catch {
-        return '';
+        return null;
       }
+
+      // Date-only parameters: UTC calendar days, with an EXCLUSIVE
+      // upper bound at the next midnight so the full final day is included.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const date = new Date(`${text}T00:00:00.000Z`);
+        if (
+          Number.isNaN(date.getTime()) ||
+          date.toISOString().slice(0, 10) !== text
+        ) return null;
+        if (isEnd) date.setUTCDate(date.getUTCDate() + 1);
+        return { date, exclusive: isEnd };
+      }
+
+      // Keep support for exact timestamps supplied by older clients.
+      // A timezone-less timestamp is interpreted as UTC.
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return null;
+      const withZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)
+        ? text
+        : `${text}Z`;
+      const date = new Date(withZone);
+      return Number.isNaN(date.getTime())
+        ? null
+        : { date, exclusive: false };
     };
 
-    const from = decode(start_date);
-    const to = decode(end_date);
-    const dayRegex = /^\d{4}-\d{2}-\d{2}$/;
-    const startDay = from.slice(0, 10);
-    const endDay = to.slice(0, 10);
+    const from = parseBoundary(req.params.start_date, false);
+    const to = parseBoundary(req.params.end_date, true);
 
-    const validDay = (day) => {
-      if (!dayRegex.test(day)) return false;
-      const parsed = new Date(`${day}T00:00:00.000Z`);
-      return (
-        !Number.isNaN(parsed.getTime()) &&
-        parsed.toISOString().slice(0, 10) === day
-      );
-    };
-
-    if (!validDay(startDay) || !validDay(endDay)) {
+    if (!from || !to) {
       return res.status(400).json({ error: 'Invalid date format' });
     }
+    if (from.date > to.date || (to.exclusive && from.date >= to.date)) {
+      return res.status(400).json({ error: 'Invalid date range' });
+    }
 
-    const offset = (text) =>
-      /(?:Z|[+-]\d{2}:?\d{2})$/i.exec(text)?.[0] || 'Z';
-
-    const parseInput = (text) => {
-      if (dayRegex.test(text)) {
-        return new Date(`${text}T00:00:00.000Z`);
-      }
-      return new Date(
-        /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`
-      );
+    const range = {
+      gte: from.date,
+      [to.exclusive ? 'lt' : 'lte']: to.date,
     };
 
-    let start = parseInput(from);
-    let end = parseInput(to);
-
-    if (
-      Number.isNaN(start.getTime()) ||
-      Number.isNaN(end.getTime())
-    ) {
-      return res.status(400).json({ error: 'Invalid date format' });
-    }
-
-    // Include the entire selected day.
-    // Date-only values use UTC; explicit offsets are respected
-    // for same-day requests.
-    const atBoundary = (day, time, zone) =>
-      new Date(`${day}T${time}${zone}`);
-
-    if (startDay === endDay) {
-      const zone = offset(from) !== 'Z' ? offset(from) : offset(to);
-      start = atBoundary(startDay, '00:00:00.000', zone);
-      end = atBoundary(endDay, '23:59:59.999', zone);
-    } else {
-      if (dayRegex.test(from)) {
-        start = atBoundary(startDay, '00:00:00.000', 'Z');
-      }
-      if (dayRegex.test(to)) {
-        end = atBoundary(endDay, '23:59:59.999', 'Z');
-      }
-    }
-
-    if (start > end) {
-      return res.status(400).json({
-        error: 'start_date must not be after end_date',
-      });
-    }
-
-    // Fetch patient demographics.
+    // Existing patient profile relationship is used for GLI demographics.
     const patient = await prisma.dc_users.findUnique({
       where: { user_id: patientId },
       include: {
-        patient_details: {
-          include: { attributes: true },
-        },
+        patient_details: { include: { attributes: true } },
+        user_details: true,
       },
     });
-
     if (!patient?.patient_details) {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
-    const details = patient.patient_details;
-    const attrs = details.attributes || {};
-
-    // Find observations by observation date OR actual test date.
-    const dateRange = { gte: start, lte: end };
-
-    const observations = await prisma.portal_observation.findMany({
+    // CRITICAL: Filter by the actual test's dbdate, not the parent
+    // observation's dbdate. Return ONE newest blow, regardless of how many
+    // separate observations exist on this day.
+    const test = await prisma.portal_spirometry.findFirst({
       where: {
-        user_id: patientId,
-        OR: [
-          { dbdate: dateRange },
-          {
-            spirometries: {
-              some: { dbdate: dateRange },
-            },
-          },
-        ],
-      },
-      include: {
-        spirometries: {
-          orderBy: [
-            { dbdate: 'desc' },
-            { id: 'desc' },
-          ],
-          include: {
-            flows: {
-              orderBy: { id: 'asc' },
-            },
-          },
-        },
+        dbdate: range,
+        observation: { is: { user_id: patientId } },
       },
       orderBy: [
         { dbdate: 'desc' },
         { id: 'desc' },
       ],
-    });
-
-    const inRange = (value) => {
-      const ms = value ? new Date(value).getTime() : NaN;
-      return (
-        Number.isFinite(ms) &&
-        ms >= start.getTime() &&
-        ms <= end.getTime()
-      );
-    };
-
-    // Keep only tests within the requested date range.
-    // Sort latest first.
-    const sessions = observations
-      .map((observation) => {
-        const tests = (observation.spirometries || [])
-          .filter((sp) => inRange(sp.dbdate || observation.dbdate))
-          .sort(
-            (a, b) =>
-              new Date(b.dbdate) - new Date(a.dbdate) ||
-              b.id - a.id
-          );
-
-        return {
-          observation,
-          tests,
-          latest: tests.length
-            ? new Date(tests[0].dbdate).getTime()
-            : -Infinity,
-        };
-      })
-      .filter(({ tests }) => tests.length > 0)
-      .sort(
-        (a, b) =>
-          b.latest - a.latest ||
-          b.observation.id - a.observation.id
-      );
-
-    // Existing response structure.
-    const spirometries = {};
-    const bestSpirometries = {};
-    const lungAges = {};
-
-    const asNumber = (value, precision = 2) => {
-      if (value == null || value === '') return null;
-      const n = Number(value);
-      return Number.isFinite(n)
-        ? Number(n.toFixed(precision))
-        : null;
-    };
-
-    const unavailable = {
-      predicted: null,
-      lln: null,
-      zScore: null,
-    };
-
-    // Map GLI helper output to the existing response format.
-    const fullGli = (calculated) => ({
-      gli: {
-        value: asNumber(calculated?.predicted),
-        lln: asNumber(calculated?.lln),
-        zscore: asNumber(calculated?.zScore),
+      include: {
+        observation: { select: { id: true, user_id: true, height: true } },
+        flows: { orderBy: { id: 'asc' } },
       },
-    });
-
-    const runGli = (fn, name) => {
-      try {
-        return fn();
-      } catch (error) {
-        console.error(
-          `[VitalFlo GLI2012] ${name}:`,
-          error.message
-        );
-        return unavailable;
-      }
-    };
-
-    // Calculate actual patient age at the time of the test.
-    const ageAt = (birthValue, testDate) => {
-      if (!birthValue) return null;
-
-      const birth = new Date(birthValue);
-      const test = new Date(testDate);
-
-      if (
-        Number.isNaN(birth.getTime()) ||
-        Number.isNaN(test.getTime()) ||
-        birth > test
-      ) {
-        return null;
-      }
-
-      let age =
-        test.getUTCFullYear() - birth.getUTCFullYear();
-
-      if (
-        test.getUTCMonth() < birth.getUTCMonth() ||
-        (
-          test.getUTCMonth() === birth.getUTCMonth() &&
-          test.getUTCDate() < birth.getUTCDate()
-        )
-      ) {
-        age--;
-      }
-
-      return age > 0 ? age : null;
-    };
-
-    // Prepare demographics using supplied spirometry helper.
-    const buildDemo = (observation, testDate) => {
-      const height = [
-        observation.height,
-        attrs.height,
-        details.height,
-      ]
-        .map(Number)
-        .find((v) => Number.isFinite(v) && v > 0);
-
-      const age = ageAt(attrs.dob, testDate);
-      const gender = String(attrs.gender || '').trim();
-
-      // Do not silently use fabricated demographics for
-      // clinical predictions.
-      if (!age || !height || !/^(m|f)/i.test(gender)) {
-        return null;
-      }
-
-      return toGliDemographics({
-        age,
-        lookup_table: attrs.lookup_table,
-        attributes: {
-          height,
-          gender,
-          lookup_table: attrs.lookup_table,
-        },
-        patient_details: { height },
-      });
-    };
-
-    const predictedFor = (value, demo, variable) => {
-      if (!demo || value == null || value <= 0) {
-        return fullGli(unavailable);
-      }
-
-      return fullGli(
-        runGli(
-          () => calculatePredictedValues(value, demo, variable),
-          variable
-        )
-      );
-    };
-
-    const ratioPredicted = (ratio, demo) => {
-      if (!demo || ratio == null || ratio <= 0) {
-        return fullGli(unavailable);
-      }
-
-      return fullGli(
-        runGli(
-          () => calculateFev1FvcPredictedValues(ratio, demo),
-          'FEV1FVC'
-        )
-      );
-    };
-
-    // GLI-2012 FEV1 prediction must not be substituted
-    // for FEV6 or PEFR.
-    const noGli = () => fullGli(unavailable);
-
-    sessions.forEach(({ observation, tests }, sessionIndex) => {
-      const sessionData = {};
-      const usedKeys = new Set();
-      const normalizedTests = [];
-
-      tests.forEach((raw) => {
-        // Normalize the stored measurements.
-        const sp = normalizeSpirometry(raw);
-        const testDate = raw.dbdate || observation.dbdate;
-        const demo = buildDemo(observation, testDate);
-
-        normalizedTests.push({ sp, demo });
-
-        // Unique timestamp key for every blow.
-        let ms = new Date(testDate).getTime();
-
-        if (!Number.isFinite(ms)) {
-          ms = new Date(observation.dbdate).getTime();
-        }
-
-        let blowKey = new Date(ms).toISOString();
-
-        while (usedKeys.has(blowKey)) {
-          blowKey = new Date(++ms).toISOString();
-        }
-
-        usedKeys.add(blowKey);
-
-        // Observed FEV1/FVC is returned as a percentage,
-        // preserving the mobile application's existing format.
-        const ratio =
-          sp.fev1 != null &&
-          sp.fvc != null &&
-          sp.fvc > 0
-            ? sp.fev1 / sp.fvc
-            : null;
-
-        const ratioPercent =
-          ratio == null ? null : asNumber(ratio * 100, 1);
-
-        // Build Flow/Volume points.
-        const expiratory = [];
-        const inspiratory = [];
-        const flows = raw.flows || [];
-
-        const timeFallback = 2.0;
-
-        flows.forEach((f, i) => {
-          const point = {
-            time: Number(f.time) > 0
-              ? Number(f.time)
-              : asNumber(
-                  (i / Math.max(1, flows.length)) *
-                    timeFallback,
-                  4
-                ),
-            flow: Number(f.value ?? 0),
-            volume: Number(f.volume ?? 0),
-          };
-
-          if (point.flow >= 0) {
-            expiratory.push(point);
-          } else {
-            inspiratory.push(point);
-          }
-        });
-
-        // Same response keys, now with GLI-2012 calculations.
-        sessionData[blowKey] = {
-          fev1: {
-            observed: sp.fev1,
-            predicted: predictedFor(
-              sp.fev1,
-              demo,
-              'FEV1'
-            ),
-          },
-
-          fvc: {
-            observed: sp.fvc,
-            predicted: predictedFor(
-              sp.fvc,
-              demo,
-              'FVC'
-            ),
-          },
-
-          fev1fvc: {
-            observed: ratioPercent,
-            predicted: ratioPredicted(ratio, demo),
-          },
-
-          fef2575: {
-            observed: sp.fef2575,
-            predicted: predictedFor(
-              sp.fef2575,
-              demo,
-              'FEF2575'
-            ),
-          },
-
-          fev6: {
-            observed: sp.fev6,
-            predicted: noGli(),
-          },
-
-          pefr: {
-            observed: sp.pefr,
-            predicted: noGli(),
-          },
-
-          fet: {
-            observed: null,
-            predicted: {
-              gli: { value: null },
-            },
-          },
-
-          id: raw.id,
-
-          flows: {
-            expiratory,
-            inspiratory,
-          },
-
-          qualityMessage:
-            raw.quality_message != null
-              ? String(raw.quality_message)
-              : 'Good Blow!',
-
-          fev1Acceptability:
-            raw.fev1_acceptability ?? null,
-
-          fvcAcceptability:
-            raw.fvc_acceptability ?? null,
-        };
-      });
-
-      if (!normalizedTests.length) return;
-
-      spirometries[sessionIndex] = sessionData;
-
-      // Calculate best values for THIS observation.
-      const best = (field) => {
-        const values = normalizedTests.map(
-          ({ sp }) => sp[field]
-        );
-
-        const valid = values.filter(
-          (n) => n != null && Number.isFinite(n)
-        );
-
-        return valid.length ? Math.max(...valid) : null;
-      };
-
-      const demo = normalizedTests[0].demo;
-
-      const bestFev1 = best('fev1');
-      const bestFvc = best('fvc');
-      const bestPefr = best('pefr');
-      const bestFef2575 = best('fef2575');
-      const bestFev6 = best('fev6');
-
-      // Preserve the best_spirometries field structure.
-      const bestFields = (value, calculated, withLln) => ({
-        observed: value,
-        predicted: {
-          gli: withLln
-            ? {
-                value: calculated.gli.value,
-                lln: calculated.gli.lln,
-              }
-            : {
-                value: calculated.gli.value,
-              },
-        },
-      });
-
-      bestSpirometries[sessionIndex] = {
-        fev1: bestFields(
-          bestFev1,
-          predictedFor(bestFev1, demo, 'FEV1'),
-          true
-        ),
-
-        fvc: bestFields(
-          bestFvc,
-          predictedFor(bestFvc, demo, 'FVC'),
-          true
-        ),
-
-        pefr: bestFields(
-          bestPefr,
-          noGli(),
-          false
-        ),
-
-        fef2575: bestFields(
-          bestFef2575,
-          predictedFor(bestFef2575, demo, 'FEF2575'),
-          false
-        ),
-
-        fev6: bestFields(
-          bestFev6,
-          noGli(),
-          false
-        ),
-      };
-
-      // Keep your existing lung-age calculation.
-      const latest = normalizedTests[0].sp;
-
-      if (latest.fev1 != null && latest.fev1 > 0) {
-        try {
-          const height = [
-            observation.height,
-            attrs.height,
-            details.height,
-          ]
-            .map(Number)
-            .find(
-              (v) => Number.isFinite(v) && v > 0
-            ) || 170;
-
-          const lungAge = calcLungAge(
-            latest.fev1,
-            height,
-            attrs.gender || 'M'
-          );
-
-          if (Number.isFinite(Number(lungAge))) {
-            lungAges[sessionIndex] = lungAge;
-          }
-        } catch (error) {
-          console.error(
-            '[VitalFlo lung age]',
-            error.message
-          );
-        }
-      }
     });
 
     res.setHeader('Cache-Control', 'no-store');
 
+    const emptyResponse = {
+      spirometries: {},
+      best_spirometries: {},
+      lung_ages: {},
+    };
+    if (!test) return res.json(emptyResponse);
+
+    const attrs = patient.patient_details.attributes || {};
+    const details = patient.patient_details;
+    const measurement = normalizeSpirometry(test);
+    const timestamp = test.dbdate.toISOString();
+
+    const finiteOrNull = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? Number(number.toFixed(2)) : null;
+    };
+
+    const ageOnTestDate = (dob, at) => {
+      if (!dob) return null;
+      const birth = new Date(dob);
+      const date = new Date(at);
+      if (Number.isNaN(birth.getTime()) || birth > date) return null;
+      let age = date.getUTCFullYear() - birth.getUTCFullYear();
+      if (
+        date.getUTCMonth() < birth.getUTCMonth() ||
+        (date.getUTCMonth() === birth.getUTCMonth() &&
+          date.getUTCDate() < birth.getUTCDate())
+      ) age -= 1;
+      return age > 0 ? age : null;
+    };
+
+    const age = ageOnTestDate(attrs.dob || patient.user_details?.dob, test.dbdate);
+    const rawHeight = [test.observation?.height, attrs.height, details.height]
+      .map((v) => Number(v))
+      .find((v) => Number.isFinite(v) && v > 0);
+    const heightCm = rawHeight > 0 && rawHeight < 3 ? rawHeight * 100 : rawHeight;
+    const gender = String(attrs.gender || '').trim();
+    const validDemo =
+      age !== null &&
+      Number.isFinite(heightCm) && heightCm > 0 &&
+      /^(male|female|m|f)$/i.test(gender);
+
+    // Never silently invent age/height/sex for medical predictions.
+    const demo = validDemo
+      ? toGliDemographics({
+          age,
+          lookup_table: attrs.lookup_table,
+          attributes: {
+            height: heightCm,
+            gender,
+            lookup_table: attrs.lookup_table,
+          },
+          patient_details: { height: heightCm },
+        })
+      : null;
+
+    const gliUnavailable = () => ({ gli: { value: null, lln: null, zscore: null } });
+    const mapGli = (result) => ({
+      gli: {
+        value: finiteOrNull(result?.predicted),
+        lln: finiteOrNull(result?.lln),
+        zscore: finiteOrNull(result?.zScore),
+      },
+    });
+
+    const predicted = (observed, variable) => {
+      if (!demo || observed == null || observed <= 0) return gliUnavailable();
+      try {
+        return mapGli(calculatePredictedValues(observed, demo, variable));
+      } catch (error) {
+        console.error(`[VitalFlo GLI] ${variable} failed:`, error.message);
+        return gliUnavailable();
+      }
+    };
+
+    const ratio = measurement.fev1 != null && measurement.fvc > 0
+      ? measurement.fev1 / measurement.fvc
+      : null;
+    const ratioPercent = ratio == null ? null : Number((ratio * 100).toFixed(1));
+    let ratioPrediction = gliUnavailable();
+    if (demo && ratio != null && ratio > 0) {
+      try {
+        ratioPrediction = mapGli(calculateFev1FvcPredictedValues(ratio, demo));
+      } catch (error) {
+        console.error('[VitalFlo GLI] FEV1/FVC failed:', error.message);
+      }
+    }
+
+    const expiratory = [];
+    const inspiratory = [];
+    const flows = test.flows || [];
+    flows.forEach((f, index) => {
+      const flow = Number(f.value ?? 0);
+      const point = {
+        time: Number(f.time) > 0
+          ? Number(f.time)
+          : Number(((index / Math.max(1, flows.length)) * 2).toFixed(4)),
+        flow,
+        volume: Number(f.volume ?? 0),
+      };
+      if (flow >= 0) expiratory.push(point);
+      else inspiratory.push(point);
+    });
+
+    const blow = {
+      fev1: {
+        observed: measurement.fev1,
+        predicted: predicted(measurement.fev1, 'FEV1'),
+      },
+      fvc: {
+        observed: measurement.fvc,
+        predicted: predicted(measurement.fvc, 'FVC'),
+      },
+      fev1fvc: { observed: ratioPercent, predicted: ratioPrediction },
+      fef2575: {
+        observed: measurement.fef2575,
+        predicted: predicted(measurement.fef2575, 'FEF2575'),
+      },
+      // The supplied helper incorrectly treats FEV6 and PEFR as FEV1 for
+      // prediction. Keep response fields but do not present those as GLI values.
+      fev6: { observed: measurement.fev6, predicted: gliUnavailable() },
+      pefr: { observed: measurement.pefr, predicted: gliUnavailable() },
+      fet: { observed: null, predicted: { gli: { value: null } } },
+      id: test.id,
+      flows: { expiratory, inspiratory },
+      qualityMessage: test.quality_message == null
+        ? 'Good Blow!'
+        : String(test.quality_message),
+      fev1Acceptability: test.fev1_acceptability ?? null,
+      fvcAcceptability: test.fvc_acceptability ?? null,
+    };
+
+    const bestField = (key, includeLln) => ({
+      observed: blow[key].observed,
+      predicted: {
+        gli: {
+          value: blow[key].predicted.gli.value,
+          ...(includeLln ? { lln: blow[key].predicted.gli.lln } : {}),
+        },
+      },
+    });
+
+    const best = {
+      fev1: bestField('fev1', true),
+      fvc: bestField('fvc', true),
+      pefr: bestField('pefr', false),
+      fef2575: bestField('fef2575', false),
+      fev6: bestField('fev6', false),
+    };
+
+    const lungAges = {};
+    if (
+      measurement.fev1 != null && measurement.fev1 > 0 &&
+      validDemo && typeof calcLungAge === 'function'
+    ) {
+      try {
+        const lungAge = calcLungAge(measurement.fev1, heightCm, gender);
+        if (Number.isFinite(Number(lungAge))) lungAges['0'] = Number(lungAge);
+      } catch (error) {
+        console.error('[VitalFlo] Lung age calculation failed:', error.message);
+      }
+    }
+
+    // Exactly the same nesting and top-level keys as a one-blow Sept response.
     return res.json({
-      spirometries,
-      best_spirometries: bestSpirometries,
+      spirometries: { '0': { [timestamp]: blow } },
+      best_spirometries: { '0': best },
       lung_ages: lungAges,
     });
   } catch (error) {
     console.error('Get results error:', error);
-
-    return res.status(500).json({
-      error: 'Failed to fetch results',
-    });
+    return res.status(500).json({ error: 'Failed to fetch results' });
   }
 };
-
 
 const getDaysOfSpirometry = async (req, res) => {
   try {
