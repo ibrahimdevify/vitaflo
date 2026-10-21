@@ -660,10 +660,15 @@ const calcLungAge = (fev1, heightCm, gender) => {
   }
   return parseFloat(Math.max(15, Math.min(95, lungAge)).toFixed(1));
 };
-// Replace ONLY your existing getResults function with this function.
-// Keep your existing prisma, calcLungAge and buildBestSpirometry imports/helpers,
-// controller exports, middleware, and route unchanged.
+
 const getResults = async (req, res) => {
+  const {
+    normalizeSpirometry,
+    calculatePredictedValues,
+    calculateFev1FvcPredictedValues,
+    toGliDemographics,
+  } = require('../../helpers/spirometry');
+
   try {
     const { patient_id, start_date, end_date } = req.params;
     const patientId = Number(patient_id);
@@ -672,253 +677,546 @@ const getResults = async (req, res) => {
       return res.status(400).json({ error: 'Invalid patient ID' });
     }
 
-    // The existing mobile app sends start_date and end_date as route params.
-    // Treat date-only values as full calendar days; also expand a same-day
-    // range sent at midnight, so later recordings are not accidentally hidden.
-    const normalizeDate = (value) => {
-      if (typeof value !== 'string' || !value.trim()) return null;
+    // Parse dates from the existing API route.
+    const decode = (value) => {
+      if (typeof value !== 'string' || !value.trim()) return '';
       try {
         return decodeURIComponent(value).trim().replace(' ', 'T');
       } catch {
-        return null;
+        return '';
       }
     };
 
-    const startText = normalizeDate(start_date);
-    const endText = normalizeDate(end_date);
-    if (!startText || !endText) {
+    const from = decode(start_date);
+    const to = decode(end_date);
+    const dayRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const startDay = from.slice(0, 10);
+    const endDay = to.slice(0, 10);
+
+    const validDay = (day) => {
+      if (!dayRegex.test(day)) return false;
+      const parsed = new Date(`${day}T00:00:00.000Z`);
+      return (
+        !Number.isNaN(parsed.getTime()) &&
+        parsed.toISOString().slice(0, 10) === day
+      );
+    };
+
+    if (!validDay(startDay) || !validDay(endDay)) {
       return res.status(400).json({ error: 'Invalid date format' });
     }
 
-    const datePartPattern = /^\d{4}-\d{2}-\d{2}$/;
-    const startDay = startText.slice(0, 10);
-    const endDay = endText.slice(0, 10);
-    if (!datePartPattern.test(startDay) || !datePartPattern.test(endDay)) {
-      return res.status(400).json({ error: 'Invalid date format' });
-    }
-
-    // Use an explicit offset when the mobile app sends one, otherwise UTC.
-    // For example, +05:00 correctly represents the device's local day.
-    const tzSuffix = (text) =>
+    const offset = (text) =>
       /(?:Z|[+-]\d{2}:?\d{2})$/i.exec(text)?.[0] || 'Z';
-    const parseDate = (text) => {
-      if (datePartPattern.test(text)) return new Date(`${text}T00:00:00.000Z`);
-      const hasExplicitTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
-      return new Date(hasExplicitTimezone ? text : `${text}Z`);
-    };
-    const dayBoundary = (day, atEnd, timezone) =>
-      new Date(`${day}T${atEnd ? '23:59:59.999' : '00:00:00.000'}${timezone}`);
 
-    let start = parseDate(startText);
-    let end = parseDate(endText);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    const parseInput = (text) => {
+      if (dayRegex.test(text)) {
+        return new Date(`${text}T00:00:00.000Z`);
+      }
+      return new Date(
+        /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`
+      );
+    };
+
+    let start = parseInput(from);
+    let end = parseInput(to);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime())
+    ) {
       return res.status(400).json({ error: 'Invalid date format' });
     }
 
-    // Reject nonexistent calendar dates such as 2026-02-30 (Date rolls over).
-    const calendarDateValid = (day) => {
-      const date = new Date(`${day}T00:00:00.000Z`);
-      return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === day;
-    };
-    if (!calendarDateValid(startDay) || !calendarDateValid(endDay)) {
-      return res.status(400).json({ error: 'Invalid calendar date' });
-    }
+    // Include the entire selected day.
+    // Date-only values use UTC; explicit offsets are respected
+    // for same-day requests.
+    const atBoundary = (day, time, zone) =>
+      new Date(`${day}T${time}${zone}`);
 
     if (startDay === endDay) {
-      const timezone = tzSuffix(startText) !== 'Z' ? tzSuffix(startText) : tzSuffix(endText);
-      start = dayBoundary(startDay, false, timezone);
-      end = dayBoundary(endDay, true, timezone);
+      const zone = offset(from) !== 'Z' ? offset(from) : offset(to);
+      start = atBoundary(startDay, '00:00:00.000', zone);
+      end = atBoundary(endDay, '23:59:59.999', zone);
     } else {
-      if (datePartPattern.test(startText)) start = dayBoundary(startDay, false, 'Z');
-      if (datePartPattern.test(endText)) end = dayBoundary(endDay, true, 'Z');
+      if (dayRegex.test(from)) {
+        start = atBoundary(startDay, '00:00:00.000', 'Z');
+      }
+      if (dayRegex.test(to)) {
+        end = atBoundary(endDay, '23:59:59.999', 'Z');
+      }
     }
 
     if (start > end) {
-      return res.status(400).json({ error: 'start_date must not be after end_date' });
+      return res.status(400).json({
+        error: 'start_date must not be after end_date',
+      });
     }
 
+    // Fetch patient demographics.
     const patient = await prisma.dc_users.findUnique({
       where: { user_id: patientId },
-      include: { patient_details: { include: { attributes: true } } },
+      include: {
+        patient_details: {
+          include: { attributes: true },
+        },
+      },
     });
-    if (!patient || !patient.patient_details) {
+
+    if (!patient?.patient_details) {
       return res.status(404).json({ error: 'Patient not found' });
     }
-    const attr = patient.patient_details.attributes;
 
-    // An observation can be older than a newly saved spirometry blow.
-    // Match either date, rather than filtering solely by observation.dbdate.
-    const dateFilter = { gte: start, lte: end };
+    const details = patient.patient_details;
+    const attrs = details.attributes || {};
+
+    // Find observations by observation date OR actual test date.
+    const dateRange = { gte: start, lte: end };
+
     const observations = await prisma.portal_observation.findMany({
       where: {
         user_id: patientId,
         OR: [
-          { dbdate: dateFilter },
-          { spirometries: { some: { dbdate: dateFilter } } },
+          { dbdate: dateRange },
+          {
+            spirometries: {
+              some: { dbdate: dateRange },
+            },
+          },
         ],
       },
       include: {
         spirometries: {
-          orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
+          orderBy: [
+            { dbdate: 'desc' },
+            { id: 'desc' },
+          ],
           include: {
-            flows: { orderBy: { id: 'asc' } },
-            volumes: { orderBy: { time: 'asc' } },
+            flows: {
+              orderBy: { id: 'asc' },
+            },
           },
         },
       },
-      orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
+      orderBy: [
+        { dbdate: 'desc' },
+        { id: 'desc' },
+      ],
     });
 
     const inRange = (value) => {
-      if (!value) return false;
-      const timestamp = new Date(value).getTime();
-      return Number.isFinite(timestamp) && timestamp >= start.getTime() && timestamp <= end.getTime();
+      const ms = value ? new Date(value).getTime() : NaN;
+      return (
+        Number.isFinite(ms) &&
+        ms >= start.getTime() &&
+        ms <= end.getTime()
+      );
     };
 
+    // Keep only tests within the requested date range.
+    // Sort latest first.
     const sessions = observations
-      .map((obs) => {
-        // Prefer the actual test timestamp. Observation date is a fallback
-        // only if the test has no timestamp (legacy imported records).
-        const matchingTests = (obs.spirometries || [])
-          .filter((sp) => inRange(sp.dbdate || obs.dbdate))
-          .sort((a, b) =>
-            new Date(b.dbdate || obs.dbdate) - new Date(a.dbdate || obs.dbdate) || b.id - a.id
+      .map((observation) => {
+        const tests = (observation.spirometries || [])
+          .filter((sp) => inRange(sp.dbdate || observation.dbdate))
+          .sort(
+            (a, b) =>
+              new Date(b.dbdate) - new Date(a.dbdate) ||
+              b.id - a.id
           );
+
         return {
-          obs,
-          tests: matchingTests,
-          latest: Math.max(
-            ...matchingTests.map((sp) => new Date(sp.dbdate || obs.dbdate).getTime()),
-            -Infinity
-          ),
+          observation,
+          tests,
+          latest: tests.length
+            ? new Date(tests[0].dbdate).getTime()
+            : -Infinity,
         };
       })
       .filter(({ tests }) => tests.length > 0)
-      .sort((a, b) => b.latest - a.latest || b.obs.id - a.obs.id);
+      .sort(
+        (a, b) =>
+          b.latest - a.latest ||
+          b.observation.id - a.observation.id
+      );
 
-    // Preserve the existing Android response contract.
+    // Existing response structure.
     const spirometries = {};
     const bestSpirometries = {};
     const lungAges = {};
 
-    sessions.forEach(({ obs, tests }, sessionIdx) => {
+    const asNumber = (value, precision = 2) => {
+      if (value == null || value === '') return null;
+      const n = Number(value);
+      return Number.isFinite(n)
+        ? Number(n.toFixed(precision))
+        : null;
+    };
+
+    const unavailable = {
+      predicted: null,
+      lln: null,
+      zScore: null,
+    };
+
+    // Map GLI helper output to the existing response format.
+    const fullGli = (calculated) => ({
+      gli: {
+        value: asNumber(calculated?.predicted),
+        lln: asNumber(calculated?.lln),
+        zscore: asNumber(calculated?.zScore),
+      },
+    });
+
+    const runGli = (fn, name) => {
+      try {
+        return fn();
+      } catch (error) {
+        console.error(
+          `[VitalFlo GLI2012] ${name}:`,
+          error.message
+        );
+        return unavailable;
+      }
+    };
+
+    // Calculate actual patient age at the time of the test.
+    const ageAt = (birthValue, testDate) => {
+      if (!birthValue) return null;
+
+      const birth = new Date(birthValue);
+      const test = new Date(testDate);
+
+      if (
+        Number.isNaN(birth.getTime()) ||
+        Number.isNaN(test.getTime()) ||
+        birth > test
+      ) {
+        return null;
+      }
+
+      let age =
+        test.getUTCFullYear() - birth.getUTCFullYear();
+
+      if (
+        test.getUTCMonth() < birth.getUTCMonth() ||
+        (
+          test.getUTCMonth() === birth.getUTCMonth() &&
+          test.getUTCDate() < birth.getUTCDate()
+        )
+      ) {
+        age--;
+      }
+
+      return age > 0 ? age : null;
+    };
+
+    // Prepare demographics using supplied spirometry helper.
+    const buildDemo = (observation, testDate) => {
+      const height = [
+        observation.height,
+        attrs.height,
+        details.height,
+      ]
+        .map(Number)
+        .find((v) => Number.isFinite(v) && v > 0);
+
+      const age = ageAt(attrs.dob, testDate);
+      const gender = String(attrs.gender || '').trim();
+
+      // Do not silently use fabricated demographics for
+      // clinical predictions.
+      if (!age || !height || !/^(m|f)/i.test(gender)) {
+        return null;
+      }
+
+      return toGliDemographics({
+        age,
+        lookup_table: attrs.lookup_table,
+        attributes: {
+          height,
+          gender,
+          lookup_table: attrs.lookup_table,
+        },
+        patient_details: { height },
+      });
+    };
+
+    const predictedFor = (value, demo, variable) => {
+      if (!demo || value == null || value <= 0) {
+        return fullGli(unavailable);
+      }
+
+      return fullGli(
+        runGli(
+          () => calculatePredictedValues(value, demo, variable),
+          variable
+        )
+      );
+    };
+
+    const ratioPredicted = (ratio, demo) => {
+      if (!demo || ratio == null || ratio <= 0) {
+        return fullGli(unavailable);
+      }
+
+      return fullGli(
+        runGli(
+          () => calculateFev1FvcPredictedValues(ratio, demo),
+          'FEV1FVC'
+        )
+      );
+    };
+
+    // GLI-2012 FEV1 prediction must not be substituted
+    // for FEV6 or PEFR.
+    const noGli = () => fullGli(unavailable);
+
+    sessions.forEach(({ observation, tests }, sessionIndex) => {
       const sessionData = {};
       const usedKeys = new Set();
-      const best = {
-        fev1: { val: 0, idx: sessionIdx },
-        fvc: { val: 0, idx: sessionIdx },
-        pefr: { val: 0, idx: sessionIdx },
-        fef2575: { val: 0, idx: sessionIdx },
-        fev6: { val: 0, idx: sessionIdx },
-      };
+      const normalizedTests = [];
 
-      tests.forEach((sp) => {
-        // A distinct parseable ISO key for each blow prevents overwriting
-        // multiple tests in the same observation, even with identical times.
-        let ms = new Date(sp.dbdate || obs.dbdate).getTime();
-        if (!Number.isFinite(ms)) ms = new Date(obs.dbdate).getTime();
-        let blowKey = new Date(ms).toISOString();
-        while (usedKeys.has(blowKey)) {
-          ms += 1;
-          blowKey = new Date(ms).toISOString();
+      tests.forEach((raw) => {
+        // Normalize the stored measurements.
+        const sp = normalizeSpirometry(raw);
+        const testDate = raw.dbdate || observation.dbdate;
+        const demo = buildDemo(observation, testDate);
+
+        normalizedTests.push({ sp, demo });
+
+        // Unique timestamp key for every blow.
+        let ms = new Date(testDate).getTime();
+
+        if (!Number.isFinite(ms)) {
+          ms = new Date(observation.dbdate).getTime();
         }
+
+        let blowKey = new Date(ms).toISOString();
+
+        while (usedKeys.has(blowKey)) {
+          blowKey = new Date(++ms).toISOString();
+        }
+
         usedKeys.add(blowKey);
 
-        const fev1FvcRatio =
-          sp.fev1 != null && sp.fvc != null && Number(sp.fvc) !== 0
-            ? Number(((Number(sp.fev1) / Number(sp.fvc)) * 100).toFixed(1))
+        // Observed FEV1/FVC is returned as a percentage,
+        // preserving the mobile application's existing format.
+        const ratio =
+          sp.fev1 != null &&
+          sp.fvc != null &&
+          sp.fvc > 0
+            ? sp.fev1 / sp.fvc
             : null;
 
+        const ratioPercent =
+          ratio == null ? null : asNumber(ratio * 100, 1);
+
+        // Build Flow/Volume points.
         const expiratory = [];
         const inspiratory = [];
-        const flows = sp.flows || [];
-        const totalFlows = flows.length;
-        const fetS = 2.0; // FET is not stored in the supplied Prisma schema.
+        const flows = raw.flows || [];
+
+        const timeFallback = 2.0;
+
         flows.forEach((f, i) => {
-          const timeVal = Number(f.time) > 0
-            ? Number(f.time)
-            : Number(((i / Math.max(1, totalFlows)) * fetS).toFixed(4));
-          const flowVal = Number(f.value ?? 0); // portal_flow.value, not flow
-          const volVal = Number(f.volume ?? 0);
-          const point = { time: timeVal, flow: flowVal, volume: volVal };
-          if (flowVal >= 0) expiratory.push(point);
-          else inspiratory.push(point);
-        });
+          const point = {
+            time: Number(f.time) > 0
+              ? Number(f.time)
+              : asNumber(
+                  (i / Math.max(1, flows.length)) *
+                    timeFallback,
+                  4
+                ),
+            flow: Number(f.value ?? 0),
+            volume: Number(f.volume ?? 0),
+          };
 
-        // Keep legacy prediction fields so the mobile app can still parse the
-        // response. These estimates are placeholders, NOT valid GLI results.
-        const legacyPredicted = (value) => ({
-          gli: {
-            value: value != null ? Number((Number(value) / 0.85).toFixed(2)) : null,
-            lln: value != null ? Number((Number(value) * 0.8).toFixed(2)) : null,
-            zscore: null,
-          },
-        });
-
-        sessionData[blowKey] = {
-          fev1: { observed: sp.fev1, predicted: legacyPredicted(sp.fev1) },
-          fvc: { observed: sp.fvc, predicted: legacyPredicted(sp.fvc) },
-          fev1fvc: {
-            observed: fev1FvcRatio,
-            predicted: { gli: { value: null, lln: null, zscore: null } },
-          },
-          fef2575: { observed: sp.fef2575, predicted: legacyPredicted(sp.fef2575) },
-          fev6: { observed: sp.fev6, predicted: legacyPredicted(sp.fev6) },
-          pefr: { observed: sp.pefr, predicted: legacyPredicted(sp.pefr) },
-          fet: { observed: null, predicted: { gli: { value: null } } },
-          id: sp.id,
-          flows: { expiratory, inspiratory },
-          qualityMessage: sp.quality_message != null ? String(sp.quality_message) : 'Good Blow!',
-          fev1Acceptability: sp.fev1_acceptability ?? null,
-          fvcAcceptability: sp.fvc_acceptability ?? null,
-        };
-
-        // Best measurements must be calculated WITHIN the selected session,
-        // not reused globally for every date.
-        for (const field of Object.keys(best)) {
-          const value = sp[field];
-          if (value != null && Number.isFinite(Number(value)) && Number(value) > best[field].val) {
-            best[field] = { val: Number(value), idx: sessionIdx };
+          if (point.flow >= 0) {
+            expiratory.push(point);
+          } else {
+            inspiratory.push(point);
           }
-        }
+        });
+
+        // Same response keys, now with GLI-2012 calculations.
+        sessionData[blowKey] = {
+          fev1: {
+            observed: sp.fev1,
+            predicted: predictedFor(
+              sp.fev1,
+              demo,
+              'FEV1'
+            ),
+          },
+
+          fvc: {
+            observed: sp.fvc,
+            predicted: predictedFor(
+              sp.fvc,
+              demo,
+              'FVC'
+            ),
+          },
+
+          fev1fvc: {
+            observed: ratioPercent,
+            predicted: ratioPredicted(ratio, demo),
+          },
+
+          fef2575: {
+            observed: sp.fef2575,
+            predicted: predictedFor(
+              sp.fef2575,
+              demo,
+              'FEF2575'
+            ),
+          },
+
+          fev6: {
+            observed: sp.fev6,
+            predicted: noGli(),
+          },
+
+          pefr: {
+            observed: sp.pefr,
+            predicted: noGli(),
+          },
+
+          fet: {
+            observed: null,
+            predicted: {
+              gli: { value: null },
+            },
+          },
+
+          id: raw.id,
+
+          flows: {
+            expiratory,
+            inspiratory,
+          },
+
+          qualityMessage:
+            raw.quality_message != null
+              ? String(raw.quality_message)
+              : 'Good Blow!',
+
+          fev1Acceptability:
+            raw.fev1_acceptability ?? null,
+
+          fvcAcceptability:
+            raw.fvc_acceptability ?? null,
+        };
       });
 
-      if (Object.keys(sessionData).length > 0) {
-        spirometries[sessionIdx] = sessionData;
-        bestSpirometries[sessionIdx] = buildBestSpirometry(
-          best.fev1, best.fvc, best.pefr, best.fef2575, best.fev6
+      if (!normalizedTests.length) return;
+
+      spirometries[sessionIndex] = sessionData;
+
+      // Calculate best values for THIS observation.
+      const best = (field) => {
+        const values = normalizedTests.map(
+          ({ sp }) => sp[field]
         );
 
-        const firstBlow = Object.values(sessionData)[0];
-        const firstFev1 = Number(firstBlow?.fev1?.observed);
-        if (Number.isFinite(firstFev1) && firstFev1 > 0) {
-          lungAges[sessionIdx] = calcLungAge(
-            firstFev1,
-            Number(attr?.height) > 0 ? Number(attr.height) : 170,
-            attr?.gender || 'M'
+        const valid = values.filter(
+          (n) => n != null && Number.isFinite(n)
+        );
+
+        return valid.length ? Math.max(...valid) : null;
+      };
+
+      const demo = normalizedTests[0].demo;
+
+      const bestFev1 = best('fev1');
+      const bestFvc = best('fvc');
+      const bestPefr = best('pefr');
+      const bestFef2575 = best('fef2575');
+      const bestFev6 = best('fev6');
+
+      // Preserve the best_spirometries field structure.
+      const bestFields = (value, calculated, withLln) => ({
+        observed: value,
+        predicted: {
+          gli: withLln
+            ? {
+                value: calculated.gli.value,
+                lln: calculated.gli.lln,
+              }
+            : {
+                value: calculated.gli.value,
+              },
+        },
+      });
+
+      bestSpirometries[sessionIndex] = {
+        fev1: bestFields(
+          bestFev1,
+          predictedFor(bestFev1, demo, 'FEV1'),
+          true
+        ),
+
+        fvc: bestFields(
+          bestFvc,
+          predictedFor(bestFvc, demo, 'FVC'),
+          true
+        ),
+
+        pefr: bestFields(
+          bestPefr,
+          noGli(),
+          false
+        ),
+
+        fef2575: bestFields(
+          bestFef2575,
+          predictedFor(bestFef2575, demo, 'FEF2575'),
+          false
+        ),
+
+        fev6: bestFields(
+          bestFev6,
+          noGli(),
+          false
+        ),
+      };
+
+      // Keep your existing lung-age calculation.
+      const latest = normalizedTests[0].sp;
+
+      if (latest.fev1 != null && latest.fev1 > 0) {
+        try {
+          const height = [
+            observation.height,
+            attrs.height,
+            details.height,
+          ]
+            .map(Number)
+            .find(
+              (v) => Number.isFinite(v) && v > 0
+            ) || 170;
+
+          const lungAge = calcLungAge(
+            latest.fev1,
+            height,
+            attrs.gender || 'M'
+          );
+
+          if (Number.isFinite(Number(lungAge))) {
+            lungAges[sessionIndex] = lungAge;
+          }
+        } catch (error) {
+          console.error(
+            '[VitalFlo lung age]',
+            error.message
           );
         }
       }
     });
 
-    // When no data matches, log the newest linked test dates. This identifies
-    // save/assignment issues without changing what the mobile app receives.
-    if (sessions.length === 0) {
-      const recentTests = await prisma.portal_spirometry.findMany({
-        where: { observation: { is: { user_id: patientId } } },
-        orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
-        take: 5,
-        select: { id: true, dbdate: true, observation_id: true },
-      });
-      console.warn('[VitalFlo getResults] No tests for requested date', {
-        patientId,
-        start: start.toISOString(),
-        end: end.toISOString(),
-        recentLinkedTests: recentTests,
-      });
-    }
-
     res.setHeader('Cache-Control', 'no-store');
+
     return res.json({
       spirometries,
       best_spirometries: bestSpirometries,
@@ -926,9 +1224,13 @@ const getResults = async (req, res) => {
     });
   } catch (error) {
     console.error('Get results error:', error);
-    return res.status(500).json({ error: 'Failed to fetch results' });
+
+    return res.status(500).json({
+      error: 'Failed to fetch results',
+    });
   }
 };
+
 
 const getDaysOfSpirometry = async (req, res) => {
   try {
