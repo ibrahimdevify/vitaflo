@@ -1,6 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-
+const { randomUUID } = require('node:crypto');
 // Build answer choices helper
 const buildChoices = (opts) =>
   opts.map((o, i) => ({
@@ -674,6 +674,109 @@ const calcLungAge = (fev1, heightCm, gender) => {
  * Authorization / patient access middleware on the original route MUST remain active.
  * One spirometry blow per indexed "session", newest first; all blows paginated.
  */
+/**
+ * VitalFlo Results API — paginated, legacy Flutter double-compatible.
+ *
+ * Replace the previous getResults function and add the serializer shown below
+ * in the SAME controller file. Keep your existing Prisma instance,
+ * calcLungAge helper, exports, middleware and route unchanged.
+ *
+ * Route: GET /api2/results/:patient_id/:start_date/:end_date
+ * Optional query: ?page=1&per_page=10&tz_offset_minutes=300
+ *
+ * This patch leaves dates, filtering, prediction calculations, pagination,
+ * numeric IDs and nulls alone. Only whole-number MEASUREMENT JSON tokens
+ * are formatted as 2.0 instead of 2 for strict older Flutter parsers.
+ */
+
+
+
+const METRICS = Object.freeze([
+  'fev1', 'fvc', 'fev1fvc', 'fef2575', 'fev6', 'pefr', 'fet',
+]);
+const MEASUREMENT_FIELDS = new Set([
+  'observed', 'value', 'lln', 'zscore', 'flow', 'volume', 'time',
+]);
+
+function serializeLegacyFlutterResults(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new TypeError('Expected Results API response object');
+  }
+
+  // Identify ONLY the objects that hold decimal measurements.
+  // Do not touch numeric identifiers, grades, pagination, statuses, etc.
+  const measurementParents = new WeakSet();
+  const markMetric = (metric) => {
+    if (!metric || typeof metric !== 'object' || Array.isArray(metric)) return;
+    measurementParents.add(metric);
+    if (metric.predicted && typeof metric.predicted === 'object') {
+      for (const lookupValues of Object.values(metric.predicted)) {
+        if (lookupValues && typeof lookupValues === 'object' &&
+            !Array.isArray(lookupValues)) {
+          measurementParents.add(lookupValues);
+        }
+      }
+    }
+  };
+
+  for (const sessionGroup of Object.values(payload.spirometries ?? {})) {
+    for (const test of Object.values(sessionGroup ?? {})) {
+      if (!test || typeof test !== 'object') continue;
+      for (const name of METRICS) markMetric(test[name]);
+      for (const direction of ['expiratory', 'inspiratory']) {
+        for (const point of (test.flows?.[direction] ?? [])) {
+          if (point && typeof point === 'object' && !Array.isArray(point)) {
+            measurementParents.add(point);
+          }
+        }
+      }
+    }
+  }
+
+  for (const best of Object.values(payload.best_spirometries ?? {})) {
+    if (!best || typeof best !== 'object') continue;
+    for (const name of METRICS) markMetric(best[name]);
+  }
+
+  const lungAges = payload.lung_ages;
+  const prefix = `__vf_float_${randomUUID().replace(/-/g, '')}_`;
+  const integerMeasurements = [];
+
+  // Use distinct placeholders during serialization; replace those placeholders
+  // with numeric 0.0, 2.0, 95.0 tokens AFTER JSON.stringify completes.
+  // A random prefix makes collisions with user-supplied strings negligible.
+  const json = JSON.stringify(payload, function (key, value) {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value)) return value;
+
+    const isLungAge = this === lungAges;
+    const isMeasurement = measurementParents.has(this) &&
+      MEASUREMENT_FIELDS.has(key);
+
+    if (isLungAge || isMeasurement) {
+      const index = integerMeasurements.push(value) - 1;
+      return `${prefix}${index}__`;
+    }
+    return value;
+  });
+
+  const marker = new RegExp(`"${prefix}(\\d+)__"`, 'g');
+  return json.replace(marker, (_match, index) =>
+    `${integerMeasurements[Number(index)]}.0`);
+}
+
+function sendLegacyFlutterResults(res, payload) {
+  return res.type('application/json').send(serializeLegacyFlutterResults(payload));
+}
+
+
+/**
+ * VitalFlo - replace ONLY the getResults controller function.
+ * Existing route: GET /api2/results/:patient_id/:start_date/:end_date?page=1&per_page=10
+ * Requirements: prisma and calcLungAge already available in controller scope.
+ * If controller is not in src/controllers, adjust the helper import path.
+ * Authorization / patient access middleware on the original route MUST remain active.
+ * One spirometry blow per indexed "session", newest first; all blows paginated.
+ */
 const getResults = async (req, res) => {
   const {
     normalizeSpirometry,
@@ -918,11 +1021,11 @@ const getResults = async (req, res) => {
     });
 
     res.setHeader('Cache-Control', 'private, no-store');
-    return res.json({
+    return sendLegacyFlutterResults(res, {
       spirometries: spirometries,
       best_spirometries: bestSpirometries,
       lung_ages: lungAges,
-      pagination, // addition; original result fields and nesting are unchanged
+      pagination, // Preserve existing pagination and response structure.
     });
   } catch (error) {
     console.error('[VitalFlo getResults paginated]', error);
