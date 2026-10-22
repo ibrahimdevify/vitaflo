@@ -146,13 +146,13 @@ model dc_doctor_details {
 model dc_patient_details {
   pd_id                    Int       @id @default(autoincrement())
   chart_no                 String    @db.VarChar(255)
-  height                   Float?
+  height                   Float? @db.Double
   blood_group              String?   @db.VarChar(255)
   geno_type                String?   @db.VarChar(255)
   invite_code              String    @db.VarChar(255)
   is_web_allowed           Boolean   @default(false) @db.TinyInt
   user_id_fk               Int       @unique
-  weight                   Float?
+  weight                   Float? @db.Double
   patient_group_id         Int?
   assigned_clinician_id    Int?
   graph_view               Boolean   @default(true) @db.TinyInt
@@ -252,8 +252,8 @@ model vf_attributes {
   last_name       String   @default("") @db.VarChar(100)
   phone           String?  @db.VarChar(20)
   dob             String   @db.VarChar(20)
-  height          Float    @default(0)
-  weight          Float?
+  height          Float    @default(0) @db.Double
+  weight          Float? @db.Double
   gender          String   @default("") @db.VarChar(20)
   identify        String?  @db.VarChar(255)
   ethnic_group    String?  @db.VarChar(100)
@@ -389,7 +389,7 @@ model portal_observation {
   fev1_grade                     Int?
   fvc_grade                      Int?
   is_post_bronchodilator         Boolean  @default(false) @db.TinyInt
-  height                         Float?
+  height                         Float? @db.Double
   linked_pre_post_observation_id Int?
 
   user                 dc_users             @relation(fields: [user_id], references: [user_id])
@@ -404,18 +404,18 @@ model portal_spirometry {
   id                 Int      @id @default(autoincrement())
   dbdate             DateTime @default(now())
   observation_id     Int?
-  btps               Float?
-  temp_celsius       Float?
-  quality_message    Float?
+  btps               Float? @db.Double
+  temp_celsius       Float? @db.Double
+  quality_message    Float? @db.Double
   symptom            String?  @db.VarChar(255)
   fev1_acceptability Int?
   fvc_acceptability  Int?
-  fvc                Float?
-  fev1               Float?
-  pefr               Float?
-  fef2575            Float?
-  fev6               Float?
-  fev1_perc          Float?
+  fvc                Float? @db.Double
+  fev1               Float? @db.Double
+  pefr               Float? @db.Double
+  fef2575            Float? @db.Double
+  fev6               Float? @db.Double
+  fev1_perc          Float? @db.Double
 
   observation portal_observation? @relation(fields: [observation_id], references: [id], onDelete: SetNull)
   flows       portal_flow[]
@@ -426,9 +426,9 @@ model portal_spirometry {
 
 model portal_flow {
   id            Int      @id @default(autoincrement())
-  time          Float
-  value         Float
-  volume        Float
+  time          Float @db.Double
+  value         Float @db.Double
+  volume        Float @db.Double
   dbdate        DateTime @default(now())
   spirometry_id Int
 
@@ -439,8 +439,8 @@ model portal_flow {
 
 model portal_volume {
   id            Int   @id @default(autoincrement())
-  volume        Float
-  time          Float
+  volume        Float @db.Double
+  time          Float @db.Double
   spirometry_id Int
 
   spirometry portal_spirometry @relation(fields: [spirometry_id], references: [id], onDelete: Cascade)
@@ -461,8 +461,8 @@ model portal_heart_rate_observations {
 
 model portal_heart_rate_point {
   id             Int   @id @default(autoincrement())
-  value          Float
-  time           Float
+  value          Float @db.Double
+  time           Float @db.Double
   observation_id Int
 
   observation portal_heart_rate_observations @relation(fields: [observation_id], references: [id], onDelete: Cascade)
@@ -498,10 +498,10 @@ model portal_indoor_air_quality {
   id          Int      @id @default(autoincrement())
   dbdate      DateTime @default(now())
   user_id     Int
-  pm25        Float?
-  pm10        Float?
-  temperature Float?
-  humidity    Float?
+  pm25        Float? @db.Double
+  pm10        Float? @db.Double
+  temperature Float? @db.Double
+  humidity    Float? @db.Double
 
   user dc_users @relation(fields: [user_id], references: [user_id])
 
@@ -561,11 +561,11 @@ model portal_spirometry_trends {
   id        Int      @id @default(autoincrement())
   user_id   Int
   dbdate    DateTime
-  fev1      Float?
-  fvc       Float?
-  pefr      Float?
-  fef2575   Float?
-  fev1_perc Float?
+  fev1      Float? @db.Double
+  fvc       Float? @db.Double
+  pefr      Float? @db.Double
+  fef2575   Float? @db.Double
+  fev1_perc Float? @db.Double
 
   @@map("portal_spirometry_trends")
 }
@@ -573,6 +573,7 @@ model portal_spirometry_trends {
 // ══════════════════════════════════════
 // 🔮 PREDICTED VALUES (GLI)
 // ══════════════════════════════════════
+
 
 model portal_predicted_value {
   id                Int      @id @default(autoincrement())
