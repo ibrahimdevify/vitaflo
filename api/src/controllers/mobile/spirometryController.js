@@ -666,6 +666,14 @@ const calcLungAge = (fev1, heightCm, gender) => {
  * Uses src/helpers/spirometry.js from a controller in src/controllers/.
  * Returns only the most recently recorded blow within the requested date range.
  */
+/**
+ * VitalFlo - replace ONLY the getResults controller function.
+ * Existing route: GET /api2/results/:patient_id/:start_date/:end_date?page=1&per_page=10
+ * Requirements: prisma and calcLungAge already available in controller scope.
+ * If controller is not in src/controllers, adjust the helper import path.
+ * Authorization / patient access middleware on the original route MUST remain active.
+ * One spirometry blow per indexed "session", newest first; all blows paginated.
+ */
 const getResults = async (req, res) => {
   const {
     normalizeSpirometry,
@@ -680,258 +688,244 @@ const getResults = async (req, res) => {
       return res.status(400).json({ error: 'Invalid patient ID' });
     }
 
+    const parseInteger = (raw, fallback, max) => {
+      if (raw == null || raw === '') return fallback;
+      const parsed = Number(raw);
+      if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > max) return null;
+      return parsed;
+    };
+
+    const page = parseInteger(req.query.page, 1, 100000);
+    const perPage = parseInteger(req.query.per_page ?? req.query.limit, 10, 50);
+    if (page == null || perPage == null) {
+      return res.status(400).json({ error: 'Invalid page or per_page (maximum 50)' });
+    }
+    const skip = (page - 1) * perPage;
+    // Optional client offset, e.g. Pakistan UTC+05:00 -> 300.
+    // Legacy URLs without this query param retain UTC calendar dates.
+    const rawOffset = req.query.tz_offset_minutes;
+    const offsetMinutes = rawOffset == null ? 0 : Number(rawOffset);
+    if (!Number.isInteger(offsetMinutes) || offsetMinutes < -840 || offsetMinutes > 840) {
+      return res.status(400).json({ error: 'Invalid tz_offset_minutes' });
+    }
+
+    // Date-only route parameters include the entire calendar day (UTC).
+    // Explicit date-time boundaries remain supported for legacy clients.
     const parseBoundary = (raw, isEnd) => {
-      if (typeof raw !== 'string') return null;
+      if (typeof raw !== 'string' || !raw.trim()) return null;
       let text;
       try {
         text = decodeURIComponent(raw).trim().replace(' ', 'T');
       } catch {
         return null;
       }
-
-      // Date-only parameters: UTC calendar days, with an EXCLUSIVE
-      // upper bound at the next midnight so the full final day is included.
       if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-        const date = new Date(`${text}T00:00:00.000Z`);
-        if (
-          Number.isNaN(date.getTime()) ||
-          date.toISOString().slice(0, 10) !== text
-        ) return null;
-        if (isEnd) date.setUTCDate(date.getUTCDate() + 1);
-        return { date, exclusive: isEnd };
+        const parsed = new Date(`${text}T00:00:00.000Z`);
+        if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+          return null;
+        }
+        if (isEnd) parsed.setUTCDate(parsed.getUTCDate() + 1);
+        // Date-only calendar days should follow the mobile app's local offset.
+        parsed.setUTCMinutes(parsed.getUTCMinutes() - offsetMinutes);
+        return { value: parsed, exclusive: isEnd };
       }
-
-      // Keep support for exact timestamps supplied by older clients.
-      // A timezone-less timestamp is interpreted as UTC.
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return null;
-      const withZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)
-        ? text
-        : `${text}Z`;
-      const date = new Date(withZone);
-      return Number.isNaN(date.getTime())
-        ? null
-        : { date, exclusive: false };
+      const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`);
+      return Number.isNaN(parsed.getTime()) ? null : { value: parsed, exclusive: false };
     };
 
     const from = parseBoundary(req.params.start_date, false);
     const to = parseBoundary(req.params.end_date, true);
-
-    if (!from || !to) {
-      return res.status(400).json({ error: 'Invalid date format' });
-    }
-    if (from.date > to.date || (to.exclusive && from.date >= to.date)) {
-      return res.status(400).json({ error: 'Invalid date range' });
+    if (!from || !to) return res.status(400).json({ error: 'Invalid date format' });
+    if (from.value > to.value || (to.exclusive && from.value >= to.value)) {
+      return res.status(400).json({ error: 'start_date must be on or before end_date' });
     }
 
-    const range = {
-      gte: from.date,
-      [to.exclusive ? 'lt' : 'lte']: to.date,
+    const dateRange = {
+      gte: from.value,
+      [to.exclusive ? 'lt' : 'lte']: to.value,
     };
 
-    // Existing patient profile relationship is used for GLI demographics.
+    // The route's existing authentication + authorization must check this patientId.
     const patient = await prisma.dc_users.findUnique({
       where: { user_id: patientId },
-      include: {
-        patient_details: { include: { attributes: true } },
-        user_details: true,
-      },
+      include: { patient_details: { include: { attributes: true } } },
     });
     if (!patient?.patient_details) {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
-    // CRITICAL: Filter by the actual test's dbdate, not the parent
-    // observation's dbdate. Return ONE newest blow, regardless of how many
-    // separate observations exist on this day.
-    const test = await prisma.portal_spirometry.findFirst({
-      where: {
-        dbdate: range,
-        observation: { is: { user_id: patientId } },
-      },
-      orderBy: [
-        { dbdate: 'desc' },
-        { id: 'desc' },
-      ],
-      include: {
-        observation: { select: { id: true, user_id: true, height: true } },
-        flows: { orderBy: { id: 'asc' } },
-      },
-    });
-
-    res.setHeader('Cache-Control', 'no-store');
-
-    const emptyResponse = {
-      spirometries: {},
-      best_spirometries: {},
-      lung_ages: {},
+    // CRITICAL: filter by the actual spirometry test date, not observation date.
+    const where = {
+      dbdate: dateRange,
+      observation: { is: { user_id: patientId } },
     };
-    if (!test) return res.json(emptyResponse);
+    const [total, tests] = await prisma.$transaction([
+      prisma.portal_spirometry.count({ where }),
+      prisma.portal_spirometry.findMany({
+        where,
+        orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
+        skip,
+        take: perPage,
+        include: {
+          observation: { select: { id: true, height: true } },
+          flows: { orderBy: { id: 'asc' } },
+        },
+      }),
+    ]);
 
+    const totalPages = Math.ceil(total / perPage);
+    const pagination = {
+      page,
+      per_page: perPage,
+      total,
+      total_pages: totalPages,
+      has_next: page < totalPages,
+      has_previous: page > 1 && totalPages > 0,
+    };
+
+    const spirometries = {};
+    const bestSpirometries = {};
+    const lungAges = {};
     const attrs = patient.patient_details.attributes || {};
-    const details = patient.patient_details;
-    const measurement = normalizeSpirometry(test);
-    const timestamp = test.dbdate.toISOString();
 
-    const finiteOrNull = (value) => {
-      if (value === null || value === undefined || value === '') return null;
-      const number = Number(value);
-      return Number.isFinite(number) ? Number(number.toFixed(2)) : null;
+    const roundOrNull = (value) => {
+      if (value == null || value === '') return null;
+      const num = Number(value);
+      return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
     };
-
-    const ageOnTestDate = (dob, at) => {
+    const noGli = () => ({ gli: { value: null, lln: null, zscore: null } });
+    const ageOnDate = (dob, at) => {
       if (!dob) return null;
       const birth = new Date(dob);
       const date = new Date(at);
       if (Number.isNaN(birth.getTime()) || birth > date) return null;
       let age = date.getUTCFullYear() - birth.getUTCFullYear();
-      if (
-        date.getUTCMonth() < birth.getUTCMonth() ||
-        (date.getUTCMonth() === birth.getUTCMonth() &&
-          date.getUTCDate() < birth.getUTCDate())
-      ) age -= 1;
+      if (date.getUTCMonth() < birth.getUTCMonth() ||
+          (date.getUTCMonth() === birth.getUTCMonth() && date.getUTCDate() < birth.getUTCDate())) {
+        age--;
+      }
       return age > 0 ? age : null;
     };
 
-    const age = ageOnTestDate(attrs.dob || patient.user_details?.dob, test.dbdate);
-    const rawHeight = [test.observation?.height, attrs.height, details.height]
-      .map((v) => Number(v))
-      .find((v) => Number.isFinite(v) && v > 0);
-    const heightCm = rawHeight > 0 && rawHeight < 3 ? rawHeight * 100 : rawHeight;
-    const gender = String(attrs.gender || '').trim();
-    const validDemo =
-      age !== null &&
-      Number.isFinite(heightCm) && heightCm > 0 &&
-      /^(male|female|m|f)$/i.test(gender);
-
-    // Never silently invent age/height/sex for medical predictions.
-    const demo = validDemo
-      ? toGliDemographics({
+    const demoForTest = (test) => {
+      const age = ageOnDate(attrs.dob, test.dbdate);
+      const rawHeight = [test.observation?.height, attrs.height]
+        .map((v) => v == null ? NaN : Number(v))
+        .find((v) => Number.isFinite(v) && v > 0);
+      const height = rawHeight > 0 && rawHeight < 3 ? rawHeight * 100 : rawHeight;
+      const gender = String(attrs.gender || '').trim();
+      if (!age || !Number.isFinite(height) || height <= 0 || !/^(male|female|m|f)$/i.test(gender)) {
+        return { demo: null, height: null, gender };
+      }
+      return {
+        demo: toGliDemographics({
           age,
           lookup_table: attrs.lookup_table,
-          attributes: {
-            height: heightCm,
-            gender,
-            lookup_table: attrs.lookup_table,
-          },
-          patient_details: { height: heightCm },
-        })
-      : null;
-
-    const gliUnavailable = () => ({ gli: { value: null, lln: null, zscore: null } });
-    const mapGli = (result) => ({
-      gli: {
-        value: finiteOrNull(result?.predicted),
-        lln: finiteOrNull(result?.lln),
-        zscore: finiteOrNull(result?.zScore),
-      },
-    });
-
-    const predicted = (observed, variable) => {
-      if (!demo || observed == null || observed <= 0) return gliUnavailable();
-      try {
-        return mapGli(calculatePredictedValues(observed, demo, variable));
-      } catch (error) {
-        console.error(`[VitalFlo GLI] ${variable} failed:`, error.message);
-        return gliUnavailable();
-      }
-    };
-
-    const ratio = measurement.fev1 != null && measurement.fvc > 0
-      ? measurement.fev1 / measurement.fvc
-      : null;
-    const ratioPercent = ratio == null ? null : Number((ratio * 100).toFixed(1));
-    let ratioPrediction = gliUnavailable();
-    if (demo && ratio != null && ratio > 0) {
-      try {
-        ratioPrediction = mapGli(calculateFev1FvcPredictedValues(ratio, demo));
-      } catch (error) {
-        console.error('[VitalFlo GLI] FEV1/FVC failed:', error.message);
-      }
-    }
-
-    const expiratory = [];
-    const inspiratory = [];
-    const flows = test.flows || [];
-    flows.forEach((f, index) => {
-      const flow = Number(f.value ?? 0);
-      const point = {
-        time: Number(f.time) > 0
-          ? Number(f.time)
-          : Number(((index / Math.max(1, flows.length)) * 2).toFixed(4)),
-        flow,
-        volume: Number(f.volume ?? 0),
+          attributes: { height, gender, lookup_table: attrs.lookup_table },
+          patient_details: { height },
+        }),
+        height,
+        gender,
       };
-      if (flow >= 0) expiratory.push(point);
-      else inspiratory.push(point);
-    });
-
-    const blow = {
-      fev1: {
-        observed: measurement.fev1,
-        predicted: predicted(measurement.fev1, 'FEV1'),
-      },
-      fvc: {
-        observed: measurement.fvc,
-        predicted: predicted(measurement.fvc, 'FVC'),
-      },
-      fev1fvc: { observed: ratioPercent, predicted: ratioPrediction },
-      fef2575: {
-        observed: measurement.fef2575,
-        predicted: predicted(measurement.fef2575, 'FEF2575'),
-      },
-      // The supplied helper incorrectly treats FEV6 and PEFR as FEV1 for
-      // prediction. Keep response fields but do not present those as GLI values.
-      fev6: { observed: measurement.fev6, predicted: gliUnavailable() },
-      pefr: { observed: measurement.pefr, predicted: gliUnavailable() },
-      fet: { observed: null, predicted: { gli: { value: null } } },
-      id: test.id,
-      flows: { expiratory, inspiratory },
-      qualityMessage: test.quality_message == null
-        ? 'Good Blow!'
-        : String(test.quality_message),
-      fev1Acceptability: test.fev1_acceptability ?? null,
-      fvcAcceptability: test.fvc_acceptability ?? null,
     };
 
-    const bestField = (key, includeLln) => ({
-      observed: blow[key].observed,
-      predicted: {
-        gli: {
-          value: blow[key].predicted.gli.value,
-          ...(includeLln ? { lln: blow[key].predicted.gli.lln } : {}),
-        },
+    const gliResponse = (result) => ({
+      gli: {
+        value: roundOrNull(result?.predicted),
+        lln: roundOrNull(result?.lln),
+        zscore: roundOrNull(result?.zScore),
       },
     });
-
-    const best = {
-      fev1: bestField('fev1', true),
-      fvc: bestField('fvc', true),
-      pefr: bestField('pefr', false),
-      fef2575: bestField('fef2575', false),
-      fev6: bestField('fev6', false),
-    };
-
-    const lungAges = {};
-    if (
-      measurement.fev1 != null && measurement.fev1 > 0 &&
-      validDemo && typeof calcLungAge === 'function'
-    ) {
+    const predict = (observed, demo, variable) => {
+      if (!demo || observed == null || observed <= 0) return noGli();
       try {
-        const lungAge = calcLungAge(measurement.fev1, heightCm, gender);
-        if (Number.isFinite(Number(lungAge))) lungAges['0'] = Number(lungAge);
-      } catch (error) {
-        console.error('[VitalFlo] Lung age calculation failed:', error.message);
+        return gliResponse(calculatePredictedValues(observed, demo, variable));
+      } catch (e) {
+        console.error(`[GLI] ${variable}:`, e);
+        return noGli();
       }
-    }
+    };
+    const predictRatio = (observed, demo) => {
+      if (!demo || observed == null || observed <= 0) return noGli();
+      try {
+        return gliResponse(calculateFev1FvcPredictedValues(observed, demo));
+      } catch (e) {
+        console.error('[GLI] FEV1FVC:', e);
+        return noGli();
+      }
+    };
 
-    // Exactly the same nesting and top-level keys as a one-blow Sept response.
+    tests.forEach((test, idx) => {
+      const testData = normalizeSpirometry(test);
+      const { demo, height, gender } = demoForTest(test);
+      const ratio = testData.fvc > 0 && testData.fev1 != null
+        ? testData.fev1 / testData.fvc : null;
+      const observedRatioPercent = ratio == null ? null : Number((ratio * 100).toFixed(1));
+
+      const flows = { expiratory: [], inspiratory: [] };
+      (test.flows || []).forEach((item, index, all) => {
+        const flow = Number(item.value ?? 0);
+        const point = {
+          time: item.time != null ? Number(item.time) : Number(((index / Math.max(1, all.length)) * 2).toFixed(4)),
+          flow,
+          volume: Number(item.volume ?? 0),
+        };
+        (flow >= 0 ? flows.expiratory : flows.inspiratory).push(point);
+      });
+
+      const blow = {
+        fev1: { observed: testData.fev1, predicted: predict(testData.fev1, demo, 'FEV1') },
+        fvc: { observed: testData.fvc, predicted: predict(testData.fvc, demo, 'FVC') },
+        fev1fvc: { observed: observedRatioPercent, predicted: predictRatio(ratio, demo) },
+        fef2575: { observed: testData.fef2575, predicted: predict(testData.fef2575, demo, 'FEF2575') },
+        // The supplied helper uses FEV1 equations for FEV6/PEFR; do not fabricate clinical reference values.
+        fev6: { observed: testData.fev6, predicted: noGli() },
+        pefr: { observed: testData.pefr, predicted: noGli() },
+        fet: { observed: null, predicted: { gli: { value: null } } },
+        id: test.id,
+        flows,
+        qualityMessage: test.quality_message == null ? 'Good Blow!' : String(test.quality_message),
+        fev1Acceptability: test.fev1_acceptability ?? null,
+        fvcAcceptability: test.fvc_acceptability ?? null,
+      };
+      const best = (field, includeLln = false) => ({
+        observed: blow[field].observed,
+        predicted: {
+          gli: {
+            value: blow[field].predicted.gli.value,
+            ...(includeLln ? { lln: blow[field].predicted.gli.lln } : {}),
+          },
+        },
+      });
+      spirometries[idx] = { [test.dbdate.toISOString()]: blow };
+      bestSpirometries[idx] = {
+        fev1: best('fev1', true),
+        fvc: best('fvc', true),
+        pefr: best('pefr'),
+        fef2575: best('fef2575'),
+        fev6: best('fev6'),
+      };
+
+      if (typeof calcLungAge === 'function' && testData.fev1 > 0 && height) {
+        try {
+          const lungAge = Number(calcLungAge(testData.fev1, height, gender));
+          if (Number.isFinite(lungAge)) lungAges[idx] = lungAge;
+        } catch (e) {
+          console.error('[LungAge]', e);
+        }
+      }
+    });
+
+    res.setHeader('Cache-Control', 'private, no-store');
     return res.json({
-      spirometries: { '0': { [timestamp]: blow } },
-      best_spirometries: { '0': best },
+      spirometries: spirometries,
+      best_spirometries: bestSpirometries,
       lung_ages: lungAges,
+      pagination, // addition; original result fields and nesting are unchanged
     });
   } catch (error) {
-    console.error('Get results error:', error);
+    console.error('[VitalFlo getResults paginated]', error);
     return res.status(500).json({ error: 'Failed to fetch results' });
   }
 };
