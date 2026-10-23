@@ -1,5 +1,5 @@
-const patientRepository = require('../repositories/patientRepository');
-const { normalizeSpirometryValue } = require('../helpers/spirometry');
+const patientRepository = require('../../repositories/patientRepository');
+const { normalizeSpirometryValue } = require('../../helpers/spirometry');
 const {
   demographicsForTest, bestObservedValues, createCalculatedValues,
 } = require('../helpers/spirometryParity');
