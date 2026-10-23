@@ -777,13 +777,20 @@ function sendLegacyFlutterResults(res, payload) {
  * Authorization / patient access middleware on the original route MUST remain active.
  * One spirometry blow per indexed "session", newest first; all blows paginated.
  */
+/**
+ * VitalFlo - replace ONLY the getResults controller function.
+ * Existing route: GET /api2/results/:patient_id/:start_date/:end_date?page=1&per_page=10
+ * Requirements: prisma and calcLungAge already available in controller scope.
+ * If controller is not in src/controllers, adjust the helper import path.
+ * Authorization / patient access middleware on the original route MUST remain active.
+ * One spirometry blow per indexed "session", newest first; all blows paginated.
+ */
 const getResults = async (req, res) => {
-  const {
-    normalizeSpirometry,
-    calculatePredictedValues,
-    calculateFev1FvcPredictedValues,
-    toGliDemographics,
-  } = require('../../helpers/spirometry');
+  const { normalizeSpirometry } = require('../helpers/spirometry');
+  const { demographicsForTest, createCalculatedValues, mobileGli,
+    bestObservedValues } = require('../../helpers/spirometryParity');
+  const { sendLegacyFlutterResults } =
+    require('../../utils/legacy_flutter_results_json');
 
   try {
     const patientId = Number(req.params.patient_id);
@@ -892,72 +899,36 @@ const getResults = async (req, res) => {
     const lungAges = {};
     const attrs = patient.patient_details.attributes || {};
 
-    const roundOrNull = (value) => {
-      if (value == null || value === '') return null;
-      const num = Number(value);
-      return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
-    };
     const noGli = () => ({ gli: { value: null, lln: null, zscore: null } });
-    const ageOnDate = (dob, at) => {
-      if (!dob) return null;
-      const birth = new Date(dob);
-      const date = new Date(at);
-      if (Number.isNaN(birth.getTime()) || birth > date) return null;
-      let age = date.getUTCFullYear() - birth.getUTCFullYear();
-      if (date.getUTCMonth() < birth.getUTCMonth() ||
-          (date.getUTCMonth() === birth.getUTCMonth() && date.getUTCDate() < birth.getUTCDate())) {
-        age--;
-      }
-      return age > 0 ? age : null;
+    const demoForTest = test => {
+      const demo = demographicsForTest({
+        attributes: attrs,
+        details: patient.patient_details,
+        observationHeight: test.observation?.height,
+        testDate: test.dbdate,
+      });
+      return { demo, height: demo?.height ?? null,
+        gender: String(attrs.gender || '').trim() };
     };
 
-    const demoForTest = (test) => {
-      const age = ageOnDate(attrs.dob, test.dbdate);
-      const rawHeight = [test.observation?.height, attrs.height]
-        .map((v) => v == null ? NaN : Number(v))
-        .find((v) => Number.isFinite(v) && v > 0);
-      const height = rawHeight > 0 && rawHeight < 3 ? rawHeight * 100 : rawHeight;
-      const gender = String(attrs.gender || '').trim();
-      if (!age || !Number.isFinite(height) || height <= 0 || !/^(male|female|m|f)$/i.test(gender)) {
-        return { demo: null, height: null, gender };
-      }
-      return {
-        demo: toGliDemographics({
-          age,
-          lookup_table: attrs.lookup_table,
-          attributes: { height, gender, lookup_table: attrs.lookup_table },
-          patient_details: { height },
-        }),
-        height,
-        gender,
-      };
-    };
-
-    const gliResponse = (result) => ({
-      gli: {
-        value: roundOrNull(result?.predicted),
-        lln: roundOrNull(result?.lln),
-        zscore: roundOrNull(result?.zScore),
-      },
-    });
-    const predict = (observed, demo, variable) => {
-      if (!demo || observed == null || observed <= 0) return noGli();
-      try {
-        return gliResponse(calculatePredictedValues(observed, demo, variable));
-      } catch (e) {
-        console.error(`[GLI] ${variable}:`, e);
-        return noGli();
-      }
-    };
-    const predictRatio = (observed, demo) => {
-      if (!demo || observed == null || observed <= 0) return noGli();
-      try {
-        return gliResponse(calculateFev1FvcPredictedValues(observed, demo));
-      } catch (e) {
-        console.error('[GLI] FEV1FVC:', e);
-        return noGli();
-      }
-    };
+    // Web "Best" is the per-field maximum across ALL blows in an observation.
+    // Fetch these without changing the existing paginated mobile blow list.
+    const observationIds = [...new Set(tests
+      .map(t => t.observation?.id)
+      .filter(Number.isSafeInteger))];
+    const allObservationTests = observationIds.length > 0
+      ? await prisma.portal_spirometry.findMany({
+          where: { observation_id: { in: observationIds } },
+          select: { observation_id: true,
+            fev1: true, fvc: true, pefr: true, fef2575: true, fev6: true, dbdate: true },
+        })
+      : [];
+    const testsByObservation = new Map();
+    for (const item of allObservationTests) {
+      if (!testsByObservation.has(item.observation_id))
+        testsByObservation.set(item.observation_id, []);
+      testsByObservation.get(item.observation_id).push(item);
+    }
 
     tests.forEach((test, idx) => {
       const testData = normalizeSpirometry(test);
@@ -966,6 +937,14 @@ const getResults = async (req, res) => {
         ? testData.fev1 / testData.fvc : null;
       const observedRatioPercent = ratio == null ? null : Number((ratio * 100).toFixed(1));
 
+      const calculated = createCalculatedValues({
+        fev1: testData.fev1,
+        fvc: testData.fvc,
+        fev1FvcRatio: ratio,
+        fef2575: testData.fef2575,
+        pefr: testData.pefr,
+        fev6: testData.fev6,
+      }, demo);
       const flows = { expiratory: [], inspiratory: [] };
       (test.flows || []).forEach((item, index, all) => {
         const flow = Number(item.value ?? 0);
@@ -978,11 +957,10 @@ const getResults = async (req, res) => {
       });
 
       const blow = {
-        fev1: { observed: testData.fev1, predicted: predict(testData.fev1, demo, 'FEV1') },
-        fvc: { observed: testData.fvc, predicted: predict(testData.fvc, demo, 'FVC') },
-        fev1fvc: { observed: observedRatioPercent, predicted: predictRatio(ratio, demo) },
-        fef2575: { observed: testData.fef2575, predicted: predict(testData.fef2575, demo, 'FEF2575') },
-        // The supplied helper uses FEV1 equations for FEV6/PEFR; do not fabricate clinical reference values.
+        fev1: { observed: testData.fev1, predicted: mobileGli(calculated.fev1) },
+        fvc: { observed: testData.fvc, predicted: mobileGli(calculated.fvc) },
+        fev1fvc: { observed: observedRatioPercent, predicted: mobileGli(calculated.fev1fvc) },
+        fef2575: { observed: testData.fef2575, predicted: mobileGli(calculated.fef2575) },
         fev6: { observed: testData.fev6, predicted: noGli() },
         pefr: { observed: testData.pefr, predicted: noGli() },
         fet: { observed: null, predicted: { gli: { value: null } } },
@@ -992,12 +970,25 @@ const getResults = async (req, res) => {
         fev1Acceptability: test.fev1_acceptability ?? null,
         fvcAcceptability: test.fvc_acceptability ?? null,
       };
+      const matchedObservationTests =
+        testsByObservation.get(test.observation?.id) || [test];
+      const bestValues = bestObservedValues(matchedObservationTests);
+      const latestObservationDate = matchedObservationTests.reduce((latest, sp) =>
+        sp.dbdate && (!latest || new Date(sp.dbdate) > new Date(latest))
+          ? sp.dbdate : latest, null) || test.dbdate;
+      const bestDemo = demographicsForTest({
+        attributes: attrs,
+        details: patient.patient_details,
+        observationHeight: test.observation?.height,
+        testDate: latestObservationDate,
+      });
+      const bestCalculated = createCalculatedValues(bestValues, bestDemo);
       const best = (field, includeLln = false) => ({
-        observed: blow[field].observed,
+        observed: bestValues[field] ?? null,
         predicted: {
           gli: {
-            value: blow[field].predicted.gli.value,
-            ...(includeLln ? { lln: blow[field].predicted.gli.lln } : {}),
+            value: bestCalculated[field].predicted,
+            ...(includeLln ? { lln: bestCalculated[field].lln } : {}),
           },
         },
       });
@@ -1025,7 +1016,7 @@ const getResults = async (req, res) => {
       spirometries: spirometries,
       best_spirometries: bestSpirometries,
       lung_ages: lungAges,
-      pagination, // Preserve existing pagination and response structure.
+      pagination, // Original response keys, nesting, IDs and pagination unchanged.
     });
   } catch (error) {
     console.error('[VitalFlo getResults paginated]', error);

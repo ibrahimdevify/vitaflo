@@ -1,37 +1,26 @@
-// src/helpers/spirometry.js
 'use strict';
 
 const { calculateGli2012 } = require('./gli2012');
-
 const RAW_SPIROMETRY_SCALE_FACTOR = 100;
+const empty = () => ({ predicted: null, lln: null, zScore: null, percentPredicted: null });
 
-// ─────────────────────────────────────────────────────────────
-// Scale / normalization
-// ─────────────────────────────────────────────────────────────
-
-const toNumberOrNull = (value) => {
+function toNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  if (Number.isNaN(number)) return null;
-  return number;
-};
-
-const normalizeSpirometryValue = (rawValue) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function normalizeSpirometryValue(rawValue) {
   const value = toNumberOrNull(rawValue);
   if (value === null) return null;
+  // Existing historical raw readings are sometimes stored x100.
+  // Preserve this legacy normalization for measured values, not chart points.
   if (Math.abs(value) >= RAW_SPIROMETRY_SCALE_FACTOR / 5) {
     return Number((value / RAW_SPIROMETRY_SCALE_FACTOR).toFixed(2));
   }
   return Number(value.toFixed(2));
-};
-
-const mapSpirometryInput = (val = {}) => {
-  const firstDefined = (...values) => {
-    for (const value of values) {
-      if (value !== undefined && value !== null && value !== '') return value;
-    }
-    return null;
-  };
+}
+function mapSpirometryInput(val = {}) {
+  const firstDefined = (...values) => values.find(v => v !== undefined && v !== null && v !== '') ?? null;
   return {
     fvc: firstDefined(val.fvcL, val.fvc),
     fev1: firstDefined(val.fev1L, val.fev1),
@@ -43,150 +32,100 @@ const mapSpirometryInput = (val = {}) => {
     temp_celsius: firstDefined(val.tempCelsius, val.temp_celsius),
     quality_message: firstDefined(val.qualityMessage, val.quality_message),
   };
-};
-
-// ─────────────────────────────────────────────────────────────
-// Demographics mapping
-// ─────────────────────────────────────────────────────────────
-
-const toGliSex = (sexAtBirth) => {
-  const s = String(sexAtBirth || '').trim().toLowerCase();
-  if (s.startsWith('m')) return 1;
-  if (s.startsWith('f')) return 2;
-  return 1; // default male
-};
-
-
-
-const normalizeDemo = (demo = {}) => ({
-  age: Number.isFinite(demo.age) && demo.age > 0 ? Number(demo.age) : 40,
-  height: Number.isFinite(demo.height) && demo.height > 0 ? Number(demo.height) : 170,
-  sex: demo.sex === 1 || demo.sex === 2 ? demo.sex : toGliSex(demo.sexAtBirth),
-  ethnicity: demo.ethnicity >= 1 && demo.ethnicity <= 5 ? demo.ethnicity : toGliEthnicity(demo.ethnicity),
-});
-
-const toGliEthnicity = (lookupTable) => {
-  const v = String(lookupTable || '').trim();
-  if (v === 'Caucasian')       return 1;
-  if (v === 'AfricanAmerican') return 2;
-  if (v === 'NEAsian')         return 3;
-  if (v === 'SEAsian')         return 4;
-  return 5; // other
-};
-
-const toGliDemographics = (profile) => {
-  if (!profile) return { age: 40, height: 170, sex: 1, ethnicity: 5 };
-
+}
+function toGliSex(sexAtBirth) {
+  const s = String(sexAtBirth ?? '').trim().toLowerCase();
+  if (s === 'm' || s === 'male' || s === '1') return 1;
+  if (s === 'f' || s === 'female' || s === '2') return 2;
+  return null; // Never silently guess male for missing demographics.
+}
+function toGliEthnicity(lookupTable) {
+  const v = String(lookupTable ?? '').trim().toLowerCase();
+  if (v === 'caucasian' || v === '1') return 1;
+  if (v === 'africanamerican' || v === '2') return 2;
+  if (v === 'neasian' || v === '3') return 3;
+  if (v === 'seasian' || v === '4') return 4;
+  return 5; // Preserve existing "other / mixed" mapping.
+}
+function normalizeHeightCm(raw) {
+  const height = toNumberOrNull(raw);
+  if (height === null || height <= 0) return null;
+  // Auto-detect only unambiguous units: metres (e.g. 1.72) or cm (172).
+  // Values such as 65 (possibly inches) and 6500 are not silently converted.
+  const cm = height >= 0.65 && height <= 2.3 ? height * 100 : height;
+  return cm >= 80 && cm <= 230 ? cm : null;
+}
+function normalizeDemo(demo = {}) {
+  const age = toNumberOrNull(demo.age);
+  const height = normalizeHeightCm(demo.height);
+  const sex = demo.sex === 1 || demo.sex === 2 ? demo.sex : toGliSex(demo.sexAtBirth);
+  const ethnicity = [1,2,3,4,5].includes(demo.ethnicity) ? demo.ethnicity : toGliEthnicity(demo.ethnicity);
+  if (age === null || age < 3 || age > 95 || height === null || sex === null) return null;
+  return { age, height, sex, ethnicity };
+}
+function toGliDemographics(profile) {
+  if (!profile) return null;
   const attrs = profile.attributes || {};
   const details = profile.patient_details || {};
-
-  // Django uses lookup_table exclusively. Fall back to ethnic_group only
-  // if lookup_table is null (which won't happen in Django's flow).
-  const ethnicitySource = profile.lookup_table || attrs.lookup_table;
-
-  return {
-    age: Number.isFinite(profile.age) && profile.age > 0 ? profile.age : 40,
-    height: attrs.height ?? details.height ?? 170,
-    sex: toGliSex(attrs.gender || profile.sexAtBirth),
-    ethnicity: toGliEthnicity(ethnicitySource),
-  };
-};
-
-// ─────────────────────────────────────────────────────────────
-// Predicted values (synchronous)
-// ─────────────────────────────────────────────────────────────
-
-const calculatePredictedValues = (rawValue, demo = {}, variable = 'FEV1') => {
+  return normalizeDemo({
+    age: profile.age,
+    height: attrs.height ?? details.height,
+    sexAtBirth: attrs.gender ?? profile.sexAtBirth,
+    ethnicity: toGliEthnicity(profile.lookup_table ?? attrs.lookup_table),
+  });
+}
+function calculatePredictedValues(rawValue, demo = {}, variable = 'FEV1') {
   const value = normalizeSpirometryValue(rawValue);
-  if (value === null || value <= 0) {
-    return { predicted: null, lln: null, zScore: null, percentPredicted: null };
-  }
+  if (value === null || value <= 0) return empty();
   const normalized = normalizeDemo(demo);
-  return calculateGli2012(value, normalized, variable);
-};
-
-const calculateFev1FvcRatio = (fev1, fvc) => {
-  const normalizedFev1 = normalizeSpirometryValue(fev1);
-  const normalizedFvc = normalizeSpirometryValue(fvc);
-  if (normalizedFev1 === null || normalizedFvc === null || normalizedFvc === 0) return null;
-  return Number((normalizedFev1 / normalizedFvc).toFixed(2));
-};
-
-const calculateFev1FvcPredictedValues = (fev1FvcRatioOrPercent, demo = {}) => {
-  if (fev1FvcRatioOrPercent === null || fev1FvcRatioOrPercent === undefined) {
-    return { predicted: null, lln: null, zScore: null, percentPredicted: null };
-  }
-  const observedRatio =
-    fev1FvcRatioOrPercent > 1.5 ? fev1FvcRatioOrPercent / 100 : fev1FvcRatioOrPercent;
+  return normalized ? calculateGli2012(value, normalized, variable) : empty();
+}
+function calculateFev1FvcRatio(fev1, fvc) {
+  const a = normalizeSpirometryValue(fev1);
+  const b = normalizeSpirometryValue(fvc);
+  return a == null || b == null || b === 0 ? null : Number((a / b).toFixed(2));
+}
+function calculateFev1FvcPredictedValues(ratioOrPercent, demo = {}) {
+  const input = toNumberOrNull(ratioOrPercent);
+  if (input === null) return empty();
+  const ratio = input > 1.5 ? input / 100 : input;
   const normalized = normalizeDemo(demo);
-  return calculateGli2012(observedRatio, normalized, 'FEV1FVC');
-};
-
-// ─────────────────────────────────────────────────────────────
-// Record normalization + best-pick
-// ─────────────────────────────────────────────────────────────
-
-const normalizeSpirometry = (sp = {}) => {
+  return normalized ? calculateGli2012(ratio, normalized, 'FEV1FVC') : empty();
+}
+function normalizeSpirometry(sp = {}) {
   const fev1 = normalizeSpirometryValue(sp.fev1);
   const fvc = normalizeSpirometryValue(sp.fvc);
   const pefr = normalizeSpirometryValue(sp.pefr);
   const fef2575 = normalizeSpirometryValue(sp.fef2575);
   const fev6 = normalizeSpirometryValue(sp.fev6);
-  const fev1FvcRatio = calculateFev1FvcRatio(fev1, fvc);
-  return {
-    ...sp,
-    fev1,
-    fvc,
-    pefr,
-    fef2575,
-    fev6,
+  return { ...sp, fev1, fvc, pefr, fef2575, fev6,
     fev1_perc: toNumberOrNull(sp.fev1_perc),
-    fev1_fvc_ratio: fev1FvcRatio,
-  };
-};
-
-const buildPredictedSpirometry = (sp = {}, demo = {}) => {
-  const normalized = normalizeSpirometry(sp);
-  return {
-    fev1: calculatePredictedValues(normalized.fev1, demo, 'FEV1'),
-    fvc: calculatePredictedValues(normalized.fvc, demo, 'FVC'),
-    fev1_fvc: calculateFev1FvcPredictedValues(normalized.fev1_fvc_ratio, demo),
-    fef2575: calculatePredictedValues(normalized.fef2575, demo, 'FEF2575'),
-    fev6: calculatePredictedValues(normalized.fev6, demo, 'FEV1'),
-    pefr: calculatePredictedValues(normalized.pefr, demo, 'FEV1'),
-  };
-};
-
-const pickBestSpirometry = (spirometries = []) => {
-  const normalized = spirometries
-    .map(normalizeSpirometry)
-    .filter((sp) => sp.fev1 !== null || sp.fvc !== null || sp.pefr !== null || sp.fef2575 !== null || sp.fev6 !== null);
-
-  if (!normalized.length) return null;
-
-  return normalized.reduce((best, current) => {
-    if (!best) return current;
-    const bestFev1 = best.fev1 ?? -Infinity;
-    const currentFev1 = current.fev1 ?? -Infinity;
-    if (currentFev1 > bestFev1) return current;
-    if (currentFev1 < bestFev1) return best;
-    const bestFvc = best.fvc ?? -Infinity;
-    const currentFvc = current.fvc ?? -Infinity;
-    return currentFvc > bestFvc ? current : best;
+    fev1_fvc_ratio: calculateFev1FvcRatio(fev1, fvc) };
+}
+function pickBestSpirometry(spirometries = []) {
+  const valid = spirometries.map(normalizeSpirometry)
+    .filter(sp => ['fev1','fvc','pefr','fef2575','fev6'].some(k => sp[k] != null));
+  return valid.reduce((best, current) => {
+    if (!best || current.fev1 > best.fev1) return current;
+    if (current.fev1 < best.fev1) return best;
+    return current.fvc > best.fvc ? current : best;
   }, null);
-};
-
-module.exports = {
-  RAW_SPIROMETRY_SCALE_FACTOR,
-  normalizeSpirometryValue,
-  normalizeSpirometry,
-  mapSpirometryInput,
-  calculatePredictedValues,
-  calculateFev1FvcRatio,
-  calculateFev1FvcPredictedValues,
-  buildPredictedSpirometry,
-  pickBestSpirometry,
-  toGliDemographics,
-  toGliSex,
-  toGliEthnicity,
-};
+}
+function buildPredictedSpirometry(sp = {}, demo = {}) {
+  const n = normalizeSpirometry(sp);
+  return {
+    fev1: calculatePredictedValues(n.fev1, demo, 'FEV1'),
+    fvc: calculatePredictedValues(n.fvc, demo, 'FVC'),
+    fev1_fvc: calculateFev1FvcPredictedValues(n.fev1_fvc_ratio, demo),
+    fef2575: calculatePredictedValues(n.fef2575, demo, 'FEF2575'),
+    // GLI references for FEV6 and PEFR are not implemented in the provided coefficients.
+    fev6: empty(),
+    pefr: empty(),
+  };
+}
+module.exports = { RAW_SPIROMETRY_SCALE_FACTOR, toNumberOrNull,
+  normalizeSpirometryValue, normalizeSpirometry, mapSpirometryInput,
+  calculatePredictedValues, calculateFev1FvcRatio,
+  calculateFev1FvcPredictedValues, buildPredictedSpirometry,
+  pickBestSpirometry, toGliDemographics, toGliSex, toGliEthnicity,
+  normalizeHeightCm, normalizeDemo };

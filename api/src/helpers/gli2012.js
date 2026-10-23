@@ -1,129 +1,82 @@
-// src/helpers/gli2012.js
 'use strict';
 
 const COEFFICIENTS = require('./gli2012-coefficients.json');
 
-const ETHNICITY_INDEX = {
-  1: 0,  // Caucasian (reference — no offset)
-  2: 1,  // African-American
-  3: 2,  // NE Asian
-  4: 3,  // SE Asian
-  5: 4,  // Other/mixed
-};
+// Official GLI equation uses ONE age-specific spline value (interpolated).
+// In the supplied coefficient table, m0/s0/l0 are the current age row and
+// m1/s1/l1 are the next-age endpoints. The previous code ADDED m0+m1,
+// s0+s1 and l0+l1, which incorrectly doubled spline terms.
+const ETHNICITY_INDEX = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4 };
+const empty = () => ({ predicted: null, lln: null, zScore: null, percentPredicted: null });
+const round2 = (n) => Number(n.toFixed(2));
 
-function round2(n) {
-  return Number(n.toFixed(2));
-}
-
-/**
- * Find the two agebound rows that bracket the patient's age, and
- * linearly interpolate each coefficient between them.
- */
 function interpolateRow(rows, age) {
-  if (!rows || rows.length === 0) return null;
-  if (age <= rows[0].age) return rows[0];
-  if (age >= rows[rows.length - 1].age) return rows[rows.length - 1];
-
-  for (let i = 0; i < rows.length - 1; i += 1) {
-    const lo = rows[i];
-    const hi = rows[i + 1];
-    if (age >= lo.age && age <= hi.age) {
-      const t = (age - lo.age) / (hi.age - lo.age);
-      const blend = (key) => lo[key] * (1 - t) + hi[key] * t;
-      const keys = [
-        'a0','a1','a2','a3','a4','a5','a6',
-        'p0','p1','p2','p3','p4','p5',
-        'q0','q1','l0','l1','m0','m1','s0','s1',
-      ];
-      const out = { age };
-      for (const k of keys) out[k] = blend(k);
-      return out;
-    }
+  if (!Array.isArray(rows) || rows.length === 0 || !Number.isFinite(age)) return null;
+  if (age < rows[0].age || age > rows[rows.length - 1].age) return null;
+  if (age === rows[rows.length - 1].age) {
+    const last = rows[rows.length - 1];
+    return { ...last, mSpline: last.m0, sSpline: last.s0, lSpline: last.l0 };
   }
-  return rows[rows.length - 1];
+
+  let i = 0;
+  while (i < rows.length - 1 && age > rows[i + 1].age) i++;
+  const lo = rows[i], hi = rows[i + 1];
+  if (!lo || !hi || hi.age <= lo.age) return null;
+  const t = (age - lo.age) / (hi.age - lo.age);
+  const lerp = (x, y) => x + (y - x) * t;
+  const result = { age };
+  const keys = ['a0','a1','a2','a3','a4','a5','a6',
+    'p0','p1','p2','p3','p4','p5','q0','q1'];
+  for (const key of keys) result[key] = lerp(lo[key], hi[key]);
+  // Read a SINGLE spline value interpolated between the age endpoints.
+  result.mSpline = lerp(lo.m0, lo.m1);
+  result.sSpline = lerp(lo.s0, lo.s1);
+  result.lSpline = lerp(lo.l0, lo.l1);
+  return result;
 }
 
-/**
- * Compute L, M, S for a variable + demographics.
- *
- * Uses the rspiro formulation:
- *   M = exp( a0 + a1*ln(height_cm) + a2*ln(age) + a3*E2 + a4*E3 + a5*E4 + a6*E5 + m0*m_spline + m1*m_spline2 )
- *   S = exp( p0 + p1*ln(age) + p2*E2 + p3*E3 + p4*E4 + p5*E5 + s0*s_spline + s1*s_spline2 )
- *   L = q0 + q1*ln(age) + l0*l_spline + l1*l_spline2
- *
- * rspiro packs the spline values into l0/l1, m0/m1, s0/s1 (already evaluated
- * at the agebound), so we treat them as additive constants after interpolation.
- */
 function gli2012Lookup({ age, height, sex, ethnicity, variable }) {
+  if (!Number.isFinite(age) || age < 3 || age > 95 ||
+      !Number.isFinite(height) || height < 65 || height > 230 ||
+      ![1, 2].includes(sex) || ![1, 2, 3, 4, 5].includes(ethnicity)) return null;
   const table = COEFFICIENTS[variable];
   if (!table) return null;
-
-  const rows = sex === 1 ? table.male : table.female;
-  if (!rows || rows.length === 0) return null;
-
-  const r = interpolateRow(rows, age);
-  if (!r) return null;
-
-  const eIdx = ETHNICITY_INDEX[ethnicity] ?? 0;
-  const E = [0, 0, 0, 0, 0]; // E2..E5 (Caucasian = reference)
-  if (eIdx >= 1) E[eIdx] = 1;
-
-  const lnH = Math.log(height);
-  const lnA = Math.log(age);
-
-  const mLin =
-    r.a0 + r.a1 * lnH + r.a2 * lnA +
-    r.a3 * E[1] + r.a4 * E[2] + r.a5 * E[3] + r.a6 * E[4] +
-    r.m0 + r.m1;
-
-  const sLin =
-    r.p0 + r.p1 * lnA +
-    r.p2 * E[1] + r.p3 * E[2] + r.p4 * E[3] + r.p5 * E[4] +
-    r.s0 + r.s1;
-
-  const lLin = r.q0 + r.q1 * lnA + r.l0 + r.l1;
-
-  const M = Math.exp(mLin);
-  const S = Math.exp(sLin);
-  const L = lLin;
-
-  if (!Number.isFinite(M) || M <= 0) return null;
-  if (!Number.isFinite(S) || S <= 0) return null;
-  if (!Number.isFinite(L) || L === 0) return null;
-
+  const row = interpolateRow(sex === 1 ? table.male : table.female, age);
+  if (!row) return null;
+  const E = [0, 0, 0, 0, 0];
+  const idx = ETHNICITY_INDEX[ethnicity];
+  if (idx >= 1) E[idx] = 1;
+  const lnHeight = Math.log(height);
+  const lnAge = Math.log(age);
+  const mLinear = row.a0 + row.a1 * lnHeight + row.a2 * lnAge +
+    row.a3 * E[1] + row.a4 * E[2] + row.a5 * E[3] + row.a6 * E[4] + row.mSpline;
+  const sLinear = row.p0 + row.p1 * lnAge +
+    row.p2 * E[1] + row.p3 * E[2] + row.p4 * E[3] + row.p5 * E[4] + row.sSpline;
+  const M = Math.exp(mLinear);
+  const S = Math.exp(sLinear);
+  const L = row.q0 + row.q1 * lnAge + row.lSpline;
+  if (!Number.isFinite(M) || M <= 0 || !Number.isFinite(S) || S <= 0 || !Number.isFinite(L)) return null;
   return { M, S, L };
 }
 
 function calculateGli2012(measured, demo, variable) {
-  if (!Number.isFinite(measured) || measured <= 0) {
-    return { predicted: null, lln: null, zScore: null, percentPredicted: null };
-  }
-
-  const gli = gli2012Lookup({
-    age: demo.age,
-    height: demo.height,
-    sex: demo.sex,
-    ethnicity: demo.ethnicity,
-    variable,
-  });
-
-  if (!gli) {
-    return { predicted: null, lln: null, zScore: null, percentPredicted: null };
-  }
-
-  const { M, S, L } = gli;
-
-  const zScore = (Math.pow(measured / M, L) - 1) / (L * S);
-  const lln = M * Math.pow(1 + L * S * -1.645, 1 / L);
-  const predicted = M;
-  const percentPredicted = (measured / M) * 100;
-
+  if (!Number.isFinite(measured) || measured <= 0 || !demo) return empty();
+  const lms = gli2012Lookup({ ...demo, variable });
+  if (!lms) return empty();
+  const { M, S, L } = lms;
+  const ratio = measured / M;
+  const zScore = Math.abs(L) < 1e-10 ? Math.log(ratio) / S :
+    (Math.pow(ratio, L) - 1) / (L * S);
+  const llnBase = 1 - 1.645 * L * S;
+  const lln = Math.abs(L) < 1e-10 ? M * Math.exp(-1.645 * S) :
+    llnBase > 0 ? M * Math.pow(llnBase, 1 / L) : null;
+  if (![M, zScore, lln].every(Number.isFinite)) return empty();
   return {
-    predicted: round2(predicted),
+    predicted: round2(M),
     lln: round2(lln),
     zScore: round2(zScore),
-    percentPredicted: round2(percentPredicted),
+    percentPredicted: round2((measured / M) * 100),
   };
 }
 
-module.exports = { calculateGli2012, gli2012Lookup };
+module.exports = { calculateGli2012, gli2012Lookup, interpolateRow };
