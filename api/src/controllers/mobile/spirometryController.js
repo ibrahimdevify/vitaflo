@@ -786,7 +786,7 @@ function sendLegacyFlutterResults(res, payload) {
  * One spirometry blow per indexed "session", newest first; all blows paginated.
  */
 const getResults = async (req, res) => {
-  const { normalizeSpirometry } = require('../helpers/spirometry');
+  const { normalizeSpirometry } = require('../../helpers/spirometry');
   const { demographicsForTest, createCalculatedValues, mobileGli,
     bestObservedValues } = require('../../helpers/spirometryParity');
   const { sendLegacyFlutterResults } =
