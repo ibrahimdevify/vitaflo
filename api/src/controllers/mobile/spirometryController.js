@@ -777,17 +777,10 @@ function sendLegacyFlutterResults(res, payload) {
  * Authorization / patient access middleware on the original route MUST remain active.
  * One spirometry blow per indexed "session", newest first; all blows paginated.
  */
-/**
- * VitalFlo - replace ONLY the getResults controller function.
- * Existing route: GET /api2/results/:patient_id/:start_date/:end_date?page=1&per_page=10
- * Requirements: prisma and calcLungAge already available in controller scope.
- * If controller is not in src/controllers, adjust the helper import path.
- * Authorization / patient access middleware on the original route MUST remain active.
- * One spirometry blow per indexed "session", newest first; all blows paginated.
- */
 const getResults = async (req, res) => {
   const { normalizeSpirometry } = require('../../helpers/spirometry');
-  const { demographicsForTest, createCalculatedValues, mobileGli,
+  const patientRepository = require('../../repositories/patientRepository');
+  const { inspectDemographics, createCalculatedValues, mobileGli,
     bestObservedValues } = require('../../helpers/spirometryParity');
   const { sendLegacyFlutterResults } =
     require('../../utils/legacy_flutter_results_json');
@@ -897,16 +890,30 @@ const getResults = async (req, res) => {
     const spirometries = {};
     const bestSpirometries = {};
     const lungAges = {};
-    const attrs = patient.patient_details.attributes || {};
+    // Match the WEB spirometry tab's patientRepository.findPatientProfile()
+    // rather than using a different source for mobile demographics.
+    // Keep the original Prisma lookup above for patient existence and auth flow.
+    const webProfile = await patientRepository.findPatientProfile(patientId);
+    const profileDetails = webProfile?.patient_details || {};
+    const attrs = profileDetails.attributes || {};
+    let firstGliIssue = webProfile ? null : 'web_profile_not_found';
+
+    const evaluateDemo = (observationHeight, testDate) => {
+      const checked = inspectDemographics({
+        attributes: attrs,
+        details: profileDetails,
+        observationHeight,
+        testDate,
+      });
+      if (!checked.demo && !firstGliIssue) {
+        firstGliIssue = checked.issues.join(',') || 'invalid_demographics';
+      }
+      return checked.demo;
+    };
 
     const noGli = () => ({ gli: { value: null, lln: null, zscore: null } });
     const demoForTest = test => {
-      const demo = demographicsForTest({
-        attributes: attrs,
-        details: patient.patient_details,
-        observationHeight: test.observation?.height,
-        testDate: test.dbdate,
-      });
+      const demo = evaluateDemo(test.observation?.height, test.dbdate);
       return { demo, height: demo?.height ?? null,
         gender: String(attrs.gender || '').trim() };
     };
@@ -976,12 +983,7 @@ const getResults = async (req, res) => {
       const latestObservationDate = matchedObservationTests.reduce((latest, sp) =>
         sp.dbdate && (!latest || new Date(sp.dbdate) > new Date(latest))
           ? sp.dbdate : latest, null) || test.dbdate;
-      const bestDemo = demographicsForTest({
-        attributes: attrs,
-        details: patient.patient_details,
-        observationHeight: test.observation?.height,
-        testDate: latestObservationDate,
-      });
+      const bestDemo = evaluateDemo(test.observation?.height, latestObservationDate);
       const bestCalculated = createCalculatedValues(bestValues, bestDemo);
       const best = (field, includeLln = false) => ({
         observed: bestValues[field] ?? null,
@@ -1011,6 +1013,11 @@ const getResults = async (req, res) => {
       }
     });
 
+    // Diagnostic header is optional; it never modifies the legacy JSON contract.
+    // Enable temporarily with VITALFLO_GLI_DEBUG=1 on the backend.
+    if (process.env.VITALFLO_GLI_DEBUG === '1') {
+      res.setHeader('X-VitalFlo-GLI-Diagnostic', firstGliIssue || 'demographics_valid');
+    }
     res.setHeader('Cache-Control', 'private, no-store');
     return sendLegacyFlutterResults(res, {
       spirometries: spirometries,
