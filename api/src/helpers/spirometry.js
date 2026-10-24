@@ -47,14 +47,52 @@ function toGliEthnicity(lookupTable) {
   if (v === 'seasian' || v === '4') return 4;
   return 5; // Preserve existing "other / mixed" mapping.
 }
-function normalizeHeightCm(raw) {
+/**
+ * Normalise verified height units to centimetres.
+ *
+ * `auto` ONLY accepts unambiguous m (1.72) or cm (172).
+ * A number such as 6580 may mean hundredths of inches OR another unit;
+ * we deliberately require an explicit unit for that interpretation.
+ */
+function normalizeHeightCm(raw, unit = 'auto') {
   const height = toNumberOrNull(raw);
   if (height === null || height <= 0) return null;
-  // Auto-detect only unambiguous units: metres (e.g. 1.72) or cm (172).
-  // Values such as 65 (possibly inches) and 6500 are not silently converted.
-  const cm = height >= 0.65 && height <= 2.3 ? height * 100 : height;
-  return cm >= 80 && cm <= 230 ? cm : null;
+  const u = String(unit || 'auto').trim().toLowerCase();
+  let cm;
+  switch (u) {
+    case 'auto':
+      cm = height >= 0.65 && height <= 2.30 ? height * 100 : height;
+      break;
+    case 'cm':
+    case 'centimeters':
+    case 'centimetres':
+      cm = height;
+      break;
+    case 'm':
+    case 'meter':
+    case 'metre':
+      cm = height * 100;
+      break;
+    case 'in':
+    case 'inch':
+    case 'inches':
+      cm = height * 2.54;
+      break;
+    case 'in_x100':
+    case 'inches_x100':
+      cm = (height / 100) * 2.54;
+      break;
+    case 'cm_x100':
+      cm = height / 100;
+      break;
+    default:
+      return null; // Unknown units are not safe to interpret.
+  }
+  // Permit GLI reference's pediatric height range while rejecting
+  // implausible values. This is a data validation bound, not a diagnosis.
+  return Number.isFinite(cm) && cm >= 80 && cm <= 230 ? cm : null;
 }
+
 function normalizeDemo(demo = {}) {
   const age = toNumberOrNull(demo.age);
   const height = normalizeHeightCm(demo.height);
