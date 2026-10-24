@@ -1,10 +1,10 @@
 const patientRepository = require('../repositories/patientRepository');
+const { normalizeSpirometryValue } = require('../helpers/spirometry');
 const {
-  calculatePredictedValues,
-  calculateFev1FvcPredictedValues,
-  normalizeSpirometryValue,
-  toGliDemographics,
-} = require('../helpers/spirometry');
+  inspectDemographics,
+  bestObservedValues,
+  createCalculatedValues,
+} = require('../helpers/spirometryParity');
 
 class ValidationError extends Error {}
 
@@ -36,19 +36,6 @@ function buildPredictedMap(predictedValues) {
   return map;
 }
 
-function buildVariableRow(label, observedValue, demo = {}, variable = 'FEV1') {
-  const observed = observedValue ?? null;
-  const calculated = calculatePredictedValues(observed, demo, variable);
-  return {
-    variable: label,
-    observed,
-    lln: calculated.lln,
-    zScore: calculated.zScore,
-    predicted: calculated.predicted,
-    percentPredicted: calculated.percentPredicted,
-  };
-}
-
 function buildChartSeries(spirometries) {
   return {
     flowVolumeSeries: spirometries.map((s, i) => ({
@@ -65,39 +52,51 @@ function buildChartSeries(spirometries) {
   };
 }
 
-function pickBestSpirometryValues(spirometries) {
-  const fields = ['fev1', 'fvc', 'pefr', 'fef2575', 'fev6'];
-  const best = {};
-  for (const field of fields) {
-    const values = spirometries
-      .map((s) => normalizeSpirometryValue(s[field]))
-      .filter((v) => v !== null);
-    best[field] = values.length > 0 ? Math.max(...values) : null;
-  }
-  best.fev1FvcRatio =
-    best.fev1 !== null && best.fvc !== null && best.fvc !== 0
-      ? Number((best.fev1 / best.fvc).toFixed(2))
-      : null;
-  return best;
+// Use the SAME normalized best-per-field measurements as mobile getResults.
+function pickBestSpirometryValues(spirometries = []) {
+  return bestObservedValues(spirometries);
 }
 
-function buildResultRows(best, demo = {}) {
-  const fev1FvcCalculated = calculateFev1FvcPredictedValues(best.fev1FvcRatio, demo);
+function buildResultRows(best, demo) {
+  const calculated = createCalculatedValues(best, demo);
+  const metric = (variable, observed, prediction) => ({
+    variable,
+    observed: observed ?? null,
+    lln: prediction.lln,
+    zScore: prediction.zScore,
+    predicted: prediction.predicted,
+    percentPredicted: prediction.percentPredicted,
+  });
+
+  // Web continues to display its FEV1/FVC observed value as a 0-1 ratio.
+  // The calculation uses the unrounded ratio, exactly as the mobile API does.
+  const observedRatio = best.fev1FvcRatio == null
+    ? null : Number(best.fev1FvcRatio.toFixed(2));
+
   return [
-    buildVariableRow('FEV1', best.fev1, demo, 'FEV1'),
-    buildVariableRow('FVC', best.fvc, demo, 'FVC'),
-    {
-      variable: 'FEV1/FVC',
-      observed: best.fev1FvcRatio,
-      lln: fev1FvcCalculated.lln,
-      zScore: fev1FvcCalculated.zScore,
-      predicted: fev1FvcCalculated.predicted,
-      percentPredicted: fev1FvcCalculated.percentPredicted,
-    },
-    buildVariableRow('FEF2575', best.fef2575, demo, 'FEF2575'),
-    { variable: 'FEV6', observed: best.fev6 ?? null, lln: null, zScore: null, predicted: null, percentPredicted: null },
-    { variable: 'PEFR', observed: best.pefr ?? null, lln: null, zScore: null, predicted: null, percentPredicted: null },
+    metric('FEV1', best.fev1, calculated.fev1),
+    metric('FVC', best.fvc, calculated.fvc),
+    metric('FEV1/FVC', observedRatio, calculated.fev1fvc),
+    metric('FEF2575', best.fef2575, calculated.fef2575),
+    metric('FEV6', best.fev6, calculated.fev6),
+    metric('PEFR', best.pefr, calculated.pefr),
   ];
+}
+
+/**
+ * For an observation's Best table, use the most recent spirometry blow date,
+ * matching the mobile controller. Fall back to the observation date only if
+ * no blow has a valid timestamp.
+ */
+function latestTestDate(observation) {
+  let latest = null;
+  for (const test of observation.spirometries || []) {
+    const date = test?.dbdate ? new Date(test.dbdate) : null;
+    if (date && Number.isFinite(date.getTime()) && (!latest || date > latest)) {
+      latest = date;
+    }
+  }
+  return latest || observation.dbdate || null;
 }
 
 function buildPagination(page, limit, total) {
@@ -145,40 +144,32 @@ async function getPatientInfoTab(userId) {
 }
 
 /**
- * Loads demographics for GLI-2012 in the same way Django does.
+ * Exactly the same verified demographics path used by the mobile getResults:
+ *   patientRepository.findPatientProfile -> inspectDemographics.
+ * Does NOT invent age=40, height=170, sex=male when data or a unit is missing.
+ * Height settings (must match verified DB units) are read by inspectDemographics:
+ *   VITALFLO_OBSERVATION_HEIGHT_UNIT
+ *   VITALFLO_ATTRIBUTES_HEIGHT_UNIT
+ *   VITALFLO_PATIENT_HEIGHT_UNIT
+ *
  * @param {number} userId
- * @param {number|null} observationHeight  portal_observation.height — preferred
+ * @param {number|null} observationHeight
+ * @param {Date|string|null} testDate Actual blow timestamp (or observation timestamp)
+ * @param {object|null} profile Optional once-per-page profile to avoid duplicate DB calls
  */
-async function loadGliDemographics(userId, observationHeight = null) {
-  try {
-    const profile = await patientRepository.findPatientProfile(userId);
-    if (!profile) return { age: 40, height: 170, sex: 1, ethnicity: 5 };
+async function loadGliDemographics(userId, observationHeight = null, testDate = null, profile = null) {
+  const patient = profile || await patientRepository.findPatientProfile(userId);
+  if (!patient?.patient_details) return null;
 
-    const attrs = profile.patient_details?.attributes || {};
-
-    // Height: observation first, then profile. Skip 0/null.
-    const height =
-      (observationHeight && Number(observationHeight) > 0
-        ? Number(observationHeight)
-        : null) ??
-      (attrs.height && Number(attrs.height) > 0 ? Number(attrs.height) : null) ??
-      (profile.patient_details?.height && Number(profile.patient_details.height) > 0
-        ? Number(profile.patient_details.height)
-        : null) ??
-      170;
-
-    // Age: integer
-    const age = calculateAge(attrs.dob) ?? 40;
-
-    return {
-      age,
-      height,
-      sex: toGliSex(attrs.gender),
-      ethnicity: toGliEthnicity(attrs.lookup_table),
-    };
-  } catch (_err) {
-    return { age: 40, height: 170, sex: 1, ethnicity: 5 };
-  }
+  const details = patient.patient_details;
+  const attrs = details.attributes || {};
+  const checked = inspectDemographics({
+    attributes: attrs,
+    details,
+    observationHeight,
+    testDate,
+  });
+  return checked.demo;
 }
 
 async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 20 }) {
@@ -190,9 +181,13 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
     }),
   ]);
 
+  const profile = observations.length
+    ? await patientRepository.findPatientProfile(userId) : null;
   const rows = await Promise.all(
     observations.map(async (observation) => {
-      const demo = await loadGliDemographics(userId, observation.height);
+      const demo = await loadGliDemographics(
+        userId, observation.height, latestTestDate(observation), profile,
+      );
       const spirometries = observation.spirometries || [];
       const best = pickBestSpirometryValues(spirometries);
 
@@ -251,8 +246,11 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
     throw new ValidationError('One or both sessions were not found for this patient');
   }
 
+  const profile = await patientRepository.findPatientProfile(userId);
   const buildSessionSummary = async (observation) => {
-    const demo = await loadGliDemographics(userId, observation.height);
+    const demo = await loadGliDemographics(
+      userId, observation.height, latestTestDate(observation), profile,
+    );
     const best = pickBestSpirometryValues(observation.spirometries);
     return {
       observationId: observation.id,
@@ -289,9 +287,12 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
     };
   }
 
+  const profile = await patientRepository.findPatientProfile(userId);
   const rows = await Promise.all(
     observations.map(async (observation) => {
-      const demo = await loadGliDemographics(userId, observation.height);
+      const demo = await loadGliDemographics(
+        userId, observation.height, latestTestDate(observation), profile,
+      );
       const best = pickBestSpirometryValues(observation.spirometries);
       return {
         observationId: observation.id,
@@ -365,6 +366,7 @@ async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = 
   const limit = 100;
   let page = 1;
   const observations = [];
+  const profile = await patientRepository.findPatientProfile(userId);
 
   while (true) {
     const skip = (page - 1) * limit;
@@ -374,9 +376,16 @@ async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = 
     if (!batch.length) break;
 
     for (const observation of batch) {
-      const demo = await loadGliDemographics(userId, observation.height);
       const tests = (observation.spirometries || []).map(spirometry => {
         const bestForThisTrial = pickBestSpirometryValues([spirometry]);
+        // This is a per-blow report. Use the blow's own date for GLI age.
+        // Build asynchronously so demographics are loaded from the verified profile.
+        return { spirometry, bestForThisTrial };
+      });
+      const resolvedTests = await Promise.all(tests.map(async ({ spirometry, bestForThisTrial }) => {
+        const demo = await loadGliDemographics(
+          userId, observation.height, spirometry.dbdate || observation.dbdate, profile,
+        );
         const rows = buildResultRows(bestForThisTrial, demo);
         // portal_spirometry has no FET field in the uploaded schema.
         // Do not pretend chart duration is clinically validated FET.
@@ -396,8 +405,8 @@ async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = 
             volume: p.volume,
           })),
         };
-      });
-      observations.push({ id: observation.id, date: observation.dbdate, tests });
+      }));
+      observations.push({ id: observation.id, date: observation.dbdate, tests: resolvedTests });
     }
 
     if (batch.length < limit) break;
