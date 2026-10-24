@@ -1,0 +1,11 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Route main domain to website/dist
+    # Keep portal.vitalflohealth.com unchanged
+
+    RewriteCond %{HTTP_HOST} ^(www\.)?vitalflohealth\.com$ [NC]
+    RewriteCond %{REQUEST_URI} !^/website/dist/ [NC]
+
+    RewriteRule ^(.*)$ website/dist/$1 [END]
+</IfModule>

@@ -422,4 +422,11 @@ async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = 
 }
 
 
-module.exports = { ValidationError, ensurePatientExists, getPatientsList, getPatientTabData, getLegacySpirometryPdfData };
+// Public GLI calculation surface shared by the Web tab and the legacy mobile API.
+// Do NOT introduce a separate mobile-specific prediction implementation.
+module.exports = {
+  ValidationError, ensurePatientExists, getPatientsList,
+  getPatientTabData, getLegacySpirometryPdfData,
+  loadGliDemographics, pickBestSpirometryValues,
+  buildResultRows, latestTestDate,
+};
