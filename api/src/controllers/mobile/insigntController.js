@@ -1,5 +1,7 @@
 'use strict';
 
+const { PrismaClient } = require("@prisma/client");
+
 /**
  * VitalFlo Insights API â€” drop-in authenticated Express handler factory.
  * GET /api2/patients/:patient_id/insights?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD
