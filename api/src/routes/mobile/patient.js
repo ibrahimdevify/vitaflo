@@ -3,6 +3,7 @@ const router = express.Router();
 const ctrl = require('../../controllers/mobile/patientController');
 const spiroCtrl = require('../../controllers/mobile/spirometryController');
 const { authenticate } = require('../../middleware/auth');
+const { createInsightsHandler } = require('../../controllers/mobile/insigntController');
 
 // Public routes (no auth required)
 router.post('/patient/login', ctrl.patientLogin);
@@ -17,6 +18,7 @@ router.patch('/patient/:user_id', authenticate, ctrl.updateCredentials);
 router.patch('/patient/:user_id/attributes', authenticate, ctrl.updateDemographics);
 router.patch('/patient/:user_id/awair', authenticate, ctrl.addAwairToken);
 router.patch('/patient/:user_id/onboarding', authenticate, ctrl.saveOnboarding);
+router.get('/patients/:patient_id/insights', authenticate, createInsightsHandler);
 
 // Patient management
 router.get('/patient', authenticate, ctrl.getClinicianPatients);

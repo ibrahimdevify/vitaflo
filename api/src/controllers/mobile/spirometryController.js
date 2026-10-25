@@ -778,15 +778,12 @@ function sendLegacyFlutterResults(res, payload) {
  * One spirometry blow per indexed "session", newest first; all blows paginated.
  */
 const getResults = async (req, res) => {
-  const { normalizeSpirometry } = require('../../helpers/spirometry');
-  const patientRepository = require('../../repositories/patientRepository');
-  const { inspectDemographics } = require('../../helpers/spirometryParity');
-  // Import the EXACT web service calculation methods, not a parallel GLI
-  // implementation. Web calls these same methods in getSpirometryTab().
-  const { loadGliDemographics, pickBestSpirometryValues,
-    buildResultRows, latestTestDate } = require('../../services/patientService');
-  const { sendLegacyFlutterResults } =
-    require('../../utils/legacy_flutter_results_json');
+  const {
+    normalizeSpirometry,
+    calculatePredictedValues,
+    calculateFev1FvcPredictedValues,
+    toGliDemographics,
+  } = require('../../helpers/spirometry');
 
   try {
     const patientId = Number(req.params.patient_id);
@@ -893,90 +890,78 @@ const getResults = async (req, res) => {
     const spirometries = {};
     const bestSpirometries = {};
     const lungAges = {};
-    // Same profile repository and demographic calculation as WEB patientService.
-    // Profile is read once; the shared web service is passed this same object.
-    const webProfile = await patientRepository.findPatientProfile(patientId);
-    const profileDetails = webProfile?.patient_details || {};
-    const attrs = profileDetails.attributes || {};
-    let firstGliIssue = webProfile ? null : 'web_profile_not_found';
-    const observationCache = new Map();
+    const attrs = patient.patient_details.attributes || {};
 
-    // Shape-preserving mapping from WEB's numeric result row to the OLD mobile
-    // predicted.gli object. No parallel GLI calculations or default values.
-    const metricNames = {
-      fev1: 'FEV1', fvc: 'FVC', fev1fvc: 'FEV1/FVC',
-      fef2575: 'FEF2575', fev6: 'FEV6', pefr: 'PEFR',
+    const roundOrNull = (value) => {
+      if (value == null || value === '') return null;
+      const num = Number(value);
+      return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
     };
-    const webRow = (rows, metric) => rows.find(r => r.variable === metricNames[metric]);
-    const toMobileGli = row => ({
+    const noGli = () => ({ gli: { value: null, lln: null, zscore: null } });
+    const ageOnDate = (dob, at) => {
+      if (!dob) return null;
+      const birth = new Date(dob);
+      const date = new Date(at);
+      if (Number.isNaN(birth.getTime()) || birth > date) return null;
+      let age = date.getUTCFullYear() - birth.getUTCFullYear();
+      if (date.getUTCMonth() < birth.getUTCMonth() ||
+          (date.getUTCMonth() === birth.getUTCMonth() && date.getUTCDate() < birth.getUTCDate())) {
+        age--;
+      }
+      return age > 0 ? age : null;
+    };
+
+    const demoForTest = (test) => {
+      const age = ageOnDate(attrs.dob, test.dbdate);
+      const rawHeight = [test.observation?.height, attrs.height]
+        .map((v) => v == null ? NaN : Number(v))
+        .find((v) => Number.isFinite(v) && v > 0);
+      const height = rawHeight > 0 && rawHeight < 3 ? rawHeight * 100 : rawHeight;
+      const gender = String(attrs.gender || '').trim();
+      if (!age || !Number.isFinite(height) || height <= 0 || !/^(male|female|m|f)$/i.test(gender)) {
+        return { demo: null, height: null, gender };
+      }
+      return {
+        demo: toGliDemographics({
+          age,
+          lookup_table: attrs.lookup_table,
+          attributes: { height, gender, lookup_table: attrs.lookup_table },
+          patient_details: { height },
+        }),
+        height,
+        gender,
+      };
+    };
+
+    const gliResponse = (result) => ({
       gli: {
-        value: row?.predicted ?? null,
-        lln: row?.lln ?? null,
-        zscore: row?.zScore ?? null,
+        value: roundOrNull(result?.predicted),
+        lln: roundOrNull(result?.lln),
+        zscore: roundOrNull(result?.zScore),
       },
     });
-
-    // Web "Best" is the per-field maximum across ALL blows in an observation.
-    // Fetch these without changing the existing paginated mobile blow list.
-    const observationIds = [...new Set(tests
-      .map(t => t.observation?.id)
-      .filter(Number.isSafeInteger))];
-    const allObservationTests = observationIds.length > 0
-      ? await prisma.portal_spirometry.findMany({
-          where: { observation_id: { in: observationIds } },
-          select: { observation_id: true,
-            fev1: true, fvc: true, pefr: true, fef2575: true, fev6: true, dbdate: true },
-        })
-      : [];
-    const testsByObservation = new Map();
-    for (const item of allObservationTests) {
-      if (!testsByObservation.has(item.observation_id))
-        testsByObservation.set(item.observation_id, []);
-      testsByObservation.get(item.observation_id).push(item);
-    }
-
-    // Observation-level demographics use the SAME test date as WEB:
-    // latest blow within the observation, not an arbitrary date per blow.
-    // Each response still contains separate mobile blow records.
-    for (const [idx, test] of tests.entries()) {
-      const obsId = test.observation?.id ?? test.observation_id ?? test.id;
-      if (!observationCache.has(obsId)) {
-        const all = testsByObservation.get(obsId) || [test];
-        const obs = {
-          height: test.observation?.height,
-          dbdate: test.dbdate,
-          spirometries: all,
-        };
-        const measuredAt = latestTestDate(obs);
-        const demo = await loadGliDemographics(
-          patientId, obs.height, measuredAt, webProfile,
-        );
-        if (!demo && !firstGliIssue) {
-          if (process.env.VITALFLO_GLI_DEBUG === '1') {
-            // Same validation function used internally by WEB service.
-            const checked = inspectDemographics({
-              attributes: attrs, details: profileDetails,
-              observationHeight: obs.height, testDate: measuredAt,
-            });
-            firstGliIssue = checked.issues.join(',') || 'invalid_demographics';
-          } else {
-            firstGliIssue = 'invalid_demographics';
-          }
-        }
-        const bestValues = pickBestSpirometryValues(all);
-        observationCache.set(obsId, {
-          demo,
-          bestValues,
-          bestRows: buildResultRows(bestValues, demo),
-        });
+    const predict = (observed, demo, variable) => {
+      if (!demo || observed == null || observed <= 0) return noGli();
+      try {
+        return gliResponse(calculatePredictedValues(observed, demo, variable));
+      } catch (e) {
+        console.error(`[GLI] ${variable}:`, e);
+        return noGli();
       }
-      const { demo, bestValues, bestRows } = observationCache.get(obsId);
+    };
+    const predictRatio = (observed, demo) => {
+      if (!demo || observed == null || observed <= 0) return noGli();
+      try {
+        return gliResponse(calculateFev1FvcPredictedValues(observed, demo));
+      } catch (e) {
+        console.error('[GLI] FEV1FVC:', e);
+        return noGli();
+      }
+    };
+
+    tests.forEach((test, idx) => {
       const testData = normalizeSpirometry(test);
-      const perBlowValues = pickBestSpirometryValues([test]);
-      // EXACT same row builder invoked by the WEB spirometry results table.
-      const trialRows = buildResultRows(perBlowValues, demo);
-      const height = demo?.height ?? null;
-      const gender = String(attrs.gender || '').trim();
+      const { demo, height, gender } = demoForTest(test);
       const ratio = testData.fvc > 0 && testData.fev1 != null
         ? testData.fev1 / testData.fvc : null;
       const observedRatioPercent = ratio == null ? null : Number((ratio * 100).toFixed(1));
@@ -993,12 +978,13 @@ const getResults = async (req, res) => {
       });
 
       const blow = {
-        fev1: { observed: testData.fev1, predicted: toMobileGli(webRow(trialRows, 'fev1')) },
-        fvc: { observed: testData.fvc, predicted: toMobileGli(webRow(trialRows, 'fvc')) },
-        fev1fvc: { observed: observedRatioPercent, predicted: toMobileGli(webRow(trialRows, 'fev1fvc')) },
-        fef2575: { observed: testData.fef2575, predicted: toMobileGli(webRow(trialRows, 'fef2575')) },
-        fev6: { observed: testData.fev6, predicted: toMobileGli(webRow(trialRows, 'fev6')) },
-        pefr: { observed: testData.pefr, predicted: toMobileGli(webRow(trialRows, 'pefr')) },
+        fev1: { observed: testData.fev1, predicted: predict(testData.fev1, demo, 'FEV1') },
+        fvc: { observed: testData.fvc, predicted: predict(testData.fvc, demo, 'FVC') },
+        fev1fvc: { observed: observedRatioPercent, predicted: predictRatio(ratio, demo) },
+        fef2575: { observed: testData.fef2575, predicted: predict(testData.fef2575, demo, 'FEF2575') },
+        // The supplied helper uses FEV1 equations for FEV6/PEFR; do not fabricate clinical reference values.
+        fev6: { observed: testData.fev6, predicted: noGli() },
+        pefr: { observed: testData.pefr, predicted: noGli() },
         fet: { observed: null, predicted: { gli: { value: null } } },
         id: test.id,
         flows,
@@ -1006,17 +992,15 @@ const getResults = async (req, res) => {
         fev1Acceptability: test.fev1_acceptability ?? null,
         fvcAcceptability: test.fvc_acceptability ?? null,
       };
-      // WEB's best rows use the same per-observation max values as this map.
-      const best = (field, includeLln = false) => {
-        const row = webRow(bestRows, field);
-        return {
-          observed: bestValues[field] ?? null,
-          predicted: { gli: {
-            value: row?.predicted ?? null,
-            ...(includeLln ? { lln: row?.lln ?? null } : {}),
-          } },
-        };
-      };
+      const best = (field, includeLln = false) => ({
+        observed: blow[field].observed,
+        predicted: {
+          gli: {
+            value: blow[field].predicted.gli.value,
+            ...(includeLln ? { lln: blow[field].predicted.gli.lln } : {}),
+          },
+        },
+      });
       spirometries[idx] = { [test.dbdate.toISOString()]: blow };
       bestSpirometries[idx] = {
         fev1: best('fev1', true),
@@ -1034,20 +1018,14 @@ const getResults = async (req, res) => {
           console.error('[LungAge]', e);
         }
       }
-    }
+    });
 
-    // Diagnostic header is optional; it never modifies the legacy JSON contract.
-    // Enable temporarily with VITALFLO_GLI_DEBUG=1 on the backend.
-    if (process.env.VITALFLO_GLI_DEBUG === '1') {
-      res.setHeader('X-VitalFlo-GLI-Diagnostic', firstGliIssue || 'demographics_valid');
-      res.setHeader('X-VitalFlo-GLI-Source', 'patientService.buildResultRows');
-    }
     res.setHeader('Cache-Control', 'private, no-store');
-    return sendLegacyFlutterResults(res, {
+    return res.json({
       spirometries: spirometries,
       best_spirometries: bestSpirometries,
       lung_ages: lungAges,
-      pagination, // Original response keys, nesting, IDs and pagination unchanged.
+      pagination, // addition; original result fields and nesting are unchanged
     });
   } catch (error) {
     console.error('[VitalFlo getResults paginated]', error);
