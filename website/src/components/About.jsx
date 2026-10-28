@@ -4,9 +4,9 @@ import SectionHeading from "./ui/SectionHeading.jsx";
 import BodyText from "./ui/BodyText.jsx";
 import Photo from "./ui/Photo.jsx";
 import Reveal from "./ui/Reveal.jsx";
-import team from "../assets/team.png";
-import care from "../assets/care.png";
-import consult from "../assets/consult.png";
+import team from "../assets/team.webp";
+import care from "../assets/care.webp";
+import consult from "../assets/consult.webp";
 
 export default function About() {
   return (

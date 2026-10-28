@@ -1,6 +1,8 @@
 // src/data/blogPosts.js
 // Single source of truth for all blog posts.
 
+import { BLOG_ARTICLES } from "./blog.js";
+
 const images = import.meta.glob("../assets/blog/*.{png,jpg,jpeg,webp}", {
   eager: true,
   import: "default",
@@ -19,6 +21,8 @@ const copdImage = findImage("early-copd");
 const spirometryImage = findImage("clinical-research");
 const lungAgeImage = findImage("race-spirometry");
 const valueCareImage = findImage("preventive-medicine");
+
+const pick = (title) => BLOG_ARTICLES.find((a) => a.title === title) ?? null;
 
 export const BLOG_POSTS_FULL = [
   // ─────────────────────────────────────────────────────────────
@@ -288,50 +292,11 @@ export const BLOG_POSTS_FULL = [
     ],
   },
 
-  // POST 6: Nyx Robey
-  {
-    slug: "nyx-robey-article-example",
-    category: "Science and Research",
-    title: "An Example Article by Nyx Robey",
-    excerpt: "This is an example post to show Nyx's LinkedIn link.",
-    date: "January 1, 2025",
-    readTime: "4 Min Read",
-    image: null,
-    author: {
-      name: "Nyx Robey",
-      role: "Data Scientist",
-      photo: null,
-      links: [
-        { label: "LinkedIn", href: "https://www.linkedin.com/in/nyxrobey/" },
-      ],
-    },
-    tags: ["Data", "Research"],
-    content: [{ type: "paragraph", text: "Content goes here..." }],
-  },
-
-  // POST 7: Alicia Chen
-  {
-    slug: "alicia-chen-article-example",
-    category: "Science and Research",
-    title: "An Example Article by Alicia Chen",
-    excerpt: "This is an example post to show Alicia's LinkedIn link.",
-    date: "January 1, 2025",
-    readTime: "4 Min Read",
-    image: null,
-    author: {
-      name: "Alicia Chen",
-      role: "Researcher",
-      photo: null,
-      links: [
-        {
-          label: "LinkedIn",
-          href: "https://www.linkedin.com/in/alicia--chen/",
-        },
-      ],
-    },
-    tags: ["Data", "Research"],
-    content: [{ type: "paragraph", text: "Content goes here..." }],
-  },
+  // POST 6 & 7: real articles from blog.js (so /blog/<slug> opens them)
+  ...[
+    pick("How to Use an Asthma Action Plan"),
+    pick("The power of remote monitoring through machine learning"),
+  ].filter(Boolean),
 ];
 
 // Helper: find a post by slug
