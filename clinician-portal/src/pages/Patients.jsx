@@ -28,7 +28,6 @@ export default function Patients() {
   const stateClinicianId = location.state?.assignedClinicianId;
   const stateClinicianName = location.state?.assignedClinicianName;
   const stateClinicId = location.state?.clinicId;
-  const clinicFilterId = selectedClinicId;
   const stateClinicName = location.state?.clinicName;
   const effectiveClinicianId = stateClinicianId ||
     (Number(user?.ut_id_fk) === 3 ? (user?.user_id || user?.id) : undefined);
@@ -36,6 +35,7 @@ export default function Patients() {
   const [patients, setPatients] = useState([]);
   const [clinics, setClinics] = useState([]);
   const [selectedClinicId, setSelectedClinicId] = useState(() => location.state?.clinicId || '');
+  const clinicFilterId = selectedClinicId;
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
