@@ -25,13 +25,8 @@ import ACOs from "./pages/ACOs.jsx";
 import Providers from "./pages/Providers.jsx";
 import Terms from "./pages/Terms.jsx";
 import Privacy from "./pages/Privacy.jsx";
-function ComingSoon() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#35577c] text-3xl font-light">
-      Coming soon
-    </div>
-  );
-}
+import HelpCenter from "./pages/HelpCenter.jsx";
+import AccountDeletion from "./pages/AccountDeletion.jsx";
 
 // New page = start at the top. Back / forward buttons keep the browser's own
 // scroll position, and #anchor links are left to the smooth-scroll hook.
@@ -73,8 +68,13 @@ export default function App() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/terms-of-service" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<ComingSoon />} />
-        <Route path="/privacy" element={<ComingSoon />} />
+        <Route path="/privacy-policy" element={<Privacy />} />
+        <Route path="/help-center" element={<HelpCenter />} />
+        <Route path="/account-deletion" element={<AccountDeletion />} />
+        <Route
+          path="/help-center/account-deletion"
+          element={<AccountDeletion />}
+        />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </main>

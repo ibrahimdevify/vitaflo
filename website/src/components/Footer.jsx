@@ -18,6 +18,7 @@ const PAGE_LINKS = [
 
 const INFO_LINKS = [
   ...PAGE_LINKS,
+  { label: "Help Center", to: "/help-center" },
   { label: "Terms & Conditions", to: "/terms" },
   { label: "Privacy Policy", to: "/privacy" },
 ];
