@@ -251,147 +251,135 @@ const syncSpirometryPlus = async (req, res) => {
   }
 };
 
+/**
+ * Existing mobile history JSON stays a list of the same measurement fields.
+ * Apply the same legacy measurement normalization as Web and mobile Results.
+ */
 const getSpirometryByUser = async (req, res) => {
   try {
-    const { user_id } = req.params;
-    const { start, end } = req.query;
-    const where = { user_id: parseInt(user_id) };
-    if (start || end) {
-      where.dbdate = {};
-      if (start) where.dbdate.gte = new Date(start);
-      if (end) where.dbdate.lte = new Date(end);
+    const userId = Number(req.params.user_id);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid patient ID' });
     }
-    // FIX: this previously referenced `patient_id`, which is never defined
-    // in this function's scope (only `user_id` is destructured from
-    // req.params) — every call to this endpoint threw a ReferenceError
-    // before it ever reached the actual query below.
-    const patient = await prisma.dc_users.findFirst({
-      where: { user_id: parseInt(user_id) },
-      include: { patient_details: { include: { attributes: true } } },
+    const { canReadPatient } = require('../../helpers/patientScope');
+    if (!(await canReadPatient(req.user, userId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { normalizeSpirometry } = require('../../helpers/spirometry');
+    const { start, end } = req.query;
+    const range = {};
+    const boundary = (value, isEnd) => {
+      if (!value || typeof value !== 'string') return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const d = new Date(`${value}T00:00:00.000Z`);
+        if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) return null;
+        if (isEnd) d.setUTCDate(d.getUTCDate() + 1);
+        return { date: d, exclusive: isEnd };
+      }
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : { date: d, exclusive: false };
+    };
+    if (start) {
+      const parsed = boundary(start, false);
+      if (!parsed) return res.status(400).json({ error: 'Invalid start date' });
+      range.gte = parsed.date;
+    }
+    if (end) {
+      const parsed = boundary(end, true);
+      if (!parsed) return res.status(400).json({ error: 'Invalid end date' });
+      range[parsed.exclusive ? 'lt' : 'lte'] = parsed.date;
+    }
+    const tests = await prisma.portal_spirometry.findMany({
+      // Filter by actual maneuver time, matching the Web/Results controllers.
+      where: { observation: { is: { user_id: userId } },
+        ...(Object.keys(range).length ? { dbdate: range } : {}) },
+      orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
     });
-    const attr = patient?.patient_details?.attributes;
-
-    const observations = await prisma.portal_observation.findMany({
-      where,
-      include: { spirometries: true },
-      orderBy: { dbdate: "desc" },
-    });
-    // Response shape unchanged: same fields as before.
-    res.json(
-      observations.flatMap((obs) =>
-        obs.spirometries.map((sp) => ({
-          dbdate: obs.dbdate,
-          fev1: sp.fev1,
-          fvc: sp.fvc,
-          pefr: sp.pefr,
-          fev1_fvc_ratio: sp.fev1 && sp.fvc ? (sp.fev1 / sp.fvc) * 100 : null,
-          fef2575: sp.fef2575,
-          fev1_perc: sp.fev1_perc,
-        })),
-      ),
-    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json(tests.map(sp => {
+      const value = normalizeSpirometry(sp);
+      return {
+        dbdate: sp.dbdate,
+        fev1: value.fev1, fvc: value.fvc, pefr: value.pefr,
+        fev1_fvc_ratio: value.fev1_fvc_ratio == null ? null :
+          Number((value.fev1_fvc_ratio * 100).toFixed(1)),
+        fef2575: value.fef2575,
+        fev1_perc: sp.fev1_perc,
+      };
+    }));
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch spirometry" });
+    console.error('[VitalFlo mobile history]', error);
+    return res.status(500).json({ error: 'Failed to fetch spirometry' });
   }
 };
 
-// FIX: this previously returned entirely hardcoded, gender-based guesses and
-// never touched the database. The migration populated real GLI predicted
-// values (portal_predicted_value) for every historical spirometry test, so
-// this now reads the patient's actual most recent predicted values for
-// fev1 / fvc / fev1fvc / fef2575 from that table, and only falls back to
-// the old hardcoded estimate for a variable if no real row exists yet
-// (e.g. a brand-new patient with no spirometry history). The JSON response
-// shape/keys are UNCHANGED from the original — including the duplicated
-// `fev1Fvc` / `fev1fvc` keys, since some existing client code may rely on
-// either casing.
-//
-// NOTE: `pefr` and `fev6` are NOT covered by portal_predicted_value (the
-// source system's GLI export only ever computed fev1, fvc, fev1fvc, and
-// fef2575 — see 08_predicted_values.js from the migration). Those two
-// still use the original hardcoded gender-based estimate, since there is
-// no real predicted data to fall back on. Flagging this so it doesn't get
-// mistaken for a real predicted value later.
+/**
+ * Keep the existing /api2/predicted/:user_id JSON keys for Flutter.
+ * Reference values are calculated with the same GLI2012 coefficients and
+ * demographics resolver used by web Spirometry and mobile Results.
+ * Never invent a default age, sex, height, PEFR or FEV6 prediction.
+ */
 const getPredictedValues = async (req, res) => {
   try {
-    const userId = parseInt(req.params.user_id);
-
-    const patient = await prisma.dc_users.findFirst({
-      where: { user_id: userId },
-      include: { patient_details: { include: { attributes: true } } },
-    });
-
-    const attr = patient?.patient_details?.attributes;
-    const gender = attr?.gender || "M";
-
-    const fev1Pred = gender === "M" ? 4.5 : 3.5;
-    const fvcPred = gender === "M" ? 5.5 : 4.2;
-    const pefrPred = gender === "M" ? 550.0 : 420.0;
-    const fef2575Pred = gender === "M" ? 4.5 : 3.5;
-
-    // Pull real predicted values for this patient, most recent per variable.
-    const predictedRows = await prisma.portal_predicted_value.findMany({
-      where: {
-        user_id: userId,
-        variable: { in: ["fev1", "fvc", "fev1fvc", "fef2575"] },
-      },
-      orderBy: { created: "desc" },
-    });
-    const latestByVariable = {};
-    for (const row of predictedRows) {
-      if (!latestByVariable[row.variable]) latestByVariable[row.variable] = row;
+    const userId = Number(req.params.user_id);
+    if (!Number.isSafeInteger(userId) || userId < 1) {
+      return res.status(400).json({ error: 'Invalid patient ID' });
     }
+    const { canReadPatient } = require('../../helpers/patientScope');
+    if (!(await canReadPatient(req.user, userId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const patientRepository = require('../../repositories/patientRepository');
+    const { inspectDemographics, bestObservedValues, createCalculatedValues } =
+      require('../../helpers/spirometryParity');
+    const { referencePrediction } = require('../../helpers/gliReference');
 
-    const toResponseShape = (row, fallbackNormal, lowFactor, highFactor) => {
-      if (row) {
-        return {
-          normal: row.predicted != null ? parseFloat(row.predicted.toFixed(2)) : null,
-          lowerLimitOfNormal: row.lln != null ? parseFloat(row.lln.toFixed(2)) : null,
-          upperLimitOfNormal: row.uln != null ? parseFloat(row.uln.toFixed(2)) : null,
-          percentPredicted:
-            row.percent_predicted != null ? parseFloat(row.percent_predicted.toFixed(1)) : 100.0,
-          zScore: row.z_score != null ? parseFloat(row.z_score.toFixed(2)) : 0.0,
-        };
-      }
-      // Fallback to the original hardcoded estimate when no real data exists yet.
+    const profile = await patientRepository.findPatientProfile(userId);
+    if (!profile?.patient_details) return res.status(404).json({ error: 'Patient not found' });
+
+    const latest = await prisma.portal_spirometry.findFirst({
+      where: { observation: { is: { user_id: userId } } },
+      orderBy: [{ dbdate: 'desc' }, { id: 'desc' }],
+      include: { observation: { select: { height: true } } },
+    });
+    const details = profile.patient_details;
+    const demo = inspectDemographics({
+      attributes: details.attributes || {}, details,
+      observationHeight: latest?.observation?.height ?? null,
+      testDate: latest?.dbdate || new Date(),
+    }).demo;
+    const observed = latest ? bestObservedValues([latest]) : {};
+    const calculated = createCalculatedValues(observed, demo);
+
+    const shape = (metric, variable) => {
+      const actual = calculated[metric];
+      const reference = referencePrediction(demo, variable);
       return {
-        normal: parseFloat(fallbackNormal.toFixed(1)),
-        lowerLimitOfNormal: parseFloat((fallbackNormal * lowFactor).toFixed(2)),
-        upperLimitOfNormal: parseFloat((fallbackNormal * highFactor).toFixed(2)),
-        percentPredicted: 100.0,
-        zScore: 0.0,
+        normal: actual?.predicted ?? reference.predicted,
+        lowerLimitOfNormal: actual?.lln ?? reference.lln,
+        upperLimitOfNormal: reference.uln,
+        percentPredicted: actual?.percentPredicted ?? null,
+        zScore: actual?.zScore ?? null,
       };
     };
-
-    const fev1fvcShape = toResponseShape(latestByVariable.fev1fvc, 0.83, 0.84, 1.14);
-
-    // Force all values as proper floats for Dart strict typing
-    res.json({
-      fev1: toResponseShape(latestByVariable.fev1, fev1Pred, 0.8, 1.2),
-      fvc: toResponseShape(latestByVariable.fvc, fvcPred, 0.8, 1.2),
-      // No source data for pefr — unchanged hardcoded estimate.
-      pefr: {
-        normal: parseFloat(pefrPred.toFixed(1)),
-        lowerLimitOfNormal: parseFloat((pefrPred * 0.8).toFixed(1)),
-        upperLimitOfNormal: parseFloat((pefrPred * 1.2).toFixed(1)),
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
-      // No source data for fev6 — unchanged hardcoded estimate.
-      fev6: {
-        normal: parseFloat((fvcPred * 0.95).toFixed(1)),
-        lowerLimitOfNormal: parseFloat((fvcPred * 0.76).toFixed(2)),
-        upperLimitOfNormal: parseFloat((fvcPred * 1.14).toFixed(2)),
-        percentPredicted: 100.0,
-        zScore: 0.0,
-      },
-      fev1Fvc: fev1fvcShape,
-      fev1fvc: fev1fvcShape,
-      fef2575: toResponseShape(latestByVariable.fef2575, fef2575Pred, 0.6, 1.4),
+    const absent = () => ({
+      normal: null, lowerLimitOfNormal: null, upperLimitOfNormal: null,
+      percentPredicted: null, zScore: null,
+    });
+    const ratio = shape('fev1fvc', 'FEV1FVC');
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({
+      fev1: shape('fev1', 'FEV1'),
+      fvc: shape('fvc', 'FVC'),
+      pefr: absent(),  // No verified PEF reference coefficients in this project.
+      fev6: absent(),  // No verified FEV6 reference coefficients in this project.
+      fev1Fvc: ratio,
+      fev1fvc: ratio,
+      fef2575: shape('fef2575', 'FEF2575'),
     });
   } catch (error) {
-    console.error("Get predicted error:", error);
-    res.status(500).json({ error: "Failed to fetch predicted values" });
+    console.error('[VitalFlo predicted values]', error);
+    return res.status(500).json({ error: 'Failed to fetch predicted values' });
   }
 };
 
@@ -588,65 +576,9 @@ const takeSurvey = async (req, res) => {
   }
 };
 
-// Helper: build best spirometry summary
-const buildBestSpirometry = (
-  bestFev1,
-  bestFvc,
-  bestPefr,
-  bestFef2575,
-  bestFev6,
-) => ({
-  fev1: {
-    observed: bestFev1.val || 0,
-    predicted: {
-      gli: {
-        value: bestFev1.val
-          ? parseFloat((bestFev1.val / 0.85).toFixed(2))
-          : null,
-        lln: bestFev1.val ? parseFloat((bestFev1.val * 0.8).toFixed(2)) : null,
-      },
-    },
-  },
-  fvc: {
-    observed: bestFvc.val || 0,
-    predicted: {
-      gli: {
-        value: bestFvc.val ? parseFloat((bestFvc.val / 0.85).toFixed(2)) : null,
-        lln: bestFvc.val ? parseFloat((bestFvc.val * 0.8).toFixed(2)) : null,
-      },
-    },
-  },
-  pefr: {
-    observed: bestPefr.val || 0,
-    predicted: {
-      gli: {
-        value: bestPefr.val
-          ? parseFloat((bestPefr.val / 0.85).toFixed(2))
-          : null,
-      },
-    },
-  },
-  fef2575: {
-    observed: bestFef2575.val || 0,
-    predicted: {
-      gli: {
-        value: bestFef2575.val
-          ? parseFloat((bestFef2575.val / 0.85).toFixed(2))
-          : null,
-      },
-    },
-  },
-  fev6: {
-    observed: bestFev6.val || 0,
-    predicted: {
-      gli: {
-        value: bestFev6.val
-          ? parseFloat((bestFev6.val / 0.85).toFixed(2))
-          : null,
-      },
-    },
-  },
-});
+// The old buildBestSpirometry helper guessed predicted values using /0.85 and
+// an arbitrary 80% LLN. It was unused and is removed; calculations now flow
+// exclusively through spirometryParity.createCalculatedValues.
 
 // Calculate lung age from FEV1
 const calcLungAge = (fev1, heightCm, gender) => {
@@ -892,6 +824,25 @@ const getResults = async (req, res) => {
       has_previous: page > 1 && totalPages > 0,
     };
 
+    // Web Spirometry tab calculates "Best" across all maneuvers in each
+    // observation/session. Fetch every blow of the page's observations so
+    // best_spirometries agrees with Web even when a session has many blows.
+    // The per-blow spirometries object remains unchanged for Flutter.
+    const observationIds = [...new Set(tests.map(t => t.observation_id)
+      .filter(id => Number.isSafeInteger(id)))];
+    const sessionRows = observationIds.length
+      ? await prisma.portal_spirometry.findMany({
+          where: { observation_id: { in: observationIds } },
+          select: { id: true, observation_id: true, dbdate: true,
+            fev1: true, fvc: true, pefr: true, fef2575: true, fev6: true },
+        })
+      : [];
+    const rowsByObservation = new Map();
+    for (const row of sessionRows) {
+      if (!rowsByObservation.has(row.observation_id)) rowsByObservation.set(row.observation_id, []);
+      rowsByObservation.get(row.observation_id).push(row);
+    }
+
     const spirometries = {};
     const bestSpirometries = {};
     const lungAges = {};
@@ -950,12 +901,25 @@ const getResults = async (req, res) => {
         fev1Acceptability: test.fev1_acceptability ?? null,
         fvcAcceptability: test.fvc_acceptability ?? null,
       };
+      // "Best" is session-level, matching Web's buildResultRows by observation.
+      // Predicted and LLN depend on the latest blow's age within the session.
+      const sessionTests = rowsByObservation.get(test.observation_id) || [test];
+      const sessionBest = bestObservedValues(sessionTests);
+      const latestSessionDate = sessionTests.reduce((latest, row) =>
+        row.dbdate && (!latest || row.dbdate > latest) ? row.dbdate : latest,
+        test.dbdate);
+      const sessionDemo = inspectDemographics({
+        attributes: attrs, details,
+        observationHeight: test.observation?.height,
+        testDate: latestSessionDate,
+      }).demo;
+      const sessionPredictions = createCalculatedValues(sessionBest, sessionDemo);
       const best = (field, includeLln = false) => ({
-        observed: blow[field].observed,
+        observed: sessionBest[field],
         predicted: {
           gli: {
-            value: blow[field].predicted.gli.value,
-            ...(includeLln ? { lln: blow[field].predicted.gli.lln } : {}),
+            value: sessionPredictions[field].predicted,
+            ...(includeLln ? { lln: sessionPredictions[field].lln } : {}),
           },
         },
       });

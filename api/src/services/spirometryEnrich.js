@@ -1,39 +1,21 @@
 // src/services/spirometryEnrich.js
 'use strict';
 
-const { calculateGli2012 } = require('../helpers/gli2012');
 const { normalizeSpirometryValue } = require('../helpers/spirometry');
+const { inspectDemographics, createCalculatedValues } = require('../helpers/spirometryParity');
 
 /**
- * Build GLI-2012 demographics from the observation and patient attributes,
- * matching Django's rules exactly:
- *   - height: observation.height first, then attributes.height
- *   - age:    currentYear - birthYear (integer, no birthday correction)
- *   - sex:    'F' → female, anything else → male
- *   - ethnicity: from lookup_table
+ * SAME demographic resolver as web patientService and mobile getResults.
+ * No age=40, height=170, or default male substitutes. Provide the test date
+ * (not today's date) so historical predicted values remain reproducible.
  */
-function buildDemographics({ observation, attributes }) {
-  const attrs = attributes || {};
-  const obsHeight = observation && observation.height;
-
-  const height = Number(obsHeight) > 0
-    ? Number(obsHeight)
-    : (Number(attrs.height) > 0 ? Number(attrs.height) : 170);
-
-  const dobYear = attrs.dob ? new Date(attrs.dob).getFullYear() : null;
-  const age = dobYear ? (new Date().getFullYear() - dobYear) : 40;
-
-  const sex = String(attrs.gender || '').toUpperCase() === 'F' ? 2 : 1;
-
-  const ethMap = {
-    Caucasian: 1,
-    AfricanAmerican: 2,
-    NEAsian: 3,
-    SEAsian: 4,
-  };
-  const ethnicity = ethMap[attrs.lookup_table] || 5;
-
-  return { age, height, sex, ethnicity };
+function buildDemographics({ observation, attributes, details, testDate } = {}) {
+  return inspectDemographics({
+    attributes: attributes || {},
+    details: details || {},
+    observationHeight: observation?.height,
+    testDate: testDate || observation?.dbdate,
+  }).demo;
 }
 
 /**
@@ -45,32 +27,22 @@ function buildDemographics({ observation, attributes }) {
 function enrichSpirometry(raw, demographics) {
   if (!raw) return null;
 
-  const demo = demographics || { age: 40, height: 170, sex: 1, ethnicity: 5 };
-
-  // Normalize ×100 → real liters
+  // Use the shared, patient-specific GLI2012 calculator used on both APIs.
+  // Do not round FEV1/FVC before its z-score is computed.
   const fev1 = normalizeSpirometryValue(raw.fev1);
   const fvc = normalizeSpirometryValue(raw.fvc);
   const pefr = normalizeSpirometryValue(raw.pefr);
   const fef2575 = normalizeSpirometryValue(raw.fef2575);
   const fev6 = normalizeSpirometryValue(raw.fev6);
-
-  // Compute FEV1/FVC ratio
-  const fev1_fvc = fev1 !== null && fvc !== null && fvc !== 0
-    ? Number((fev1 / fvc).toFixed(2))
-    : null;
-
-  // GLI-2012 for FEV1, FVC, and ratio
-  const fev1Gli = fev1 !== null
-    ? calculateGli2012(fev1, demo, 'FEV1')
-    : { predicted: null, lln: null, zScore: null, percentPredicted: null };
-
-  const fvcGli = fvc !== null
-    ? calculateGli2012(fvc, demo, 'FVC')
-    : { predicted: null, lln: null, zScore: null, percentPredicted: null };
-
-  const ratioGli = fev1_fvc !== null
-    ? calculateGli2012(fev1_fvc, demo, 'FEV1FVC')
-    : { predicted: null, lln: null, zScore: null, percentPredicted: null };
+  const ratio = fev1 != null && fvc > 0 ? fev1 / fvc : null;
+  const fev1_fvc = ratio == null ? null : Number(ratio.toFixed(2));
+  const calculated = createCalculatedValues({
+    fev1, fvc, pefr, fef2575, fev6, fev1FvcRatio: ratio,
+  }, demographics || null);
+  const fev1Gli = calculated.fev1;
+  const fvcGli = calculated.fvc;
+  const ratioGli = calculated.fev1fvc;
+  const fef2575Gli = calculated.fef2575;
 
   return {
     // --- Metadata ---
@@ -107,6 +79,12 @@ function enrichSpirometry(raw, demographics) {
     zscore_fev1_fvc: ratioGli.zScore,
     pred_fev1_fvc: ratioGli.predicted,
     pred_percent_fev1_fvc: ratioGli.percentPredicted,
+
+    // --- FEF25–75 from the same reference equation ---
+    lln_fef2575: fef2575Gli.lln,
+    zscore_fef2575: fef2575Gli.zScore,
+    pred_fef2575: fef2575Gli.predicted,
+    pred_percent_fef2575: fef2575Gli.percentPredicted,
 
     // --- Test quality (from portal_spirometry) ---
     fev1_acceptability: raw.fev1_acceptability ?? null,

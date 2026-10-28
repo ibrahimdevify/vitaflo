@@ -3,6 +3,7 @@
 
 const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
+const { canReadPatient } = require('../helpers/patientScope');
 
 const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
@@ -63,6 +64,10 @@ const getSpirometryReportPDF = async (req, res) => {
     }
 
     const userId = preObservation.user_id;
+    // Authentication alone does not confer permission to read patient reports.
+    if (!(await canReadPatient(req.user, userId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
     // --- Fetch everything needed in parallel ---
     const [preSpiroRows, postSpiroRows, user] = await Promise.all([
@@ -86,6 +91,7 @@ const getSpirometryReportPDF = async (req, res) => {
           l_name: true,
           patient_details: {
             select: {
+              height: true,
               attributes: {
                 select: {
                   dob: true,
@@ -119,11 +125,15 @@ const getSpirometryReportPDF = async (req, res) => {
     const demoForPre = buildDemographics({
       observation: preObservation,
       attributes: attrs,
+      details: user?.patient_details,
+      testDate: preRaw.dbdate,
     });
 
     const demoForPost = buildDemographics({
       observation: postObservation || preObservation,
       attributes: attrs,
+      details: user?.patient_details,
+      testDate: postRaw?.dbdate || preRaw.dbdate,
     });
 
     // --- Enrich pre and post ---
@@ -132,11 +142,8 @@ const getSpirometryReportPDF = async (req, res) => {
 
     // --- Patient info (units fixed: cm / kg) ---
     const dob = attrs.dob ? new Date(attrs.dob) : null;
-    const age = dob
-      ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000))
-      : null;
-
-    const heightCm = attrs.height ? Number(attrs.height) : null;
+    const age = demoForPre?.age == null ? null : Math.floor(demoForPre.age);
+    const heightCm = demoForPre?.height ?? null;
     const weightKg = attrs.weight ? Number(attrs.weight) : null;
     const bmi =
       heightCm && weightKg
