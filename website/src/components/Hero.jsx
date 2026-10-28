@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
-import heart from "../assets/lungs.png";
+import heart from "../assets/lungs.webp";
 import Navbar from "./Navbar.jsx";
 import BigWord from "./ui/BigWord.jsx";
 import Pulse from "./Pulse.jsx";
 import Avatars from "./Avatars.jsx";
 import Globe from "./Globe.jsx";
 import DoctorCard from "./DoctorCard.jsx";
-import dots from "../assets/dots.png";
+import dots from "../assets/dots.webp";
 import RollText from "./ui/RollText.jsx";
 const WORD = "VITALFLO";
 const WORD_CLASS =

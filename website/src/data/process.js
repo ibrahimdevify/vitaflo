@@ -13,7 +13,7 @@ export const PROCESS_STEPS = [
       "Results compared to lower limit of normal",
       "Instant, detailed reporting",
     ],
-    image: "/process/schedule.png",
+    image: `${import.meta.env.BASE_URL}process/schedule.png`,
     alt: "Clinician guiding a patient through respiratory screening",
   },
   {
@@ -27,7 +27,7 @@ export const PROCESS_STEPS = [
       "Spirometry summary for the chart",
       "Follow-up schedule",
     ],
-    image: "/process/plan.png",
+    image: `${import.meta.env.BASE_URL}process/plan.png`,
     alt: "Doctor reviewing a respiratory care plan with a patient on a tablet",
   },
   {
@@ -41,7 +41,7 @@ export const PROCESS_STEPS = [
       "Trends across every care setting",
       "Timely care-team follow-up",
     ],
-    image: "/process/monitor.png",
+    image: `${import.meta.env.BASE_URL}process/monitor.png`,
     alt: "Care team reviewing patient monitoring data together",
   },
 ];

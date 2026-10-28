@@ -3,7 +3,7 @@ import Tag from "./ui/Tag.jsx";
 import SectionHeading from "./ui/SectionHeading.jsx";
 import BodyText from "./ui/BodyText.jsx";
 import Reveal from "./ui/Reveal.jsx";
-import platform from "../assets/spirometry.png";
+import platform from "../assets/spirometry.webp";
 
 export default function WhyChooseUs() {
   return (

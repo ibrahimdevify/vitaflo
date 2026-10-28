@@ -2,7 +2,7 @@ import { useId } from "react";
 import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import BodyText from "../ui/BodyText.jsx";
-import logo from "../../assets/logo.png";
+import logo from "../../assets/logo.webp";
 
 const H2 =
   "m-0 text-[clamp(26px,2.05vw,52px)] font-normal leading-[1.2] tracking-[-0.02em] text-[#0f0f0f]";

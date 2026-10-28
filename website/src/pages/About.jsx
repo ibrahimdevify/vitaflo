@@ -26,7 +26,7 @@ export default function About() {
           <div className="lg:sticky lg:top-[2.4vw]">
             <Reveal>
               <Photo
-                src="/about/intro.webp"
+                src={`${import.meta.env.BASE_URL}about/intro.webp`}
                 alt="Doctor examining a patient"
                 className="aspect-[583/413] w-full lg:w-[24.1vw]"
               />

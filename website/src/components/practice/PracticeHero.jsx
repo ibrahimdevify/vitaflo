@@ -7,7 +7,7 @@ import BodyText from "../ui/BodyText.jsx";
 import Button from "../ui/Button.jsx";
 import Reveal from "../ui/Reveal.jsx";
 import Rich from "./Rich.jsx";
-import platform from "../../assets/spirometry.png";
+import platform from "../../assets/spirometry.webp";
 import { PRACTICE_HERO, CARE_SETTINGS } from "../../data/practice.js";
 
 export default function PracticeHero() {
