@@ -1,4 +1,5 @@
 const patientService = require("../services/patientService");
+const { canReadPatient } = require("../helpers/patientScope");
 
 const { ValidationError } = patientService;
 const ALLOWED_TABS = [
@@ -64,6 +65,8 @@ function parseOptionalDateRange(query) {
   const startDate = parseDateParam(query.startDate, "startDate");
   const endDate = parseDateParam(query.endDate, "endDate");
   ensureRangeOrdered(startDate, endDate);
+  // Date-only end filters are inclusive through 23:59:59.999 UTC.
+  endDate.setUTCHours(23, 59, 59, 999);
   return { startDate, endDate };
 }
 
@@ -113,6 +116,24 @@ function buildTabParams(tab, userId, query) {
   }
 }
 
+// Date-time options for both comparison dropdowns; patient access is checked
+// before returning any history. Existing session-comparison contract is unchanged.
+const getPatientSessionOptions = async (req, res) => {
+  try {
+    const userId = parsePositiveInt(req.params.id, 'id');
+    const patient = await patientService.ensurePatientExists(userId);
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const page = req.query.page ? parsePositiveInt(req.query.page, 'page') : 1;
+    const limit = req.query.limit ? Math.min(parsePositiveInt(req.query.limit, 'limit'), 100) : 100;
+    if (!(await canReadPatient(req.user, userId))) return res.status(403).json({ error: 'Forbidden' });
+    return res.json({ data: await patientService.getSessionOptions(userId, { page, limit }) });
+  } catch (error) {
+    if (error instanceof ValidationError) return res.status(400).json({ error: error.message });
+    console.error('Patient session options error:', error);
+    return res.status(500).json({ error: 'Failed to load sessions' });
+  }
+};
+
 const getPatientById = async (req, res) => {
   try {
     const userId = parsePositiveInt(req.params.id, "id");
@@ -129,6 +150,7 @@ const getPatientById = async (req, res) => {
       return res.status(404).json({ error: "Patient not found" });
     }
 
+    if (!(await canReadPatient(req.user, userId))) return res.status(403).json({ error: 'Forbidden' });
     const params = buildTabParams(tab, userId, req.query);
     const data = await patientService.getPatientTabData(tab, params);
 
@@ -691,4 +713,4 @@ const listPatients = async (req, res) => {
   }
 };
 
-module.exports = { getPatientById, listPatients, updatePatient, deletePatient };
+module.exports = { getPatientById, getPatientSessionOptions, listPatients, updatePatient, deletePatient };

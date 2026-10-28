@@ -42,7 +42,9 @@ export const pdfApis = {
 
 export const patientsAPI = {
   getAll: (params) => api.get('/patients', { params }),
+  getClinics: () => api.get('/patients/clinics'),
   getById: (id) => api.get(`/patients/${id}`),
+  getSessionOptions: (id, params = {}) => api.get(`/patients/${id}/sessions`, { params }),
   getTabData: (id, tab, params = {}) =>
     api.get(`/patients/${id}`, {
       // Or whatever your actual endpoint is

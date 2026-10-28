@@ -39,6 +39,7 @@ router.use(authenticate);
  *         description: Group created
  */
 router.get('/groups', patientController.getPatientGroups);
+router.get('/clinics', patientController.getVisiblePatientClinics);
 router.post('/groups', authorize('technician', 'account_admin'), patientController.createPatientGroup);
 router.get('/clinicians/list', patientController.getClinicians);
 
@@ -94,6 +95,7 @@ router.post('/', authorize('technician', 'account_admin', 'clinician','clinician
  */
 
 router.get('/:id/report', patientReportController.getPatientReportPdf);
+router.get('/:id/sessions', patientDetailController.getPatientSessionOptions);
 
 router.get('/patients', patientController.listPatients);
 // router.get('/patients/:id', patientController.getPatientById);

@@ -205,12 +205,7 @@ export default function PatientDetail() {
   const handleDownloadReport = async () => {
     if (!Number.isFinite(id)) return;
 
-    // NOTE: patientsAPI.getPatientReportPdf calls a PDF export endpoint that
-    // hasn't been built on the backend yet (only the JSON tab endpoints from
-    // patientController.getPatientById exist so far). This will 404/error
-    // until that endpoint is added — left in place since removing the
-    // button wasn't requested, but flagging it so it isn't mistaken for a
-    // working feature.
+    // Download from the existing /patients/:id/report endpoint.
     try {
       setDownloading(true);
       const res = await patientsAPI.getPatientReportPdf(

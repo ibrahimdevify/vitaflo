@@ -4,6 +4,7 @@ const { generateUserName } = require("../utils/usernameGenerator");
 const patientService = require("../services/reportTemplates/patientService");
 const { ValidationError } = patientService;
 const { getVisibleClinicianIds } = require("../helpers/visible_clinician");
+const { getPatientScope } = require("../helpers/patientScope");
 const prisma = new PrismaClient();
 
 const ALLOWED_TABS = [
@@ -141,6 +142,42 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 // };
 
 
+const getVisiblePatientClinics = async (req, res) => {
+  try {
+    const { patientWhere, clinicianIds } = await getPatientScope(req.user);
+    // Only locations for patients visible to this clinician/admin.
+    const [patients, doctors] = await Promise.all([
+      prisma.dc_users.findMany({
+        where: patientWhere,
+        select: { patient_details: { select: {
+          patient_group: { select: { account: { select: { id: true, name: true } } } },
+        } } },
+      }),
+      prisma.dc_users.findMany({
+        where: { user_id: { in: clinicianIds }, doctor_details: { isNot: null } },
+        select: { doctor_details: { select: {
+          hospital: { select: { id: true, name: true } },
+        } } },
+      }),
+    ]);
+    const locations = new Map();
+    for (const patient of patients) {
+      const account = patient.patient_details?.patient_group?.account;
+      if (account) locations.set(account.id, account);
+    }
+    for (const doctor of doctors) {
+      const account = doctor.doctor_details?.hospital;
+      if (account) locations.set(account.id, account);
+    }
+    return res.json({ data: [...locations.values()].sort((a,b) => a.name.localeCompare(b.name)) });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('List patient clinics error:', error);
+    return res.status(500).json({ error: 'Could not list clinics' });
+  }
+};
+
+
 const getAllPatients = async (req, res) => {
   try {
     const {
@@ -150,6 +187,7 @@ const getAllPatients = async (req, res) => {
       status,
       patient_group_id,
       assigned_clinician_id,
+      clinic_id,
       // Filter fields
       first_name,
       last_name,
@@ -217,7 +255,11 @@ const getAllPatients = async (req, res) => {
     //   - Clinician admin      → themselves + managed clinicians.
     //   - Unknown roles        → empty → early return below.
     // ────────────────────────────────────────────────────────────
-    const visibleClinicianIds = await getVisibleClinicianIds(req.user);
+    const scope = await getPatientScope(req.user, {
+      assignedClinicianId: assigned_clinician_id,
+      clinicId: clinic_id,
+    });
+    const visibleClinicianIds = scope.clinicianIds;
 
     if (visibleClinicianIds.length === 0) {
       return res.json({
@@ -251,19 +293,8 @@ const getAllPatients = async (req, res) => {
     //     the caller's visible set (admin's set = everyone).
     //   - Otherwise default to everyone the caller can see.
     // ────────────────────────────────────────────────────────────
-    if (assigned_clinician_id) {
-      const requestedId = parseInt(assigned_clinician_id);
-
-      if (!visibleClinicianIds.includes(requestedId)) {
-        return res.status(403).json({
-          error: "Not authorized to view this clinician's patients",
-        });
-      }
-
-      patientDetailsWhere.assigned_clinician_id = requestedId;
-    } else {
-      patientDetailsWhere.assigned_clinician_id = { in: visibleClinicianIds };
-    }
+    patientDetailsWhere.assigned_clinician_id = { in: visibleClinicianIds };
+    if (scope.clinicPredicate) patientDetailsWhere.OR = scope.clinicPredicate;
 
     if (chart_no) {
       patientDetailsWhere.chart_no = { contains: chart_no };
@@ -564,10 +595,12 @@ const getAllPatients = async (req, res) => {
           "status",
           "patient_group_id",
           "assigned_clinician_id",
+          "clinic_id",
         ],
       },
     });
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     console.error("Get patients error:", error);
     res
       .status(500)
@@ -675,8 +708,15 @@ const getPatientById = async (req, res) => {
 
 const listPatients = async (req, res) => {
   try {
-    const patients = await patientService.getPatientsList();
-    return res.json({ data: patients });
+    const { patientWhere } = await getPatientScope(req.user);
+    const patients = await prisma.dc_users.findMany({
+      where: patientWhere,
+      select: { user_id: true, f_name: true, l_name: true },
+      orderBy: [{ l_name: 'asc' }, { f_name: 'asc' }],
+    });
+    return res.json({ data: patients.map(p => ({
+      userId: p.user_id, name: `${p.l_name}, ${p.f_name}`,
+    })) });
   } catch (error) {
     console.error("List patients error:", error);
     return res.status(500).json({ error: "Failed to fetch patients" });
@@ -1267,6 +1307,7 @@ const createPatientGroup = async (req, res) => {
 };
 
 module.exports = {
+  getVisiblePatientClinics,
   getAllPatients,
   createPatient,
   getPatientById,

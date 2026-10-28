@@ -236,6 +236,25 @@ async function getAnalysisTab(userId, startDate, endDate, variable) {
   };
 }
 
+async function getSessionOptions(userId, { page = 1, limit = 100 } = {}) {
+  // This list uses observation IDs (the comparison API's existing ID contract).
+  // Label by the most recent blow timestamp; return no records belonging to other patients.
+  const [total, observations] = await Promise.all([
+    patientRepository.countObservations(userId),
+    patientRepository.findObservationsPage(userId, {
+      skip: (page - 1) * limit, take: limit, includeCurves: false,
+    }),
+  ]);
+  return {
+    rows: observations.filter(o => o.spirometries?.length).map(o => ({
+      observationId: o.id,
+      date: latestTestDate(o),
+      testsCount: o.spirometries.length,
+    })),
+    pagination: buildPagination(page, limit, total),
+  };
+}
+
 async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
   const observations = await patientRepository.findObservationsByIds([sessionId1, sessionId2]);
   const byId = new Map(observations.map((o) => [o.id, o]));
@@ -254,7 +273,7 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
     const best = pickBestSpirometryValues(observation.spirometries);
     return {
       observationId: observation.id,
-      date: observation.dbdate,
+      date: latestTestDate(observation),
       isPostBronchodilator: observation.is_post_bronchodilator,
       results: buildResultRows(best, demo),
       ...buildChartSeries(observation.spirometries),
@@ -265,7 +284,7 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
     session1: await buildSessionSummary(session1),
     session2: await buildSessionSummary(session2),
     timeBetweenSessionsHours:
-      Math.abs(new Date(session2.dbdate) - new Date(session1.dbdate)) / (1000 * 60 * 60),
+      Math.abs(new Date(latestTestDate(session2)) - new Date(latestTestDate(session1))) / (1000 * 60 * 60),
   };
 }
 
@@ -297,6 +316,8 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
       return {
         observationId: observation.id,
         date: observation.dbdate,
+        latestTestDate: latestTestDate(observation),
+        testsCount: observation.spirometries.length,
         results: buildResultRows(best, demo),
       };
     })
@@ -428,5 +449,5 @@ module.exports = {
   ValidationError, ensurePatientExists, getPatientsList,
   getPatientTabData, getLegacySpirometryPdfData,
   loadGliDemographics, pickBestSpirometryValues,
-  buildResultRows, latestTestDate,
+  buildResultRows, latestTestDate, getSessionOptions,
 };

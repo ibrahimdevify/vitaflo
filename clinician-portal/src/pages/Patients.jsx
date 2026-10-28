@@ -27,9 +27,15 @@ export default function Patients() {
   // Otherwise, default to the logged-in clinician's own id.
   const stateClinicianId = location.state?.assignedClinicianId;
   const stateClinicianName = location.state?.assignedClinicianName;
-  const effectiveClinicianId = stateClinicianId || user?.user_id || user?.id;
+  const stateClinicId = location.state?.clinicId;
+  const clinicFilterId = selectedClinicId;
+  const stateClinicName = location.state?.clinicName;
+  const effectiveClinicianId = stateClinicianId ||
+    (Number(user?.ut_id_fk) === 3 ? (user?.user_id || user?.id) : undefined);
 
   const [patients, setPatients] = useState([]);
+  const [clinics, setClinics] = useState([]);
+  const [selectedClinicId, setSelectedClinicId] = useState(() => location.state?.clinicId || '');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -72,10 +78,28 @@ export default function Patients() {
   // Reset to page 1 whenever we switch which clinician we're viewing
   useEffect(() => {
     setPage(1);
-  }, [stateClinicianId]);
+  }, [stateClinicianId, stateClinicId]);
+
+  useEffect(() => {
+    setSelectedClinicId(stateClinicId || '');
+  }, [stateClinicId]);
+
+  useEffect(() => {
+    if (!user || Number(user.ut_id_fk) !== 6) return;
+    let current = true;
+    patientsAPI.getClinics().then(res => {
+      if (!current) return;
+      const values = new Map();
+      for (const c of res.data?.data || []) {
+        if (c.id != null) values.set(c.id, { id: c.id, name: c.name });
+      }
+      setClinics([...values.values()].sort((a,b) => a.name.localeCompare(b.name)));
+    }).catch(() => {});
+    return () => { current = false; };
+  }, [user?.user_id, user?.ut_id_fk]);
 
   const loadPatients = useCallback(async () => {
-    if (!effectiveClinicianId) return;
+    if (!user) return;
     try {
       setLoading(true);
 
@@ -84,6 +108,7 @@ export default function Patients() {
         limit,
         search: debouncedSearch || undefined,
         assigned_clinician_id: effectiveClinicianId,
+        clinic_id: clinicFilterId,
         ...filters,
       };
 
@@ -107,7 +132,7 @@ export default function Patients() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, debouncedSearch, effectiveClinicianId, filters]);
+  }, [page, limit, debouncedSearch, effectiveClinicianId, clinicFilterId, filters, user?.user_id]);
 
   useEffect(() => {
     loadPatients();
@@ -148,9 +173,11 @@ export default function Patients() {
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
 
-  const pageTitle = stateClinicianName
-    ? `${stateClinicianName}'s Patients`
-    : 'My Patients';
+  const currentClinic = clinics.find(c => String(c.id) === String(clinicFilterId));
+  const pageTitle = currentClinic?.name
+    ? `${currentClinic.name} Patients`
+    : stateClinicName && clinicFilterId ? `${stateClinicName} Patients`
+    : stateClinicianName ? `${stateClinicianName}'s Patients` : 'My Patients';
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -165,7 +192,18 @@ export default function Patients() {
               : 'Manage and view all your assigned patients'}
           </p>
         </div>
-        <Button
+        <div className="flex items-center gap-2">
+          {Number(user?.ut_id_fk) === 6 && clinics.length > 0 && (
+            <select
+              aria-label="Filter patients by clinic location"
+              className="min-w-32 rounded-xl border border-border bg-card px-3 py-2 text-sm text-fg"
+              value={selectedClinicId || ''}
+              onChange={(e) => { setSelectedClinicId(e.target.value); setPage(1); }}>
+              <option value="">All my clinics</option>
+              {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          <Button
           size={'sm'}
           onClick={() => navigate('/patients/add')}
           className="gap-2 bg-brand-600 hover:bg-brand-700"
@@ -173,6 +211,7 @@ export default function Patients() {
           <UserPlus className="h-4 w-4" />
           Add Patient
         </Button>
+        </div>
       </div>
 
       <PatientDetailModal

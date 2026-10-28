@@ -650,10 +650,12 @@ const buildBestSpirometry = (
 
 // Calculate lung age from FEV1
 const calcLungAge = (fev1, heightCm, gender) => {
-  if (!fev1 || !heightCm) return 45.0;
+  if (!fev1 || !heightCm) return null;
+  const sex = String(gender || '').trim().toLowerCase();
+  if (!['m', 'male', '1', 'f', 'female', '2'].includes(sex)) return null;
   const heightInches = heightCm / 2.54;
   let lungAge;
-  if (gender === "M") {
+  if (['m', 'male', '1'].includes(sex)) {
     lungAge = 2.87 * heightInches - 31.25 * fev1 - 39.375;
   } else {
     lungAge = 3.56 * heightInches - 40.0 * fev1 - 77.28;
@@ -778,12 +780,11 @@ function sendLegacyFlutterResults(res, payload) {
  * One spirometry blow per indexed "session", newest first; all blows paginated.
  */
 const getResults = async (req, res) => {
-  const {
-    normalizeSpirometry,
-    calculatePredictedValues,
-    calculateFev1FvcPredictedValues,
-    toGliDemographics,
-  } = require('../../helpers/spirometry');
+  // Shared with the clinician portal's Spirometry, Reports and Comparison tabs.
+  // Do not duplicate demographic unit/GLI rules in this mobile controller.
+  const patientRepository = require('../../repositories/patientRepository');
+  const { bestObservedValues, createCalculatedValues, mobileGli,
+    inspectDemographics } = require('../../helpers/spirometryParity');
 
   try {
     const patientId = Number(req.params.patient_id);
@@ -849,7 +850,11 @@ const getResults = async (req, res) => {
       [to.exclusive ? 'lt' : 'lte']: to.value,
     };
 
-    // The route's existing authentication + authorization must check this patientId.
+    // Enforce patient ownership or an assigned clinician/admin before exposing measurements.
+    const { canReadPatient } = require('../../helpers/patientScope');
+    if (!(await canReadPatient(req.user, patientId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const patient = await prisma.dc_users.findUnique({
       where: { user_id: patientId },
       include: { patient_details: { include: { attributes: true } } },
@@ -890,7 +895,9 @@ const getResults = async (req, res) => {
     const spirometries = {};
     const bestSpirometries = {};
     const lungAges = {};
-    const attrs = patient.patient_details.attributes || {};
+    const profile = await patientRepository.findPatientProfile(patientId);
+    const details = profile?.patient_details || patient.patient_details;
+    const attrs = details?.attributes || {};
 
     const roundOrNull = (value) => {
       if (value == null || value === '') return null;
@@ -898,72 +905,23 @@ const getResults = async (req, res) => {
       return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
     };
     const noGli = () => ({ gli: { value: null, lln: null, zscore: null } });
-    const ageOnDate = (dob, at) => {
-      if (!dob) return null;
-      const birth = new Date(dob);
-      const date = new Date(at);
-      if (Number.isNaN(birth.getTime()) || birth > date) return null;
-      let age = date.getUTCFullYear() - birth.getUTCFullYear();
-      if (date.getUTCMonth() < birth.getUTCMonth() ||
-          (date.getUTCMonth() === birth.getUTCMonth() && date.getUTCDate() < birth.getUTCDate())) {
-        age--;
-      }
-      return age > 0 ? age : null;
-    };
-
-    const demoForTest = (test) => {
-      const age = ageOnDate(attrs.dob, test.dbdate);
-      const rawHeight = [test.observation?.height, attrs.height]
-        .map((v) => v == null ? NaN : Number(v))
-        .find((v) => Number.isFinite(v) && v > 0);
-      const height = rawHeight > 0 && rawHeight < 3 ? rawHeight * 100 : rawHeight;
-      const gender = String(attrs.gender || '').trim();
-      if (!age || !Number.isFinite(height) || height <= 0 || !/^(male|female|m|f)$/i.test(gender)) {
-        return { demo: null, height: null, gender };
-      }
-      return {
-        demo: toGliDemographics({
-          age,
-          lookup_table: attrs.lookup_table,
-          attributes: { height, gender, lookup_table: attrs.lookup_table },
-          patient_details: { height },
-        }),
-        height,
-        gender,
-      };
-    };
-
-    const gliResponse = (result) => ({
-      gli: {
-        value: roundOrNull(result?.predicted),
-        lln: roundOrNull(result?.lln),
-        zscore: roundOrNull(result?.zScore),
-      },
-    });
-    const predict = (observed, demo, variable) => {
-      if (!demo || observed == null || observed <= 0) return noGli();
-      try {
-        return gliResponse(calculatePredictedValues(observed, demo, variable));
-      } catch (e) {
-        console.error(`[GLI] ${variable}:`, e);
-        return noGli();
-      }
-    };
-    const predictRatio = (observed, demo) => {
-      if (!demo || observed == null || observed <= 0) return noGli();
-      try {
-        return gliResponse(calculateFev1FvcPredictedValues(observed, demo));
-      } catch (e) {
-        console.error('[GLI] FEV1FVC:', e);
-        return noGli();
-      }
-    };
+    // The GLI result format must remain exactly as expected by the Flutter app.
+    const gliResponse = (calculated) => mobileGli(calculated);
 
     tests.forEach((test, idx) => {
-      const testData = normalizeSpirometry(test);
-      const { demo, height, gender } = demoForTest(test);
-      const ratio = testData.fvc > 0 && testData.fev1 != null
-        ? testData.fev1 / testData.fvc : null;
+      // Same normalized values + same verified demographics as the web Spirometry tab.
+      const testData = bestObservedValues([test]);
+      const check = inspectDemographics({
+        attributes: attrs,
+        details,
+        observationHeight: test.observation?.height,
+        testDate: test.dbdate,
+      });
+      const demo = check.demo;
+      const predicted = createCalculatedValues(testData, demo);
+      const height = demo?.height ?? null;
+      const gender = attrs.gender ?? null;
+      const ratio = testData.fev1FvcRatio;
       const observedRatioPercent = ratio == null ? null : Number((ratio * 100).toFixed(1));
 
       const flows = { expiratory: [], inspiratory: [] };
@@ -978,10 +936,10 @@ const getResults = async (req, res) => {
       });
 
       const blow = {
-        fev1: { observed: testData.fev1, predicted: predict(testData.fev1, demo, 'FEV1') },
-        fvc: { observed: testData.fvc, predicted: predict(testData.fvc, demo, 'FVC') },
-        fev1fvc: { observed: observedRatioPercent, predicted: predictRatio(ratio, demo) },
-        fef2575: { observed: testData.fef2575, predicted: predict(testData.fef2575, demo, 'FEF2575') },
+        fev1: { observed: testData.fev1, predicted: gliResponse(predicted.fev1) },
+        fvc: { observed: testData.fvc, predicted: gliResponse(predicted.fvc) },
+        fev1fvc: { observed: observedRatioPercent, predicted: gliResponse(predicted.fev1fvc) },
+        fef2575: { observed: testData.fef2575, predicted: gliResponse(predicted.fef2575) },
         // The supplied helper uses FEV1 equations for FEV6/PEFR; do not fabricate clinical reference values.
         fev6: { observed: testData.fev6, predicted: noGli() },
         pefr: { observed: testData.pefr, predicted: noGli() },

@@ -1,6 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
+const { getPatientScope } = require("../helpers/patientScope");
 
 const getSystemStats = async (req, res) => {
   try {
@@ -106,98 +107,51 @@ const getSystemStats = async (req, res) => {
 
 const getClinicianDashboard = async (req, res) => {
   try {
-    const clinicianId = req.user.user_id;
-
-    const [
-      myPatients,
-      activeMyPatients,
-      unverifiedMyPatients,
-      recentPrescriptions,
-      myPatientsList,
-    ] = await Promise.all([
-      prisma.dc_patient_details.count({
-        where: {
-          assigned_clinician_id: clinicianId,
-          user: { us_id_fk: 1 }, // only active patient accounts
-        },
-      }),
-      prisma.dc_patient_details.count({
-        where: {
-          assigned_clinician_id: clinicianId,
-          status: "active",
-          user: { us_id_fk: 1 },
-        },
-      }),
-      prisma.dc_patient_details.count({
-        where: {
-          assigned_clinician_id: clinicianId,
-          status: "unverified",
-          user: { us_id_fk: 1 },
-        },
-      }),
+    const { clinicianIds, patientWhere } = await getPatientScope(req.user, {
+      clinicId: req.query.clinic_id,
+    });
+    const [myPatients, activeMyPatients, unverifiedMyPatients,
+      recentPrescriptions, myPatientsList] = await Promise.all([
+      prisma.dc_users.count({ where: patientWhere }),
+      prisma.dc_users.count({ where: { ...patientWhere, patient_details: { is: {
+        assigned_clinician_id: { in: clinicianIds }, status: 'active',
+      } } } }),
+      prisma.dc_users.count({ where: { ...patientWhere, patient_details: { is: {
+        assigned_clinician_id: { in: clinicianIds }, status: 'unverified',
+      } } } }),
       prisma.dc_ehr_prescriptions.findMany({
-        where: {
-          doctor_id_fk: clinicianId,
-          is_deleted: false,
-          patient: { us_id_fk: 1 }, // only prescriptions for active patients
-        },
+        where: { doctor_id_fk: { in: clinicianIds }, is_deleted: false,
+          patient: patientWhere },
         include: {
-          patient: {
-            select: {
-              user_id: true,
-              f_name: true,
-              l_name: true,
-              userName: true,
-            },
-          },
+          patient: { select: { user_id: true, f_name: true, l_name: true, userName: true } },
           doctor: { select: { f_name: true, l_name: true } },
           medicines: { where: { is_deleted: false }, take: 2 },
         },
-        orderBy: { pr_date: "desc" },
-        take: 5,
+        orderBy: { pr_date: 'desc' }, take: 5,
       }),
       prisma.dc_users.findMany({
-        where: {
-          ut_id_fk: 4,
-          us_id_fk: 1,
-          patient_details: { assigned_clinician_id: clinicianId },
-        },
+        where: patientWhere,
         select: {
-          user_id: true,
-          f_name: true,
-          l_name: true,
-          email: true,
-          userName: true,
-          patient_details: {
-            select: {
-              chart_no: true,
-              status: true,
-              attributes: { select: { dob: true, gender: true } },
-            },
-          },
+          user_id: true, f_name: true, l_name: true, email: true, userName: true,
+          patient_details: { select: {
+            chart_no: true, status: true,
+            attributes: { select: { dob: true, gender: true } },
+          } },
         },
-        orderBy: { reg_date: "desc" },
-        take: 10,
+        orderBy: { reg_date: 'desc' }, take: 10,
       }),
     ]);
-
-    res.json({
-      data: {
-        counts: {
-          total_patients: myPatients,
-          active_patients: activeMyPatients,
-          unverified_patients: unverifiedMyPatients,
-        },
-        recent_prescriptions: recentPrescriptions,
-        my_patients: myPatientsList,
-      },
-    });
+    return res.json({ data: {
+      counts: { total_patients: myPatients, active_patients: activeMyPatients,
+        unverified_patients: unverifiedMyPatients },
+      recent_prescriptions: recentPrescriptions, my_patients: myPatientsList,
+    } });
   } catch (error) {
-    console.error("Dashboard error:", error);
-    res.status(500).json({ error: "Failed to fetch dashboard" });
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('Dashboard error:', error);
+    return res.status(500).json({ error: 'Failed to fetch dashboard' });
   }
 };
-
 
 
 const getPatientStats = async (req, res) => {

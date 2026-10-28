@@ -105,6 +105,7 @@ const getAllClinicians = async (req, res) => {
           ut_id_fk: true,
           us_id_fk: true,
           user_type: { select: { ut_id: true, name: true } },
+          doctor_details: { select: { h_id_fk: true, hospital: { select: { id: true, name: true } } } },
           user_status: { select: { us_id: true, name: true } },
           _count: { select: { fcm_tokens: true, sessions: true } },
         },

@@ -44,6 +44,12 @@ export default function UsersTable({ users, loading, onEdit, onDelete }) {
     );
   }
 
+  const viewClinicPatients = (clinicId, clinicName) => {
+    navigate('/patients', {
+      state: { clinicId, clinicName },
+    });
+  };
+
   const viewPatients = (userId, fullName) => {
     navigate('/patients', {
       state: { assignedClinicianId: userId, assignedClinicianName: fullName },
@@ -131,6 +137,17 @@ export default function UsersTable({ users, loading, onEdit, onDelete }) {
                       View Patients
                     </Button>
 
+                    {user.doctor_details?.h_id_fk && (
+                      <Button variant="outline" size="sm"
+                        title={`All assigned patients at ${user.doctor_details?.hospital?.name || 'this clinic'}`}
+                        onClick={() => viewClinicPatients(
+                          user.doctor_details.h_id_fk,
+                          user.doctor_details?.hospital?.name || 'Clinic'
+                        )}
+                        className="h-8 gap-2">
+                        Clinic Patients
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"

@@ -1,5 +1,6 @@
 const patientService = require('../services/patientService');
 const reportService = require('../services/reportService');
+const { canReadPatient } = require('../helpers/patientScope');
 const { ValidationError } = patientService;
 const { ALLOWED_TABS, parsePositiveInt, parseDateParam, ensureRangeOrdered, buildTabParams } = require('./helpers/patientTabParams');
 
@@ -40,6 +41,7 @@ async function getPatientReportPdf(req, res) {
     }
     const patient = await patientService.ensurePatientExists(userId);
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    if (!(await canReadPatient(req.user, userId))) return res.status(403).json({ error: 'Forbidden' });
     // IMPORTANT: keep your pre-existing authorization middleware/checks in place.
     const { effectiveTab, query: normalizedQuery, isAllTime } = resolveReportRequest(tab, req.query);
     let pdfBuffer;

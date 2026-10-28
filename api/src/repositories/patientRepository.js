@@ -86,7 +86,9 @@ async function findObservationsPage(userId, { startDate, endDate, skip, take, in
   return prisma.portal_observation.findMany({
     where: { user_id: userId, ...buildOptionalDateFilter('dbdate', startDate, endDate) },
     include: {
-      spirometries: includeCurves ? { include: { flows: true, volumes: true } } : true,
+      spirometries: includeCurves
+        ? { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }], include: { flows: true, volumes: true } }
+        : { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }] },
     },
     orderBy: { dbdate: 'desc' },
     skip,
@@ -97,7 +99,7 @@ async function findObservationsPage(userId, { startDate, endDate, skip, take, in
 async function findObservationsByIds(observationIds) {
   return prisma.portal_observation.findMany({
     where: { id: { in: observationIds } },
-    include: { spirometries: { include: { flows: true, volumes: true } } },
+    include: { spirometries: { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }], include: { flows: true, volumes: true } } },
   });
 }
 

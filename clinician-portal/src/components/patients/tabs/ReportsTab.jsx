@@ -251,8 +251,8 @@ export default function ReportsTab({ data, onRefetch, loading }) {
 
       <div className="border-t border-border pt-4">
         <p className="text-xs leading-5 text-fg-muted">
-          PDF/ATS report export isn't wired — no export endpoint was built for
-          it.
+          Results use the same measurements and GLI reference calculations as the Spirometry tab.
+          Use the patient header's download action to export the report PDF.
         </p>
       </div>
     </div>

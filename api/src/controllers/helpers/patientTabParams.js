@@ -25,6 +25,7 @@ function buildTabParams(tab, userId, query) {
       const startDate = parseDateParam(query.startDate, 'startDate');
       const endDate = parseDateParam(query.endDate, 'endDate');
       ensureRangeOrdered(startDate, endDate);
+      endDate.setUTCHours(23, 59, 59, 999);
       return { userId, startDate, endDate };
     }
     case 'analysis': {
@@ -40,6 +41,7 @@ function buildTabParams(tab, userId, query) {
       const startDate = parseDateParam(query.startDate, 'startDate');
       const endDate = parseDateParam(query.endDate, 'endDate');
       ensureRangeOrdered(startDate, endDate);
+      endDate.setUTCHours(23, 59, 59, 999);
       return { userId, startDate, endDate };
     }
     default: throw new ValidationError(`Unsupported tab: ${tab}`);
