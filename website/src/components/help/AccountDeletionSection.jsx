@@ -144,7 +144,7 @@ export default function AccountDeletionSection() {
                 </a>
                 . You can also read our{" "}
                 <Link
-                  to="/privacy"
+                  to="/privacy-policy"
                   className="text-[#2c4d77] underline hover:text-black"
                 >
                   Privacy Policy
@@ -295,7 +295,7 @@ export default function AccountDeletionSection() {
                       I understand that deleting my account and data cannot be
                       undone, and I agree to the{" "}
                       <Link
-                        to="/privacy"
+                        to="/privacy-policy"
                         className="underline hover:text-black"
                       >
                         Privacy Policy

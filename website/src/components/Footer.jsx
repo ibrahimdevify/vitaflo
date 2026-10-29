@@ -20,7 +20,7 @@ const INFO_LINKS = [
   ...PAGE_LINKS,
   { label: "Help Center", to: "/help-center" },
   { label: "Terms & Conditions", to: "/terms" },
-  { label: "Privacy Policy", to: "/privacy" },
+  { label: "Privacy Policy", to: "/privacy-policy" },
 ];
 
 const LABEL = "text-[clamp(14px,0.95vw,24px)] text-white/75";

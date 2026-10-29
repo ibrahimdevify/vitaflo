@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import {
   Routes,
   Route,
+  Navigate,
   useLocation,
   useNavigationType,
 } from "react-router-dom";
@@ -67,8 +68,8 @@ export default function App() {
         <Route path="/acos-ma-plans" element={<ACOs />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/terms-of-service" element={<Terms />} />
-        <Route path="/privacy" element={<Privacy />} />
         <Route path="/privacy-policy" element={<Privacy />} />
+        <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
         <Route path="/help-center" element={<HelpCenter />} />
         <Route path="/account-deletion" element={<AccountDeletion />} />
         <Route
