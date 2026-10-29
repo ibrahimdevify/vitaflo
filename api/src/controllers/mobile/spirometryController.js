@@ -629,7 +629,7 @@ const METRICS = Object.freeze([
   'fev1', 'fvc', 'fev1fvc', 'fef2575', 'fev6', 'pefr', 'fet',
 ]);
 const MEASUREMENT_FIELDS = new Set([
-  'observed', 'value', 'lln', 'zscore', 'flow', 'volume', 'time',
+  'observed', 'value', 'lln', 'zscore', 'percentPredicted', 'flow', 'volume', 'time',
 ]);
 
 function serializeLegacyFlutterResults(payload) {
@@ -717,6 +717,7 @@ const getResults = async (req, res) => {
   const patientRepository = require('../../repositories/patientRepository');
   const { bestObservedValues, createCalculatedValues, mobileGli,
     inspectDemographics } = require('../../helpers/spirometryParity');
+  const { buildMobileBestResult } = require('../../services/mobileBestResult');
 
   try {
     const patientId = Number(req.params.patient_id);
@@ -914,23 +915,11 @@ const getResults = async (req, res) => {
         testDate: latestSessionDate,
       }).demo;
       const sessionPredictions = createCalculatedValues(sessionBest, sessionDemo);
-      const best = (field, includeLln = false) => ({
-        observed: sessionBest[field],
-        predicted: {
-          gli: {
-            value: sessionPredictions[field].predicted,
-            ...(includeLln ? { lln: sessionPredictions[field].lln } : {}),
-          },
-        },
-      });
       spirometries[idx] = { [test.dbdate.toISOString()]: blow };
-      bestSpirometries[idx] = {
-        fev1: best('fev1', true),
-        fvc: best('fvc', true),
-        pefr: best('pefr'),
-        fef2575: best('fef2575'),
-        fev6: best('fev6'),
-      };
+      // Do not omit best-result ratio, LLN, or z-scores.
+      // This shared formatter maps the EXACT web calculated result fields to
+      // Flutter's existing best_spirometries -> metric -> predicted.gli shape.
+      bestSpirometries[idx] = buildMobileBestResult(sessionBest, sessionPredictions);
 
       if (typeof calcLungAge === 'function' && testData.fev1 > 0 && height) {
         try {
@@ -943,11 +932,11 @@ const getResults = async (req, res) => {
     });
 
     res.setHeader('Cache-Control', 'private, no-store');
-    return res.json({
+    return sendLegacyFlutterResults(res, {
       spirometries: spirometries,
       best_spirometries: bestSpirometries,
       lung_ages: lungAges,
-      pagination, // addition; original result fields and nesting are unchanged
+      pagination, // The existing response keys and nesting are preserved.
     });
   } catch (error) {
     console.error('[VitalFlo getResults paginated]', error);
