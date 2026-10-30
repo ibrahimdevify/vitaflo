@@ -1,150 +1,397 @@
-'use strict';
-
 /**
- * Patient-level, print-ready spirometry report.
- * No CDN Chart.js dependency: vector SVG plots are rendered server-side.
- * Only actual saved flow/volume points are plotted. Unsupported or missing
- * GLI predictions are printed as N/A rather than fabricated.
+ * Builds the HTML that gets rendered to PDF for the
+ * "ATS Bronchodilator Responsiveness Report", matching the VitalFlo layout.
+ *
+ * @param {Object} data
+ * @param {Object} data.patient  { name, id, referredBy, testDate, sex, reason,
+ *                                 dob, spo2, age, height, weight, ethnicity,
+ *                                 smoking, bmi }
+ * @param {Object} data.pre      spirometry row (is_post_bronchodilator=false)
+ * @param {Object} data.post     spirometry row (is_post_bronchodilator=true)
+ * @param {Array}  data.preFlows   [{volume, flow}]
+ * @param {Array}  data.postFlows  [{volume, flow}]
+ * @param {Array}  data.preVolumes  [{time, volume}]
+ * @param {Array}  data.postVolumes [{time, volume}]
+ * @param {Object} [meta]
+ * @param {string} [meta.logoDataUri]  `data:<mime>;base64,...` URI for the VitalFlo
+ *                                     logo. Get this from services/reportService.js's
+ *                                     `getLogoDataUri()` so both PDF systems share the
+ *                                     same cached file lookup. Falls back to the
+ *                                     original "VP" badge + text if omitted.
+ * @returns {string} full HTML document
  */
 
-const MISSING = 'N/A';
-const n = (v) => v === '' || v === null || v === undefined ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
-const fmt = (v, digits=2) => n(v) == null ? MISSING : n(v).toFixed(digits);
-const pct = (v) => n(v) == null ? MISSING : `${fmt(v)}%`;
-const esc = (s) => String(s ?? MISSING).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmtDate = (s) => {
-  if (!s) return MISSING;
-  const d = new Date(s);
-  return Number.isFinite(d.getTime()) ? d.toISOString().replace('T',' ').slice(0,19) + ' UTC' : MISSING;
-};
+const LLN_Z = -1.645; // standard GLI lower-limit-of-normal cutoff
+const SCALE_MIN = -5;
+const SCALE_MAX = 3;
+const SCALE_RANGE = SCALE_MAX - SCALE_MIN;
 
-/** Normalize chart data according to the portal_flow and portal_volume schema. */
-function toFlowVolumePoints(rows = []) {
-  if (!Array.isArray(rows)) return [];
-  return rows.map((r,i) => ({ x: n(r?.volume), y: n(r?.value ?? r?.flow), t: n(r?.time), i }))
-    .filter(p => p.x !== null && p.y !== null)
-    .sort((a,b) => (a.t ?? a.i) - (b.t ?? b.i))
-    .slice(0, 10000);
+function toPct(z) {
+  const clamped = Math.max(SCALE_MIN, Math.min(SCALE_MAX, z));
+  return ((clamped - SCALE_MIN) / SCALE_RANGE) * 100;
 }
-function toVolumeTimePoints(volumes = [], flows = []) {
-  const candidates = Array.isArray(volumes) && volumes.length ? volumes : flows;
-  if (!Array.isArray(candidates)) return [];
-  return candidates.map(r => ({ x: n(r?.time), y: n(r?.volume) }))
-    .filter(p => p.x !== null && p.y !== null).sort((a,b) => a.x-b.x).slice(0, 10000);
-}
-function svgChart(title, preRows, postRows, xLabel, yLabel, options = {}) {
-  const W=780, H=255, left=58, right=16, top=30, bottom=46;
-  const width=W-left-right, height=H-top-bottom;
-  const a=Array.isArray(preRows)?preRows:[], b=Array.isArray(postRows)?postRows:[];
-  const all=[...a,...b];
-  const frame=(content) => `<div class="plot"><div class="plot-title">${esc(title)}</div>${content}</div>`;
-  if (!all.length) return frame('<div class="no-chart">No recorded curve points available</div>');
-  const xs=all.map(p=>p.x), ys=all.map(p=>p.y);
-  const xmin=options.zeroX ? Math.min(0,...xs) : Math.min(...xs);
-  const xmax=Math.max(...xs);
-  const ymin=options.zeroY ? Math.min(0,...ys) : Math.min(...ys);
-  const ymax=Math.max(...ys);
-  const padX=(xmax-xmin||1)*0.05, padY=(ymax-ymin||1)*0.08;
-  const loX=xmin-(options.zeroX?0:padX), hiX=xmax+padX;
-  const loY=ymin-(options.zeroY?0:padY), hiY=ymax+padY;
-  const tx=x=>left+((x-loX)/(hiX-loX))*width;
-  const ty=y=>top+height-((y-loY)/(hiY-loY))*height;
-  const label=x=>Number(x.toFixed(2)).toString();
-  const grid=[];
-  for(let i=0;i<=4;i++){
-    const gx=left+(width*i/4), gy=top+(height*i/4);
-    grid.push(`<line x1="${gx.toFixed(1)}" y1="${top}" x2="${gx.toFixed(1)}" y2="${top+height}" stroke="#e8ebf2"/>`);
-    grid.push(`<line x1="${left}" y1="${gy.toFixed(1)}" x2="${left+width}" y2="${gy.toFixed(1)}" stroke="#e8ebf2"/>`);
-    grid.push(`<text x="${gx.toFixed(1)}" y="${H-28}" fill="#556179" text-anchor="middle" font-size="12">${label(loX+(hiX-loX)*i/4)}</text>`);
-    grid.push(`<text x="${left-9}" y="${(gy+4).toFixed(1)}" fill="#556179" text-anchor="end" font-size="12">${label(hiY-(hiY-loY)*i/4)}</text>`);
+
+/**
+ * Backend-embedded SVG with the original report's 420x300 chart footprint,
+ * #1a4fbf pre and #c0392b post curves, linear axes and bottom legend.
+ * Real portal_flow data uses `value` for flow, not `flow`. Do NOT invent post
+ * data or curves. All rendering is offline and deterministic in Puppeteer.
+ */
+function drawReportCurve(preRows, postRows, kind, preFallback = [], postFallback = []) {
+  const numeric = (v) => (v === null || v === undefined || v === '') ? null : Number(v);
+  function points(rows, fallback) {
+    const source = Array.isArray(rows) && rows.length ? rows : fallback;
+    if (!Array.isArray(source)) return [];
+    return source.map((r, i) => {
+      const x = numeric(kind === 'flow-volume' ? r?.volume : r?.time);
+      const y = numeric(kind === 'flow-volume' ? (r?.value ?? r?.flow) : r?.volume);
+      return {x, y, t: numeric(r?.time), i};
+    }).filter(p => p.x !== null && p.y !== null && Number.isFinite(p.x) && Number.isFinite(p.y))
+      .sort((a, b) => kind === 'flow-volume' ? ((a.t ?? a.i) - (b.t ?? b.i)) : (a.x - b.x))
+      .slice(0, 12000);
   }
-  const path=points=>{
-    if (!points.length) return '';
-    const stride=Math.max(1,Math.ceil(points.length/900));
-    let samples=points.filter((_,i)=>i%stride===0);
-    if(samples[samples.length-1]!==points[points.length-1])samples.push(points[points.length-1]);
-    return samples.map((p,i)=>`${i?'L':'M'}${tx(p.x).toFixed(1)},${ty(p.y).toFixed(1)}`).join(' ');
-  };
-  const curves=[a.length?`<path d="${path(a)}" stroke="#2357b8" stroke-width="3" fill="none" stroke-linejoin="round"/>`:'',
-    b.length?`<path d="${path(b)}" stroke="#d36d33" stroke-width="3" fill="none" stroke-linejoin="round"/>`:''].join('');
-  return frame(`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(title)}">
-    <rect width="${W}" height="${H}" fill="#fff"/>
-    ${grid.join('')}
-    ${curves}
-    <text x="${W/2}" y="${H-4}" fill="#24314e" text-anchor="middle" font-size="13">${esc(xLabel)}</text>
-    <text transform="translate(15,${H/2}) rotate(-90)" fill="#24314e" text-anchor="middle" font-size="13">${esc(yLabel)}</text>
-    <circle cx="${W-265}" cy="17" r="5" fill="#2357b8"/><text x="${W-251}" y="21" font-size="12">Pre (${a.length} pts)</text>
-    <circle cx="${W-132}" cy="17" r="5" fill="#d36d33"/><text x="${W-118}" y="21" font-size="12">Post (${b.length} pts)</text>
-    </svg>`);
+  const pre = points(preRows, preFallback), post = points(postRows, postFallback);
+  const all = pre.concat(post);
+  const W = 420, H = 300, left = 46, right = 12, top = 12, bottom = 54;
+  const pw = W - left - right, ph = H - top - bottom;
+  const original = kind === 'flow-volume'
+    ? {minX: -1, maxX: 6, minY: -6, maxY: 8, stepX: 1, stepY: 2}
+    : {minX: 0, maxX: 6, minY: 0, maxY: 8, stepX: 1, stepY: 1};
+  // Keep original axis ranges, extend only if measurements fall outside.
+  const minX = all.length ? Math.min(original.minX, ...all.map(p => p.x)) : original.minX;
+  const maxX = all.length ? Math.max(original.maxX, ...all.map(p => p.x)) : original.maxX;
+  const minY = all.length ? Math.min(original.minY, ...all.map(p => p.y)) : original.minY;
+  const maxY = all.length ? Math.max(original.maxY, ...all.map(p => p.y)) : original.maxY;
+  const loX = Math.floor(minX / original.stepX) * original.stepX;
+  const hiX = Math.ceil(maxX / original.stepX) * original.stepX;
+  const loY = Math.floor(minY / original.stepY) * original.stepY;
+  const hiY = Math.ceil(maxY / original.stepY) * original.stepY;
+  const sx = x => left + (x - loX) / Math.max(1, hiX - loX) * pw;
+  const sy = y => top + ph - (y - loY) / Math.max(1, hiY - loY) * ph;
+  const lines = [];
+  for (let i = 0; i <= 6; i++) {
+    const x = left + i / 6 * pw, y = top + i / 6 * ph;
+    lines.push(`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${top}" y2="${top+ph}" stroke="#e6e6e6"/>`);
+    lines.push(`<line x1="${left}" x2="${left+pw}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e6e6e6"/>`);
+    const xt = (loX+(hiX-loX)*i/6).toFixed(1).replace(/\.0$/, '');
+    const yt = (hiY-(hiY-loY)*i/6).toFixed(1).replace(/\.0$/, '');
+    lines.push(`<text x="${x.toFixed(1)}" y="${top+ph+15}" font-size="9" fill="#666" text-anchor="middle">${xt}</text>`);
+    lines.push(`<text x="${left-8}" y="${(y+3).toFixed(1)}" font-size="9" fill="#666" text-anchor="end">${yt}</text>`);
+  }
+  function pathFor(arr, color) {
+    if (!arr.length) return '';
+    // Bound SVG size for long spirometry records without altering raw data.
+    const stride = Math.max(1, Math.ceil(arr.length / 1100));
+    const data = arr.filter((_,i) => i % stride === 0);
+    if (data[data.length-1] !== arr[arr.length-1]) data.push(arr[arr.length-1]);
+    const d = data.map((p,i) => `${i ? 'L' : 'M'}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(' ');
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  const plot = !all.length
+    ? `<text x="${W/2}" y="${H/2}" fill="#777" text-anchor="middle" font-size="11">No recorded curve points available</text>`
+    : pathFor(pre,'#1a4fbf') + pathFor(post,'#c0392b');
+  const xTitle = kind === 'flow-volume' ? 'Volume (L)' : 'Time (s)';
+  const yTitle = kind === 'flow-volume' ? 'Flow (L/s)' : 'Volume (L)';
+  return `<svg width="420" height="300" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${xTitle} versus ${yTitle}">
+    <rect width="420" height="300" fill="#fff"/>
+    ${lines.join('')}
+    ${plot}
+    <text x="${W/2}" y="${H-31}" font-size="10" fill="#555" text-anchor="middle">${xTitle}</text>
+    <text transform="translate(12,${H/2}) rotate(-90)" font-size="10" fill="#555" text-anchor="middle">${yTitle}</text>
+    <line x1="250" x2="268" y1="285" y2="285" stroke="#1a4fbf" stroke-width="2"/>
+    <text x="272" y="288" font-size="10" fill="#555">pre</text>
+    <line x1="315" x2="333" y1="285" y2="285" stroke="#c0392b" stroke-width="2"/>
+    <text x="337" y="288" font-size="10" fill="#555">post</text>
+  </svg>`;
 }
 
-const METRICS=[
-  {label:'FEV1', unit:'L', key:'fev1', pred:'fev1'},
-  {label:'FVC', unit:'L', key:'fvc', pred:'fvc'},
-  {label:'FEV1/FVC', unit:'ratio', key:'fev1_fvc', pred:'fev1_fvc'},
-  {label:'FEF25–75', unit:'L/s', key:'fef2575', pred:'fef2575'},
-  {label:'FEV6', unit:'L', key:'fev6', pred:'fev6'},
-  {label:'PEFR', unit:'L/s', key:'pefr', pred:'pefr'},
-  {label:'FET', unit:'s', key:'fet', pred:'fet'},
-];
-function metricFields(sp,row){
-  return {
-    observed:sp?.[row.key],predicted:sp?.[`pred_${row.pred}`],
-    lln:sp?.[`lln_${row.pred}`],z:sp?.[`zscore_${row.pred}`],
-    percent:sp?.[`pred_percent_${row.pred}`],
+function buildSpirometryReportHtml(data, meta = {}) {
+  const { patient, pre, post, preFlows, postFlows, preVolumes, postVolumes } = data;
+
+  const fmt = (v, digits = 2) =>
+    v === null || v === undefined || Number.isNaN(v) ? 'N/A' : Number(v).toFixed(digits);
+
+  const pct = (v) => (v === null || v === undefined ? 'N/A' : `${Math.round(v)}%`);
+
+  const changeMl = (a, b) =>
+    a === null || b === null || a === undefined || b === undefined ? 'N/A' : `${Math.round((b - a) * 1000)} mL`;
+
+  const pctChange = (a, b) => {
+    if (!a || !b) return 'N/A';
+    const c = ((b - a) / a) * 100;
+    return `${c >= 0 ? '+' : ''}${c.toFixed(0)}%`;
   };
+
+  // --- Results table (9 columns: Best/LLN/z/%Pred pre, Best/z/%Pred post, Change, %Chng) ---
+  const metricRows = [
+    {
+      label: 'FVC (L)',
+      preBest: pre?.fvc, preLln: pre?.lln_fvc, preZ: pre?.zscore_fvc, prePred: pre?.pred_percent_fvc,
+      postBest: post?.fvc, postZ: post?.zscore_fvc, postPred: post?.pred_percent_fvc,
+      showChange: true,
+    },
+    {
+      label: 'FEV1 (L)',
+      preBest: pre?.fev1, preLln: pre?.lln_fev1, preZ: pre?.zscore_fev1, prePred: pre?.pred_percent_fev1,
+      postBest: post?.fev1, postZ: post?.zscore_fev1, postPred: post?.pred_percent_fev1,
+      showChange: true,
+    },
+    {
+      label: 'FEV1/FVC',
+      preBest: pre?.fev1_fvc, preLln: pre?.lln_fev1_fvc, preZ: pre?.zscore_fev1_fvc, prePred: pre?.pred_percent_fev1_fvc,
+      postBest: post?.fev1_fvc, postZ: post?.zscore_fev1_fvc, postPred: post?.pred_percent_fev1_fvc,
+      showChange: false,
+    },
+    {
+      label: 'FEF25-75 (L/s)',
+      preBest: pre?.fef2575, preLln: pre?.lln_fef2575, preZ: pre?.zscore_fef2575, prePred: pre?.pred_percent_fef2575,
+      postBest: post?.fef2575, postZ: post?.zscore_fef2575, postPred: post?.pred_percent_fef2575,
+      showChange: false,
+    },
+    {
+      label: 'FEV6 (L)',
+      preBest: pre?.fev6, preLln: null, preZ: null, prePred: null,
+      postBest: post?.fev6, postZ: null, postPred: null,
+      showChange: false,
+    },
+    {
+      label: 'PEFR (L/s)',
+      preBest: pre?.pefr, preLln: null, preZ: null, prePred: null,
+      postBest: post?.pefr, postZ: null, postPred: null,
+      showChange: false,
+    },
+    {
+      label: 'FET (s)',
+      preBest: pre?.fet, preLln: null, preZ: null, prePred: null,
+      postBest: post?.fet, postZ: null, postPred: null,
+      showChange: false,
+    },
+  ];
+
+  const metricRowsHtml = metricRows
+    .map(
+      (r) => `
+      <tr>
+        <td class="label">${r.label}</td>
+        <td>${fmt(r.preBest)}</td>
+        <td>${r.preLln !== null ? fmt(r.preLln) : '&nbsp;'}</td>
+        <td>${r.preZ !== null ? fmt(r.preZ) : '&nbsp;'}</td>
+        <td>${r.prePred !== null && r.prePred !== undefined ? pct(r.prePred) : '&nbsp;'}</td>
+        <td>${fmt(r.postBest)}</td>
+        <td>${r.postZ !== null ? fmt(r.postZ) : '&nbsp;'}</td>
+        <td>${r.postPred !== null && r.postPred !== undefined ? pct(r.postPred) : '&nbsp;'}</td>
+        <td>${r.showChange ? changeMl(r.preBest, r.postBest) : '&nbsp;'}</td>
+        <td>${r.showChange ? pctChange(r.preBest, r.postBest) : '&nbsp;'}</td>
+      </tr>`
+    )
+    .join('');
+
+  // --- z-score bar panels ---
+  function zPanel(title, rows) {
+    const lln = toPct(LLN_Z);
+    const zero = toPct(0);
+
+    const rowsHtml = rows
+      .map((r) => {
+        if (r.z === null || r.z === undefined) {
+          return `
+          <div class="zrow">
+            <div class="zlabel">${r.label}</div>
+            <div class="ztrack" style="background: linear-gradient(to right, #eeb47e 0%, #eeb47e ${lln}%, #d9ead3 ${lln}%, #d9ead3 100%);">
+              <div class="zline" style="left:${lln}%"></div>
+              <div class="zline" style="left:${zero}%"></div>
+            </div>
+          </div>`;
+        }
+        const starPct = toPct(r.z);
+        return `
+        <div class="zrow">
+          <div class="zlabel">${r.label}</div>
+          <div class="ztrack" style="background: linear-gradient(to right, #eeb47e 0%, #eeb47e ${lln}%, #d9ead3 ${lln}%, #d9ead3 100%);">
+            <div class="zline" style="left:${lln}%"></div>
+            <div class="zline" style="left:${zero}%"></div>
+            <div class="zstar" style="left:${starPct}%">&#9733;</div>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    return `
+      <div class="zpanel">
+        <div class="zheader">
+          <span class="ztitle">${title}</span>
+          <span class="zmarklabel" style="left:${lln}%">LLN</span>
+          <span class="zmarklabel" style="left:${zero}%">predicted</span>
+        </div>
+        ${rowsHtml}
+        <div class="zscale">
+          ${Array.from({ length: SCALE_RANGE + 1 }, (_, i) => SCALE_MIN + i)
+            .map((n) => `<span>${n}</span>`)
+            .join('')}
+        </div>
+      </div>`;
+  }
+
+  const preZRows = [
+    { label: 'FEV1', z: pre?.zscore_fev1 },
+    { label: 'FVC', z: pre?.zscore_fvc },
+    { label: 'FEV1/FVC', z: pre?.zscore_fev1_fvc },
+  ];
+  const postZRows = [
+    { label: 'FEV1', z: post?.zscore_fev1 },
+    { label: 'FVC', z: post?.zscore_fvc },
+    { label: 'FEV1/FVC', z: post?.zscore_fev1_fvc },
+  ];
+
+  const brandHtml = meta.logoDataUri
+    ? `<img class="brand-logo" src="${meta.logoDataUri}" alt="VitalFlo" />`
+    : `<div class="badge">VP</div><div class="name">VitalFlo</div>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<!-- Both charts are generated as inline SVG, avoiding external CDN dependencies. -->
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 26px; }
+
+  .header { display:flex; align-items:center; justify-content:space-between; padding-bottom: 6px; }
+  .brand { display:flex; align-items:center; gap:8px; }
+  .brand .badge { width:30px; height:30px; border-radius:50%; background:#3d8b3d; color:#fff; font-weight:bold;
+                   font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .brand .name { font-style: italic; font-weight: bold; font-size: 21px; color: #2f6f2f; font-family: Georgia, serif; }
+  .brand .brand-logo { height: 34px; display:block; }
+  .header h1 { font-size: 15px; margin: 0; font-weight:bold; }
+  .headrule { border: none; border-top: 2px solid #444; margin: 4px 0 10px; }
+
+  table.infoTable { border-collapse: collapse; width: 100%; }
+  .infoTable td { padding: 3px 6px; font-size: 11px; vertical-align:top; }
+  .infoTable td.k { color:#333; width: 110px; }
+  .infoTable td.v { font-weight: bold; width: 33%; }
+
+  .redrule { border: none; border-top: 2px solid #a33; margin: 10px 0 6px; }
+  h3.section { font-size:12.5px; margin: 0 0 6px; letter-spacing:0.5px; }
+
+  table.results { border-collapse: collapse; width: 100%; font-size: 10.5px; }
+  table.results th, table.results td { border: 1px solid #cfd8c3; padding: 4px 6px; text-align:center; }
+  table.results thead tr:first-child th { background:#eef3e5; }
+  table.results thead tr:last-child th { background:#f5f8f0; font-weight:normal; }
+  table.results td.label { text-align:left; font-weight:bold; background:#f7faf3; }
+  table.results tbody tr:nth-child(odd) td:not(.label) { background:#fbfdf9; }
+  .refrow td { text-align:left; font-size:9.5px; color:#444; background:#fff; }
+
+  .zpanels { display:flex; gap: 26px; margin-top: 14px; }
+  .zpanel { flex:1; }
+  .zheader { position:relative; height:14px; margin-bottom:4px; }
+  .ztitle { font-size: 11px; font-weight:bold; }
+  .zmarklabel { position:absolute; top:0; transform: translateX(-50%); font-size:9px; color:#333; white-space:nowrap; }
+  .zrow { display:flex; align-items:center; margin: 3px 0; }
+  .zlabel { width: 62px; font-size: 10px; }
+  .ztrack { position:relative; flex:1; height:15px; border:1px solid #b7b7b7; }
+  .zline { position:absolute; top:-2px; bottom:-2px; width:2px; background:#111; }
+  .zstar { position:absolute; top:-4px; transform: translateX(-50%); color:#7a1f1f; font-size:15px; line-height:1; }
+  .zscale { display:flex; justify-content:space-between; font-size:9px; color:#666; margin-top:2px; padding: 0 1px; }
+
+  .charts { display:flex; gap: 22px; margin-top: 18px; }
+  .chartBox { flex:1; text-align:center; }
+  canvas, .chartBox svg { max-width: 100%; height: auto; }
+
+  .comments { display:flex; gap: 20px; margin-top: 20px; }
+  .commentBox { flex:1; border:1px solid #999; height: 90px; padding:6px; font-size:10px; }
+  .sigline { margin-top: 22px; border-top: 1px solid #333; width: 55%; margin-left:auto; text-align:center; font-size:9px; padding-top:2px; }
+  .bottomrule { border: none; border-top: 2px solid #a33; margin: 18px 0 8px; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      ${brandHtml}
+    </div>
+    <h1>ATS Bronchodilator Responsiveness Report</h1>
+  </div>
+  <hr class="headrule" />
+
+  <table class="infoTable">
+    <tr>
+      <td class="k">Name:</td><td class="v">${patient.name ?? 'N/A'}</td>
+      <td class="k">Referred by:</td><td class="v">${patient.referredBy ?? 'N/A'}</td>
+    </tr>
+    <tr>
+      <td class="k">ID:</td><td class="v">${patient.id ?? 'N/A'}</td>
+      <td class="k">Date of test:</td><td class="v">${patient.testDate ?? 'N/A'}</td>
+    </tr>
+    <tr>
+      <td class="k">Sex:</td><td class="v">${patient.sex ?? 'N/A'}</td>
+      <td class="k">Reason:</td><td class="v">${patient.reason ?? 'N/A'}</td>
+    </tr>
+    <tr>
+      <td class="k">Birth date:</td><td class="v">${patient.dob ?? 'N/A'}</td>
+      <td class="k">SpO2 at rest:</td><td class="v">${patient.spo2 ?? 'N/A'}</td>
+    </tr>
+    <tr>
+      <td class="k">Age:</td><td class="v">${patient.age ?? 'N/A'}</td>
+      <td class="k">Height:</td><td class="v">${patient.height ?? 'N/A'}</td>
+    </tr>
+    <tr>
+      <td class="k">Ethnicity:</td><td class="v">${patient.ethnicity ?? 'N/A'}</td>
+      <td class="k">Weight:</td><td class="v">${patient.weight ?? 'N/A'}</td>
+    </tr>
+    <tr>
+      <td class="k">Smoking:</td><td class="v">${patient.smoking ?? 'N/A'}</td>
+      <td class="k">BMI:</td><td class="v">${patient.bmi ?? 'N/A'}</td>
+    </tr>
+  </table>
+
+  <hr class="redrule" />
+  <h3 class="section">SPIROMETRY</h3>
+
+  <table class="results">
+    <thead>
+      <tr>
+        <th rowspan="2">&nbsp;</th>
+        <th colspan="4">Pre</th>
+        <th colspan="3">Post</th>
+        <th rowspan="2">Change</th>
+        <th rowspan="2">%Chng</th>
+      </tr>
+      <tr>
+        <th>Best</th><th>LLN</th><th>z-score</th><th>%Pred</th>
+        <th>Best</th><th>z-score</th><th>%Pred</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${metricRowsHtml}
+      <tr class="refrow">
+        <td colspan="10">Reference values: GLI 2012 &nbsp;&nbsp; Test Quality: Pre: FEV1 - ${pre?.fev1_acceptability ?? 'N/A'}, FVC - ${pre?.fvc_acceptability ?? 'N/A'}; Post: FEV1 - ${post?.fev1_acceptability ?? 'N/A'}, FVC - ${post?.fvc_acceptability ?? 'N/A'}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="zpanels">
+    ${zPanel('Pre-Bronchodilator', preZRows)}
+    ${zPanel('Post-Bronchodilator', postZRows)}
+  </div>
+
+  <div class="charts">
+    <div class="chartBox">
+      ${drawReportCurve(preFlows, postFlows, 'flow-volume')}
+    </div>
+    <div class="chartBox">
+      ${drawReportCurve(preVolumes, postVolumes, 'volume-time', preFlows, postFlows)}
+    </div>
+  </div>
+
+  <div class="comments">
+    <div class="commentBox"><strong>Technician Comments:</strong></div>
+    <div class="commentBox"><strong>Additional Comments:</strong></div>
+  </div>
+  <div class="sigline">Clinician Signature &nbsp;&nbsp;&nbsp;&nbsp; Date</div>
+  <hr class="bottomrule" />
+
+</body>
+</html>`;
 }
-function measurementTable(phase, data) {
-  const rows=METRICS.map(m=>{
-    const v=metricFields(data,m);
-    return `<tr><th scope="row">${esc(m.label)} <small>(${esc(m.unit)})</small></th><td>${fmt(v.observed)}</td><td>${fmt(v.predicted)}</td><td>${fmt(v.lln)}</td><td>${fmt(v.z)}</td><td>${pct(v.percent)}</td></tr>`;
-  }).join('');
-  return `<section class="measure"><h3>${esc(phase)} bronchodilator measurements</h3>
-  <table><thead><tr><th>Variable</th><th>Observed</th><th>Predicted</th><th>LLN</th><th>Z-score</th><th>% Pred.</th></tr></thead><tbody>${rows}</tbody></table></section>`;
-}
-function changeTable(pre,post){
-  if (!post || !pre) return '<p class="muted">Bronchodilator comparison unavailable: paired pre/post measurements not recorded.</p>';
-  return `<table><thead><tr><th>Variable</th><th>Pre</th><th>Post</th><th>Δ Absolute</th><th>Δ % baseline</th><th>Δ % predicted</th></tr></thead><tbody>${METRICS.map(m=>{
-    const a=n(pre[m.key]),b=n(post[m.key]);
-    const delta=a==null||b==null?null:b-a;
-    const aPred=n(pre[`pred_${m.pred}`]);
-    const pp=delta!=null && aPred>0 ? delta/aPred*100 : null;
-    const scaled=m.unit==='L'?1000:1;
-    const unit=m.unit==='L'?'mL':m.unit==='ratio'?'ratio':m.unit;
-    return `<tr><th scope="row">${esc(m.label)}</th><td>${fmt(a)}</td><td>${fmt(b)}</td><td>${delta==null?MISSING:`${delta>=0?'+':''}${fmt(delta*scaled, m.unit==='L'?0:2)} ${esc(unit)}`}</td><td>${a==null||a===0||b==null?MISSING:pct((b-a)/a*100)}</td><td>${pp==null?MISSING:pct(pp)}</td></tr>`;
-  }).join('')}</tbody></table>`;
-}
-function buildSpirometryReportHtml(data, meta={}){
-  const patient=data.patient||{}, pre=data.pre??null, post=data.post??null;
-  const preFV=toFlowVolumePoints(data.preFlows),postFV=toFlowVolumePoints(data.postFlows);
-  const preVT=toVolumeTimePoints(data.preVolumes,data.preFlows),postVT=toVolumeTimePoints(data.postVolumes,data.postFlows);
-  const logo=meta.logoDataUri&&String(meta.logoDataUri).startsWith('data:image/')?`<img class="logo" src="${esc(meta.logoDataUri)}" alt="VitalFlo"/>`:'<span class="logoFallback">V</span>';
-  const info=[['Patient',patient.name],['Patient ID',patient.id],['Date of test',patient.testDate],['Date of birth',patient.dob],['Age at test',patient.age],['Sex',patient.sex],['Height',patient.height],['Weight',patient.weight],['BMI',patient.bmi],['Ethnicity',patient.ethnicity],['Smoking',patient.smoking],['Referring clinician',patient.referredBy]].map(([k,v])=>`<div class="item"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
-  const preLabel=pre?`Pre: ${esc(fmtDate(pre.dbdate))} · Test ${esc(pre.id)}`:'Pre observation not available';
-  const postLabel=post?`Post: ${esc(fmtDate(post.dbdate))} · Test ${esc(post.id)}`:'No paired post-bronchodilator observation';
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
-  <style>
-  @page {size:A4; margin:12mm;} *{box-sizing:border-box}
-  body{font:11px/1.42 Arial,sans-serif;color:#172440;margin:0} header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #22396b;padding-bottom:12px;margin-bottom:12px}
-  .brand{display:flex;align-items:center;gap:8px;font-size:22px;font-weight:700;color:#22396b}.logo{max-height:34px;max-width:175px}.logoFallback{width:30px;height:30px;background:#233e7c;color:white;border-radius:9px;display:flex;align-items:center;justify-content:center}
-  h1{font-size:18px;margin:0;color:#22396b}h2{font-size:14px;margin:12px 0 8px;color:#22396b}h3{font-size:12px;margin:12px 0 6px;color:#22396b}
-  .sub{font-size:9.5px;color:#53617b}.info{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 12px;margin-bottom:10px;padding:12px;background:#f3f6fc;border-radius:10px}
-  .item{display:flex;flex-direction:column;gap:2px}.item span{font-size:9px;color:#64738b}.item strong{font-size:11px;font-weight:600;word-break:break-word}
-  table{width:100%;border-collapse:collapse;table-layout:fixed}td,th{border-bottom:1px solid #dbe1ec;padding:5px 7px;text-align:right;white-space:nowrap}td:first-child,th:first-child{text-align:left;width:27%}thead th{background:#eaf0fa;color:#30456d;font-size:10px}tbody th{font-weight:600}tbody tr:nth-child(even){background:#fafbfe}small{color:#6d7890;font-size:9px}
-  section.measure{break-inside:avoid;page-break-inside:avoid}.muted{color:#687b95}.summary{margin:8px 0;padding:8px;border-left:3px solid #315fc0;background:#f2f6ff}
-  .plot{margin-top:10px;padding:8px 10px;border:1px solid #dfe6f1;border-radius:10px;break-inside:avoid;page-break-inside:avoid}.plot-title{font-size:12px;font-weight:600;margin-bottom:5px;color:#22396b}.plot svg{display:block;width:100%;height:auto}.no-chart{text-align:center;color:#7b879a;background:#f4f7fb;border-radius:5px;padding:30px}
-  .foot{margin-top:10px;color:#65738a;font-size:9px}.status{margin:4px 0 8px;color:#56637c}
-  </style></head><body>
-  <header><div class="brand">${logo}<span>VitalFlo</span></div><div><h1>Spirometry &amp; Bronchodilator Report</h1><div class="sub">Recorded measurements · GLI reference values where available</div></div></header>
-  <div class="info">${info}</div>
-  <div class="status">${preLabel}<br/>${postLabel}</div>
-  ${measurementTable('Pre',pre)}
-  ${measurementTable('Post',post)}
-  <section class="measure"><h3>Bronchodilator responsiveness</h3>${changeTable(pre,post)}</section>
-  <h2>Recorded curves: pre vs post</h2>
-  ${svgChart('Flow–volume curve',preFV,postFV,'Volume (L)','Flow (L/s)',{zeroX:true,zeroY:false})}
-  ${svgChart('Volume–time curve',preVT,postVT,'Time (s)','Volume (L)',{zeroX:true,zeroY:true})}
-  <div class="foot">Reported session values use the shared web/mobile best-per-field calculation. Curves depict a representative recorded maneuver for each phase, not a synthetic combined maneuver. Missing measurements and reference predictions remain N/A. Bronchodilator change is descriptive, not an automatic clinical interpretation.</div>
-  </body></html>`;
-}
-module.exports={buildSpirometryReportHtml,toFlowVolumePoints,toVolumeTimePoints,svgChart};
+
+module.exports = { buildSpirometryReportHtml };
