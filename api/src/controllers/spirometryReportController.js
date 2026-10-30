@@ -4,6 +4,7 @@
 const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
 const { canReadPatient } = require('../helpers/patientScope');
+const { bestObservedValues } = require('../helpers/spirometryParity');
 
 const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
@@ -13,6 +14,30 @@ const {
 } = require('../services/spirometryEnrich');
 
 const prisma = new PrismaClient();
+
+// The web Spirometry tab reports the highest values across the observation's
+// maneuvers (best-per-field), not simply the last recorded maneuver.
+// Charts, however, MUST come from an actual measured maneuver.
+function summarizeObservation(rows = []) {
+  if (!rows.length) return { summaryRaw: null, chartRaw: null };
+  const best = bestObservedValues(rows);
+  const numeric = (v) => v == null ? -Infinity : Number(v);
+  const chartRaw = [...rows].sort((a, b) => {
+    const aPoints = (a.flows?.length || a.volumes?.length || 0) > 1;
+    const bPoints = (b.flows?.length || b.volumes?.length || 0) > 1;
+    if (aPoints !== bPoints) return aPoints ? -1 : 1;
+    return numeric(bestObservedValues([b]).fvc) - numeric(bestObservedValues([a]).fvc);
+  })[0];
+  return { chartRaw, summaryRaw: {
+    ...chartRaw,
+    fev1: best.fev1,
+    fvc: best.fvc,
+    pefr: best.pefr,
+    fef2575: best.fef2575,
+    fev6: best.fev6,
+  } };
+}
+
 
 /**
  * GET /api/spirometry/observation/:observation_id/pdf
@@ -39,31 +64,33 @@ const getSpirometryReportPDF = async (req, res) => {
       return res.status(404).json({ error: 'Observation not found' });
     }
 
-    // --- Resolve PRE/POST pair ---
-    let preObservation = anchorObservation;
-    let postObservation = null;
-
-    if (anchorObservation.is_post_bronchodilator) {
-      postObservation = anchorObservation;
-      if (anchorObservation.linked_pre_post_observation_id) {
-        preObservation = await prisma.portal_observation.findFirst({
-          where: { id: anchorObservation.linked_pre_post_observation_id },
-        });
-      }
-    } else if (anchorObservation.linked_pre_post_observation_id) {
-      postObservation = await prisma.portal_observation.findFirst({
-        where: { id: anchorObservation.linked_pre_post_observation_id },
-      });
-    } else {
-      postObservation = await prisma.portal_observation.findFirst({
-        where: {
-          linked_pre_post_observation_id: obsId,
-          is_post_bronchodilator: true,
-        },
+    // --- Resolve PRE/POST pair in either direction, verifying identity and phase ---
+    // Do not relabel a standalone post observation as a pre observation.
+    let preObservation = anchorObservation.is_post_bronchodilator ? null : anchorObservation;
+    let postObservation = anchorObservation.is_post_bronchodilator ? anchorObservation : null;
+    const inversePhase = !anchorObservation.is_post_bronchodilator;
+    let paired = null;
+    if (anchorObservation.linked_pre_post_observation_id) {
+      paired = await prisma.portal_observation.findFirst({
+        where: { id: anchorObservation.linked_pre_post_observation_id,
+          user_id: anchorObservation.user_id,
+          is_post_bronchodilator: inversePhase },
       });
     }
+    if (!paired) {
+      paired = await prisma.portal_observation.findFirst({
+        where: { linked_pre_post_observation_id: obsId,
+          user_id: anchorObservation.user_id,
+          is_post_bronchodilator: inversePhase },
+        orderBy: { dbdate: 'desc' },
+      });
+    }
+    if (paired) {
+      if (paired.is_post_bronchodilator) postObservation = paired;
+      else preObservation = paired;
+    }
 
-    const userId = preObservation.user_id;
+    const userId = anchorObservation.user_id;
     // Authentication alone does not confer permission to read patient reports.
     if (!(await canReadPatient(req.user, userId))) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -72,7 +99,7 @@ const getSpirometryReportPDF = async (req, res) => {
     // --- Fetch everything needed in parallel ---
     const [preSpiroRows, postSpiroRows, user] = await Promise.all([
       prisma.portal_spirometry.findMany({
-        where: { observation_id: preObservation.id },
+        where: { observation_id: preObservation?.id ?? -1 },
         orderBy: { dbdate: 'desc' },
         include: { flows: true, volumes: true },
       }),
@@ -109,31 +136,29 @@ const getSpirometryReportPDF = async (req, res) => {
       }),
     ]);
 
-    // "Best" trial = most recent. (Matches original report behavior.)
-    const preRaw = preSpiroRows[0] || null;
-    const postRaw = postSpiroRows[0] || null;
-
-    if (!preRaw) {
-      return res.status(404).json({
-        error: 'No spirometry trials found for this observation',
-      });
+    const preSession = summarizeObservation(preSpiroRows);
+    const postSession = summarizeObservation(postSpiroRows);
+    const preRaw = preSession.summaryRaw;
+    const postRaw = postSession.summaryRaw;
+    if (!preRaw && !postRaw) {
+      return res.status(404).json({ error: 'No spirometry trials found for this observation' });
     }
 
     // --- Build GLI-2012 demographics using the observation's own height ---
     const attrs = user?.patient_details?.attributes || {};
 
     const demoForPre = buildDemographics({
-      observation: preObservation,
+      observation: preObservation || anchorObservation,
       attributes: attrs,
       details: user?.patient_details,
-      testDate: preRaw.dbdate,
+      testDate: preRaw?.dbdate || postRaw?.dbdate,
     });
 
     const demoForPost = buildDemographics({
-      observation: postObservation || preObservation,
+      observation: postObservation || anchorObservation,
       attributes: attrs,
       details: user?.patient_details,
-      testDate: postRaw?.dbdate || preRaw.dbdate,
+      testDate: postRaw?.dbdate || preRaw?.dbdate,
     });
 
     // --- Enrich pre and post ---
@@ -154,7 +179,7 @@ const getSpirometryReportPDF = async (req, res) => {
       name: user ? `${user.f_name ?? ''} ${user.l_name ?? ''}`.trim() : 'N/A',
       id: user?.user_id ?? 'N/A',
       referredBy: 'N/A',
-      testDate: pre?.dbdate ? new Date(pre.dbdate).toLocaleString() : 'N/A',
+      testDate: (pre?.dbdate || post?.dbdate) ? new Date(pre?.dbdate || post?.dbdate).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : 'N/A',
       sex: attrs.gender ?? 'N/A',
       reason: 'N/A',
       dob: dob ? dob.toISOString().slice(0, 10) : 'N/A',
@@ -173,10 +198,10 @@ const getSpirometryReportPDF = async (req, res) => {
         patient,
         pre,
         post,
-        preFlows: preRaw?.flows,
-        postFlows: postRaw?.flows,
-        preVolumes: preRaw?.volumes,
-        postVolumes: postRaw?.volumes,
+        preFlows: preSession.chartRaw?.flows,
+        postFlows: postSession.chartRaw?.flows,
+        preVolumes: preSession.chartRaw?.volumes,
+        postVolumes: postSession.chartRaw?.volumes,
       },
       { logoDataUri: getLogoDataUri() }
     );
@@ -187,15 +212,18 @@ const getSpirometryReportPDF = async (req, res) => {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    // All charts are inline SVG: no external script/network dependency.
+    await page.setContent(html, { waitUntil: 'load' });
 
-    const pdfBuffer = await page.pdf({
+    const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
     });
 
+    const pdfBuffer = Buffer.from(pdfBytes);
     await browser.close();
+    browser = null;
 
     const filename = `spirometry_report_${obsId}.pdf`;
     res.set({
@@ -211,4 +239,4 @@ const getSpirometryReportPDF = async (req, res) => {
   }
 };
 
-module.exports = { getSpirometryReportPDF };
+module.exports = { getSpirometryReportPDF, summarizeObservation };
