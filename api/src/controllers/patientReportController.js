@@ -19,7 +19,12 @@ function resolveReportRequest(tab, query) {
       if (query.date && (query.startDate || query.endDate)) {
         throw new ValidationError('Use date or startDate/endDate, not both');
       }
-      return { effectiveTab: 'spirometry', query: { startDate: start, endDate: end }, isAllTime };
+      // Paginate only when the caller supplies page/limit. Existing callers
+      // without pagination retain the full-history PDF behavior.
+      const hasPagination = query.page != null || query.limit != null;
+      const page = hasPagination ? parsePositiveInt(query.page ?? 1, 'page') : null;
+      const limit = hasPagination ? Math.min(parsePositiveInt(query.limit ?? 20, 'limit'), 100) : null;
+      return { effectiveTab: 'spirometry', query: { startDate: start, endDate: end, page, limit }, isAllTime };
     }
     case 'analysis':
     case 'reports':
@@ -46,13 +51,18 @@ async function getPatientReportPdf(req, res) {
     const { effectiveTab, query: normalizedQuery, isAllTime } = resolveReportRequest(tab, req.query);
     let pdfBuffer;
     if (effectiveTab === 'spirometry') {
-      const startDate = parseDateParam(normalizedQuery.startDate, 'startDate');
-      const endDate = parseDateParam(normalizedQuery.endDate, 'endDate');
-      ensureRangeOrdered(startDate, endDate);
-      // Repository's endDate range behavior must be checked for inclusivity.
-      // Add an inclusive end-of-day bound so DATETIME results on endDate are retained.
-      const endOfDay = new Date(endDate.getTime() + 86400000 - 1);
-      const data = await patientService.getLegacySpirometryPdfData(userId, { startDate, endDate: endOfDay });
+      // With no date selection, match the unfiltered Spirometry tab exactly.
+      // Otherwise include the selected end date through 23:59:59.999 UTC.
+      const startDate = isAllTime ? null : parseDateParam(normalizedQuery.startDate, 'startDate');
+      const endDate = isAllTime ? null : parseDateParam(normalizedQuery.endDate, 'endDate');
+      if (startDate && endDate) ensureRangeOrdered(startDate, endDate);
+      const endOfDay = endDate ? new Date(endDate.getTime() + 86400000 - 1) : null;
+      const data = await patientService.getLegacySpirometryPdfData(userId, {
+        startDate,
+        endDate: endOfDay,
+        page: normalizedQuery.page,
+        limit: normalizedQuery.limit,
+      });
       pdfBuffer = await reportService.generateLegacySpirometryPdf(data);
     } else {
       const params = buildTabParams(effectiveTab, userId, normalizedQuery);

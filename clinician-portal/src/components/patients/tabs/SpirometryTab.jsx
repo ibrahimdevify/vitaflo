@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { Download, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { spirometryAPI } from '../../../services/api';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import Pagination from '../../ui/pagination';
@@ -23,6 +26,55 @@ function toDateInputValue(value) {
 export default function SpirometryTab({ data, onRefetch, loading }) {
   const [startDate, setStartDate] = useState(toDateInputValue(data?.startDate));
   const [endDate, setEndDate] = useState(toDateInputValue(data?.endDate));
+  const [downloadingObservationId, setDownloadingObservationId] = useState(null);
+
+  // Uses the existing authenticated observation-level PDF endpoint. The
+  // server owns the PDF layout and pre/post bronchodilator report content.
+  const handleDownloadObservation = async (observationId) => {
+    const id = Number(observationId);
+    if (!Number.isSafeInteger(id) || id <= 0 || downloadingObservationId !== null) return;
+
+    setDownloadingObservationId(id);
+    try {
+      const response = await spirometryAPI.getReportPDF(id);
+      const pdf = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: 'application/pdf' });
+      const contentType = response.headers?.['content-type'] || pdf.type || '';
+      // Axios may return a JSON error as a Blob, even when responseType is blob.
+      if (!contentType.toLowerCase().includes('application/pdf')) {
+        let message = 'Unable to generate spirometry PDF';
+        try {
+          const errorBody = JSON.parse(await pdf.text());
+          message = errorBody.error || errorBody.message || message;
+        } catch { /* Non-JSON server response */ }
+        throw new Error(message);
+      }
+
+      const url = URL.createObjectURL(pdf);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `spirometry_report_${id}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      // Give the browser time to begin downloading before freeing the Blob.
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (error) {
+      let message = error?.message || 'Failed to download spirometry PDF';
+      const errorBody = error?.response?.data;
+      if (errorBody instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await errorBody.text());
+          message = parsed.error || parsed.message || message;
+        } catch { /* Keep original error */ }
+      }
+      toast.error(message);
+      console.error('[SpirometryTab] Observation PDF download failed:', error);
+    } finally {
+      setDownloadingObservationId(null);
+    }
+  };
 
   const limit = data?.pagination?.limit || 20;
   const page = data?.pagination?.page || 1;
@@ -153,6 +205,22 @@ export default function SpirometryTab({ data, onRefetch, loading }) {
                         recorded on this date
                       </p>
                     </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-2"
+                      disabled={downloadingObservationId !== null || !row.observationId}
+                      onClick={() => handleDownloadObservation(row.observationId)}
+                      aria-label={`Download PDF for observation ${row.observationId}`}
+                    >
+                      {downloadingObservationId === Number(row.observationId) ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      Download PDF
+                    </Button>
                   </div>
                 </div>
 

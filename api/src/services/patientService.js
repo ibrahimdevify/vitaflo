@@ -383,16 +383,21 @@ async function getPatientTabData(tab, params) {
   return handler(params);
 }
 
-async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = null } = {}) {
-  const limit = 100;
-  let page = 1;
+async function getLegacySpirometryPdfData(userId, {
+  startDate = null, endDate = null, page = null, limit = null,
+} = {}) {
+  // The header PDF uses the current visible page. Older callers that omit
+  // page and limit still receive their original full-history PDF.
+  const paged = Number.isInteger(page) && Number.isInteger(limit) && page > 0 && limit > 0;
+  const batchSize = paged ? limit : 100;
+  let batchPage = paged ? page : 1;
   const observations = [];
   const profile = await patientRepository.findPatientProfile(userId);
 
   while (true) {
-    const skip = (page - 1) * limit;
+    const skip = (batchPage - 1) * batchSize;
     const batch = await patientRepository.findObservationsPage(userId, {
-      startDate, endDate, skip, take: limit, includeCurves: true,
+      startDate, endDate, skip, take: batchSize, includeCurves: true,
     });
     if (!batch.length) break;
 
@@ -430,8 +435,8 @@ async function getLegacySpirometryPdfData(userId, { startDate = null, endDate = 
       observations.push({ id: observation.id, date: observation.dbdate, tests: resolvedTests });
     }
 
-    if (batch.length < limit) break;
-    page += 1;
+    if (paged || batch.length < batchSize) break;
+    batchPage += 1;
   }
 
   // Stable report ordering: oldest to newest, matching the provided PDF.

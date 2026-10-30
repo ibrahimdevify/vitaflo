@@ -208,10 +208,20 @@ export default function PatientDetail() {
     // Download from the existing /patients/:id/report endpoint.
     try {
       setDownloading(true);
+      // The header download should contain only the observations currently
+      // displayed by the Spirometry tab (same date range and current page).
+      // Other tabs keep their existing report parameters unchanged.
+      const reportParams = activeTab === 'spirometry'
+        ? {
+            ...currentParams,
+            page: tabData?.pagination?.page ?? 1,
+            limit: tabData?.pagination?.limit ?? 20,
+          }
+        : currentParams;
       const res = await patientsAPI.getPatientReportPdf(
         id,
         activeTab,
-        currentParams
+        reportParams
       );
 
       const blob = new Blob([res.data], { type: 'application/pdf' });
