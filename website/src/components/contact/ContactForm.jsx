@@ -145,7 +145,7 @@ export default function ContactForm() {
               Terms & Conditions
             </a>{" "}
             and{" "}
-            <a href="/privacy" className="underline hover:text-black">
+            <a href="/privacy-policy" className="underline hover:text-black">
               Privacy Policy
             </a>
             .

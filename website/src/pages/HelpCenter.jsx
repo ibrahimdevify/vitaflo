@@ -16,7 +16,7 @@ const CARDS = [
     title: "Privacy Policy",
     text: "See what we collect, how we use it and the choices and rights you have.",
     cta: "Read the policy",
-    to: "/privacy",
+    to: "/privacy-policy",
   },
   {
     title: "Contact us",
