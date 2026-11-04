@@ -38,7 +38,7 @@ export const patientsAPI = {
   getClinicians: () => api.get('/patients/clinicians/list'),
 
   create: (data) => api.post('/patients', data),  // ✅ ADD THIS
-  update: (id, data) => api.put(`/patients/${id}`, data),  // ✅ ADD THIS
+  update: (id, data) => api.patch(`/patients/${id}`, data),
 
   createAttributes: (id, data) => api.post(`/patients/${id}/attributes`, data),
   updateAttributes: (id, data) => api.put(`/patients/${id}/attributes`, data),

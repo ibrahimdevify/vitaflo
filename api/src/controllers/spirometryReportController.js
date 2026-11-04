@@ -4,7 +4,8 @@
 const puppeteer = require('puppeteer');
 const { PrismaClient } = require('@prisma/client');
 const { canReadPatient } = require('../helpers/patientScope');
-const { bestObservedValues } = require('../helpers/spirometryParity');
+const { bestObservedValues, ageAtDate } = require('../helpers/spirometryParity');
+const { normalizeHeightCm } = require('../helpers/spirometry');
 
 const { buildSpirometryReportHtml } = require('../public/spirometryReport');
 const { getLogoDataUri } = require('../services/reportService');
@@ -118,7 +119,6 @@ const getSpirometryReportPDF = async (req, res) => {
           l_name: true,
           patient_details: {
             select: {
-              height: true,
               attributes: {
                 select: {
                   dob: true,
@@ -167,8 +167,9 @@ const getSpirometryReportPDF = async (req, res) => {
 
     // --- Patient info (units fixed: cm / kg) ---
     const dob = attrs.dob ? new Date(attrs.dob) : null;
-    const age = demoForPre?.age == null ? null : Math.floor(demoForPre.age);
-    const heightCm = demoForPre?.height ?? null;
+    const age = ageAtDate(attrs.dob, preRaw?.dbdate || postRaw?.dbdate || preObservation?.dbdate);
+    const ageYears = age == null ? null : Math.floor(age);
+    const heightCm = normalizeHeightCm(attrs.height, process.env.VITALFLO_ATTRIBUTES_HEIGHT_UNIT || 'auto');
     const weightKg = attrs.weight ? Number(attrs.weight) : null;
     const bmi =
       heightCm && weightKg
@@ -184,7 +185,7 @@ const getSpirometryReportPDF = async (req, res) => {
       reason: 'N/A',
       dob: dob ? dob.toISOString().slice(0, 10) : 'N/A',
       spo2: 'N/A',
-      age: age ?? 'N/A',
+      age: ageYears ?? 'N/A',
       height: heightCm ? `${heightCm.toFixed(1)} cm` : 'N/A',
       ethnicity: attrs.ethnic_group || attrs.lookup_table || 'N/A',
       weight: weightKg ? `${weightKg.toFixed(1)} kg` : 'N/A',

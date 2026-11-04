@@ -118,7 +118,10 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
           data.email ||
           `${data.f_name.toLowerCase()}.${data.l_name.toLowerCase()}@vitalflow.com`,
         phone: data.phone,
-        password: data.password || "TempPass123!",
+        // Do not reset an existing patient's password just because edit form was saved.
+        ...(isEditing
+          ? (data.password ? { password: data.password } : {})
+          : { password: data.password || "TempPass123!" }),
         dob: data.dob,
         chart_no: data.chart_no || "",
         blood_group: data.blood_group || null,
@@ -129,10 +132,15 @@ export default function PatientForm({ onCancel, onSuccess, initialData }) {
         patient_group_id: data.patient_group_id
           ? parseInt(data.patient_group_id)
           : null,
-        assigned_clinician_id: user?.user_id || user?.id, // ✅ Auto-assign same
+        // Preserve assignment during edit; default assignment is only for creation.
+        ...(!isEditing ? { assigned_clinician_id: user?.user_id || user?.id } : {}),
       };
 
-      await patientsAPI.create(payload);
+      if (isEditing) {
+        await patientsAPI.update(initialData.user_id, payload);
+      } else {
+        await patientsAPI.create(payload);
+      }
       toast.success(
         isEditing
           ? "Patient updated successfully!"

@@ -39,8 +39,7 @@ async function findPatientProfile(userId) {
       user_status: { select: { name: true } },
       patient_details: {
         select: {
-          height: true,
-          weight: true,
+          // Read patient metrics from vf_attributes only.
           attributes: {
             select: {
               phone: true,

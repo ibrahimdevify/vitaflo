@@ -110,8 +110,8 @@ async function getPatientInfoTab(userId) {
     phone: attributes?.phone || profile.phone,
     // NOTE: schema stores height/weight as raw Float with no unit column —
     // returning the raw number; confirm units (in vs cm, lb vs kg) before formatting on the frontend.
-    height: attributes?.height ?? profile.patient_details?.height ?? null,
-    weight: attributes?.weight ?? profile.patient_details?.weight ?? null,
+    height: attributes?.height > 0 ? attributes.height : null,
+    weight: attributes?.weight ?? null,
     sexAtBirth: attributes?.gender || null,
     smoking: attributes?.smoking ?? null,
     // NOTE: vf_attributes.dob is stored as VarChar, not DateTime — age calc assumes it parses as a valid date string.

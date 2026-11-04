@@ -13,6 +13,7 @@ const ALLOWED_TABS = [
 ];
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const { upsertAttributesAndMirror } = require('../helpers/patientAttributes');
 const { hashPassword } = require("../utils/password");
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PAGE_SIZE = 100;
@@ -240,6 +241,7 @@ const updatePatient = async (req, res) => {
 
       // dc_user_details
       dob,
+      gender,
       gender_id_fk,
       martial_status_fk,
       address,
@@ -351,13 +353,7 @@ const updatePatient = async (req, res) => {
 
     const patientData = {};
 
-    if (height !== undefined) {
-      patientData.height = parseNullableFloat(height, "height");
-    }
-
-    if (weight !== undefined) {
-      patientData.weight = parseNullableFloat(weight, "weight");
-    }
+    // Demographic height/weight updates are done atomically by upsertAttributesAndMirror.
 
     if (blood_group !== undefined) {
       patientData.blood_group = blood_group;
@@ -419,7 +415,7 @@ const updatePatient = async (req, res) => {
       // dc_users can still be too long for vf_attributes and throw a raw
       // Prisma P2000 error mid-transaction. Validate up front with a clear
       // message instead.
-      if (phone.length > 20) {
+      if (phone !== null && phone.length > 20) {
         throw new ValidateError(
           "phone",
           `phone must be at most 20 characters long for vf_attributes (currently ${phone.length})`
@@ -431,10 +427,11 @@ const updatePatient = async (req, res) => {
     if (dob !== undefined) {
       attributesData.dob = dob;
     }
+    if (gender !== undefined) attributesData.gender = gender;
 
     if (height !== undefined) {
       const parsedHeight = parseNullableFloat(height, "height");
-      attributesData.height = parsedHeight === null ? 0 : parsedHeight;
+      attributesData.height = parsedHeight; // helper maps null to vf_attributes.height=0, mirrors null
     }
 
     if (weight !== undefined) {
@@ -530,22 +527,30 @@ const updatePatient = async (req, res) => {
           });
         }
 
-        // Update vf_attributes
+        // vf_attributes is canonical; also mirror height/weight inside this transaction.
+        // On an old patient without an attributes row, create it rather than silently losing data.
         let updatedAttributes = patient.attributes;
-
-        if (Object.keys(attributesData).length > 0) {
-          if (!patient.attributes) {
-            // Previously this silently skipped the update with no feedback.
-            // Better to fail loudly than lose data the caller thought was saved.
-            throw new Error("ATTRIBUTES_NOT_FOUND");
-          }
-
-          updatedAttributes = await tx.vf_attributes.update({
-            where: {
-              pd_id: patient.pd_id,
-            },
-            data: attributesData,
+        if (gender === undefined && gender_id_fk !== undefined) {
+          const matchedGender = await tx.dc_gender.findUnique({
+            where: { gender_id: Number(gender_id_fk) }, select: { name: true },
           });
+          if (matchedGender) attributesData.gender = matchedGender.name;
+        }
+        if (Object.keys(attributesData).length > 0) {
+          updatedAttributes = await upsertAttributesAndMirror(tx, patient, attributesData, {
+            first_name: patient.user.f_name,
+            last_name: patient.user.l_name,
+            dob: patient.user.user_details?.dob?.toISOString()?.slice(0, 10) || '',
+          });
+        }
+
+        // Return canonical demographics in the legacy patient_details response too.
+        if (updatedPatient) {
+          updatedPatient = {
+            ...updatedPatient,
+            height: updatedAttributes?.height > 0 ? updatedAttributes.height : null,
+            weight: updatedAttributes?.weight ?? null,
+          };
         }
 
         return {

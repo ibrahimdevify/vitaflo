@@ -11,6 +11,8 @@ const { forgotPassword, confirmReset } = require('./auth/passwordReset');
 // (the one requiring '../../utils/password' and '../../utils/emailService').
 
 const prisma = new PrismaClient();
+const crypto = require('node:crypto');
+const { parseMeasurement, canonicalPatientDetails } = require('../helpers/patientAttributes');
 
 // Login
 const login = async (req, res) => {
@@ -135,8 +137,10 @@ const register = async (req, res) => {
       email,
       phone,
       password,
-      ut_id_fk, // user type: 1=technician, 2=account_admin, 3=clinician, 4=patient
       dob,
+      height,
+      weight,
+      gender,
       gender_id_fk,
       address,
       city_id_fk,
@@ -162,7 +166,16 @@ const register = async (req, res) => {
 
     const userName = await generateUserName(email);
 
-    // Create user
+    // Public registration only creates a patient; never trust a caller-supplied role.
+    const heightValue = parseMeasurement(height, 'height') ?? null;
+    const weightValue = parseMeasurement(weight, 'weight') ?? null;
+    if (!dob || Number.isNaN(new Date(dob).getTime())) {
+      return res.status(400).json({ error: 'Valid DOB is required' });
+    }
+    const demographicGender = gender !== undefined ? String(gender) :
+      (gender_id_fk ? (await prisma.dc_gender.findUnique({ where: { gender_id: Number(gender_id_fk) }, select: { name: true } }))?.name || '' : '');
+    const chartNo = `REG-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    // Create user, patient details and attributes atomically via Prisma nested create.
     const user = await prisma.dc_users.create({
       data: {
         f_name,
@@ -171,7 +184,7 @@ const register = async (req, res) => {
         phone,
         userName,
         password: hashedPassword,
-        ut_id_fk: ut_id_fk || 4,
+        ut_id_fk: 4,
         us_id_fk: 1, // active
         is_guardian: is_guardian || false,
         is_availible: true,
@@ -185,10 +198,20 @@ const register = async (req, res) => {
             signup_platform: 'api',
           },
         },
+        patient_details: { create: {
+          chart_no: chartNo, invite_code: chartNo, status: 'active',
+          height: heightValue, weight: weightValue,
+          attributes: { create: {
+            first_name: f_name || '', last_name: l_name || '',
+            phone: phone && String(phone).length <= 20 ? phone : null,
+            dob: String(dob), gender: demographicGender,
+            height: heightValue ?? 0, weight: weightValue, chart_number: chartNo,
+          } },
+        } },
       },
       include: {
-        user_type: true,
-        user_details: true,
+        user_type: true, user_details: true,
+        patient_details: { include: { attributes: true } },
       },
     });
 
@@ -240,6 +263,7 @@ const me = async (req, res) => {
         doctor_details: true,
         patient_details: {
           include: {
+            attributes: true,
             patient_group: true,
             assigned_clinician: true,
           },
@@ -251,7 +275,11 @@ const me = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ user });
+    const { password: _password, ...safeUser } = user;
+    if (safeUser.patient_details) {
+      safeUser.patient_details = canonicalPatientDetails(safeUser.patient_details);
+    }
+    res.json({ user: safeUser });
   } catch (error) {
     console.error('Me error:', error);
     res.status(500).json({ error: 'Failed to get user' });

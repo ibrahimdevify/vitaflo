@@ -89,7 +89,8 @@ const getSpirometryByUser = async (req, res) => {
       fev1_acceptability: s.fev1_acceptability,
       fvc_acceptability: s.fvc_acceptability,
       is_post_bronchodilator: s.observation?.is_post_bronchodilator || false,
-      height: s.observation?.height || null,
+      height: null, // filled from canonical vf_attributes after loading patient
+      observation_height: s.observation?.height ?? null,
       fev1_grade: s.observation?.fev1_grade || null,
       fvc_grade: s.observation?.fvc_grade || null,
       observation_id: s.observation_id,
@@ -121,6 +122,8 @@ const getSpirometryByUser = async (req, res) => {
       }
     });
 
+    const canonicalHeight = patient?.patient_details?.attributes?.height;
+    for (const row of formattedData) row.height = canonicalHeight > 0 ? canonicalHeight : null;
     res.json({
       data: formattedData,
       total,
@@ -134,6 +137,8 @@ const getSpirometryByUser = async (req, res) => {
         email: patient.email,
         dob: patient.patient_details?.attributes?.dob || null,
         gender: patient.patient_details?.attributes?.gender || null,
+        height: patient.patient_details?.attributes?.height > 0 ? patient.patient_details.attributes.height : null,
+        weight: patient.patient_details?.attributes?.weight ?? null,
       } : null,
     });
   } catch (error) {
@@ -240,6 +245,7 @@ const getSpirometryList = async (req, res) => {
                 l_name: true,
                 userName: true,
                 email: true,
+                patient_details: { select: { attributes: { select: { height: true } } } },
               },
             },
           },
@@ -265,7 +271,9 @@ const getSpirometryList = async (req, res) => {
       fev1_acceptability: s.fev1_acceptability,
       fvc_acceptability: s.fvc_acceptability,
       is_post_bronchodilator: s.observation?.is_post_bronchodilator || false,
-      height: s.observation?.height || null,
+      height: s.observation?.user?.patient_details?.attributes?.height > 0
+        ? s.observation.user.patient_details.attributes.height : null,
+      observation_height: s.observation?.height ?? null,
       fev1_grade: s.observation?.fev1_grade || null,
       fvc_grade: s.observation?.fvc_grade || null,
       observation_id: s.observation_id,

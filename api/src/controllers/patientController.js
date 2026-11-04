@@ -6,6 +6,8 @@ const { ValidationError } = patientService;
 const { getVisibleClinicianIds } = require("../helpers/visible_clinician");
 const { getPatientScope } = require("../helpers/patientScope");
 const prisma = new PrismaClient();
+const crypto = require('node:crypto');
+const { parseMeasurement, safeAttributeData, upsertAttributesAndMirror, canonicalPatientDetails } = require('../helpers/patientAttributes');
 
 const ALLOWED_TABS = [
   "patient-info",
@@ -460,8 +462,6 @@ const getAllPatients = async (req, res) => {
               status: true,
               graph_view: true,
               rpm_consent: true,
-              height: true,
-              weight: true,
               patient_group: { select: { id: true, name: true } },
               assigned_clinician: {
                 select: { user_id: true, f_name: true, l_name: true },
@@ -539,6 +539,7 @@ const getAllPatients = async (req, res) => {
 
       return {
         ...p,
+        patient_details: canonicalPatientDetails(p.patient_details),
         attributes: p.patient_details?.attributes || null,
         last_alert: latestAlert
           ? {
@@ -726,116 +727,69 @@ const listPatients = async (req, res) => {
 // Create medical attributes for patient
 const createAttributes = async (req, res) => {
   try {
-    const { id } = req.params;
-    const {
-      first_name,
-      last_name,
-      phone,
-      dob,
-      height,
-      weight,
-      gender,
-      ethnic_group,
-      smoking,
-      chart_number,
-      account_type,
-      welcome_method,
-      addresses,
-      air_monitors,
-    } = req.body;
-
-    // Check patient exists
-    const patient = await prisma.dc_patient_details.findFirst({
-      where: { pd_id: parseInt(id) },
+    const pdId = Number(req.params.id);
+    if (!Number.isInteger(pdId) || pdId <= 0) return res.status(400).json({ error: 'Invalid pd_id' });
+    const patient = await prisma.dc_patient_details.findUnique({ where: { pd_id: pdId } });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const { addresses, air_monitors, ...fields } = req.body || {};
+    if (addresses !== undefined && !Array.isArray(addresses)) return res.status(400).json({ error: 'addresses must be an array' });
+    if (air_monitors !== undefined && !Array.isArray(air_monitors)) return res.status(400).json({ error: 'air_monitors must be an array' });
+    const data = safeAttributeData(fields);
+    const result = await prisma.$transaction(async (tx) => {
+      if (await tx.vf_attributes.findUnique({ where: { pd_id: pdId } })) {
+        const error = new Error('Attributes already exist. Use update.');
+        error.status = 409;
+        throw error;
+      }
+      const created = await tx.vf_attributes.create({
+        data: {
+          ...data,
+          dob: data.dob ?? '', height: data.height ?? 0,
+          first_name: data.first_name ?? '', last_name: data.last_name ?? '',
+          pd_id: pdId,
+          ...(addresses?.length ? { addresses: { create: addresses.map(a => ({
+            street: a.street || '', city: a.city || '',
+            state: a.state || '', zip: a.zip || '',
+          })) } } : {}),
+          ...(air_monitors?.length ? { air_monitors: { create: air_monitors.map(am => ({
+            monitor_id: am.monitor_id || '', label: am.label || '', dev_id: am.dev_id || null,
+          })) } } : {}),
+        },
+        include: { addresses: true, air_monitors: { include: { device: true } } },
+      });
+      const mirror = {};
+      if (Object.hasOwn(data, 'height')) mirror.height = fields.height == null || fields.height === '' ? null : data.height;
+      if (Object.hasOwn(data, 'weight')) mirror.weight = data.weight;
+      if (Object.keys(mirror).length) await tx.dc_patient_details.update({ where: { pd_id: pdId }, data: mirror });
+      return created;
     });
-
-    if (!patient) {
-      return res.status(404).json({ error: "Patient not found" });
-    }
-
-    // Check if attributes already exist
-    const existing = await prisma.vf_attributes.findFirst({
-      where: { pd_id: parseInt(id) },
-    });
-
-    if (existing) {
-      return res
-        .status(400)
-        .json({ error: "Attributes already exist. Use update." });
-    }
-
-    const attributes = await prisma.vf_attributes.create({
-      data: {
-        first_name: first_name || patient.chart_no || "",
-        last_name: last_name || "",
-        phone: phone || null,
-        dob: dob || "",
-        height: height || 0,
-        weight: weight || null,
-        gender: gender || "",
-        ethnic_group: ethnic_group || "",
-        smoking: smoking || false,
-        chart_number: chart_number || patient.chart_no,
-        account_type: account_type || "test",
-        welcome_method: welcome_method || "text",
-        pd_id: parseInt(id),
-        addresses: addresses
-          ? {
-              create: addresses.map((a) => ({
-                street: a.street || "",
-                city: a.city || "",
-                state: a.state || "",
-                zip: a.zip || "",
-              })),
-            }
-          : undefined,
-        air_monitors: air_monitors
-          ? {
-              create: air_monitors.map((am) => ({
-                monitor_id: am.monitor_id || "",
-                label: am.label || "",
-                dev_id: am.dev_id || null,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        addresses: true,
-        air_monitors: { include: { device: true } },
-      },
-    });
-
-    res
-      .status(201)
-      .json({ message: "Patient attributes created", data: attributes });
+    return res.status(201).json({ message: 'Patient attributes created', data: result });
   } catch (error) {
-    console.error("Create attributes error:", error);
-    res.status(500).json({ error: "Failed to create attributes" });
+    console.error('Create attributes error:', error);
+    return res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to create attributes' });
   }
 };
 
-// Update medical attributes
 const updateAttributes = async (req, res) => {
   try {
-    const { id } = req.params;
-    const updateData = { ...req.body };
-
-    // Remove nested objects for separate handling
-    const { addresses, air_monitors, ...attrData } = updateData;
-
-    const attributes = await prisma.vf_attributes.update({
-      where: { pd_id: parseInt(id) },
-      data: attrData,
-      include: { addresses: true, air_monitors: true },
+    const pdId = Number(req.params.id);
+    if (!Number.isInteger(pdId) || pdId <= 0) return res.status(400).json({ error: 'Invalid pd_id' });
+    const patient = await prisma.dc_patient_details.findUnique({ where: { pd_id: pdId } });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const data = safeAttributeData(req.body || {});
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.vf_attributes.findUnique({ where: { pd_id: pdId } });
+      if (!existing) {
+        const error = new Error('Attributes not found');
+        error.status = 404;
+        throw error;
+      }
+      return upsertAttributesAndMirror(tx, patient, req.body || {});
     });
-
-    res.json({ message: "Attributes updated", data: attributes });
+    return res.json({ message: 'Attributes updated', data: updated });
   } catch (error) {
-    console.error("Update attributes error:", error);
-    if (error.code === "P2025") {
-      return res.status(404).json({ error: "Attributes not found" });
-    }
-    res.status(500).json({ error: "Failed to update attributes" });
+    console.error('Update attributes error:', error);
+    return res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to update attributes' });
   }
 };
 
@@ -1183,8 +1137,8 @@ const createPatient = async (req, res) => {
     // Generate username from email
     const userName = await generateUserName(userEmail);
 
-    const heightValue = height ? parseFloat(height) : null;
-    const weightValue = weight ? parseFloat(weight) : null;
+    const heightValue = parseMeasurement(height, 'height') ?? null;
+    const weightValue = parseMeasurement(weight, 'weight') ?? null;
     const clinicianId = assigned_clinician_id
       ? parseInt(assigned_clinician_id)
       : null;
@@ -1217,7 +1171,7 @@ const createPatient = async (req, res) => {
               create: {
                 first_name: first_name,
                 last_name: last_name,
-                phone: userPhone,
+                phone: userPhone && userPhone.length <= 20 ? userPhone : null,
                 dob: dob || "",
                 height: heightValue || 0,
                 weight: weightValue,

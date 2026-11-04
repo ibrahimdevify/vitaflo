@@ -107,7 +107,7 @@ function toGliDemographics(profile) {
   const details = profile.patient_details || {};
   return normalizeDemo({
     age: profile.age,
-    height: attrs.height ?? details.height,
+    height: attrs.height,
     sexAtBirth: attrs.gender ?? profile.sexAtBirth,
     ethnicity: toGliEthnicity(profile.lookup_table ?? attrs.lookup_table),
   });

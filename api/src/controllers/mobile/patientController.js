@@ -7,6 +7,7 @@ const { generateUserName } = require('../../utils/usernameGenerator');
 const { asFloat, stringifyWithFloats } = require('../../utils/floatJson');
 
 const prisma = new PrismaClient();
+const { parseMeasurement, upsertAttributesAndMirror } = require('../../helpers/patientAttributes');
 
 const buildAttributes = (user, attrs) => {
   const result = {
@@ -265,28 +266,31 @@ const updateCredentials = async (req, res) => {
 
 const updateDemographics = async (req, res) => {
   try {
-    const { user_id } = req.params;
-    const { attributes } = req.body || {};
-    if (!attributes) return res.status(400).json({ error: 'Attributes required' });
-    const patient = await prisma.dc_patient_details.findFirst({ where: { user_id_fk: parseInt(user_id) } });
+    const userId = Number(req.params.user_id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID' });
+    const attributes = req.body?.attributes;
+    if (!attributes || typeof attributes !== 'object') return res.status(400).json({ error: 'Attributes required' });
+    const patient = await prisma.dc_patient_details.findUnique({ where: { user_id_fk: userId }, include: { user: true } });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    const attrData = {};
-    if (attributes.height !== undefined) attrData.height = parseFloat(parseFloat(attributes.height).toFixed(2));
-    if (attributes.weight !== undefined) attrData.weight = parseFloat(parseFloat(attributes.weight).toFixed(2));
-    if (attributes.ethnicity) attrData.ethnic_group = attributes.ethnicity;
-    if (attributes.race) attrData.race = attributes.race;
-    if (attributes.gender) attrData.gender = attributes.gender;
-    if (attributes.date_of_birth) attrData.dob = attributes.date_of_birth;
-    if (attributes.first_name) attrData.first_name = attributes.first_name;
-    if (attributes.last_name) attrData.last_name = attributes.last_name;
-    await prisma.vf_attributes.upsert({
-      where: { pd_id: patient.pd_id },
-      update: attrData,
-      create: { pd_id: patient.pd_id, first_name: '', last_name: '', ...attrData },
-    });
-    res.json({ success: true, attributes: attrData });
+    const data = {};
+    if (attributes.height !== undefined) data.height = parseMeasurement(attributes.height, 'height');
+    if (attributes.weight !== undefined) data.weight = parseMeasurement(attributes.weight, 'weight');
+    if (attributes.ethnicity !== undefined) data.ethnic_group = attributes.ethnicity;
+    if (attributes.ethnic_group !== undefined) data.ethnic_group = attributes.ethnic_group;
+    if (attributes.lookup_table !== undefined) data.lookup_table = attributes.lookup_table;
+    if (attributes.gender !== undefined) data.gender = attributes.gender;
+    if (attributes.date_of_birth !== undefined) data.dob = attributes.date_of_birth;
+    if (attributes.dob !== undefined) data.dob = attributes.dob;
+    if (attributes.first_name !== undefined) data.first_name = attributes.first_name;
+    if (attributes.last_name !== undefined) data.last_name = attributes.last_name;
+    const saved = await prisma.$transaction(tx => upsertAttributesAndMirror(tx, patient, data, {
+      first_name: patient.user.f_name, last_name: patient.user.l_name,
+      phone: patient.user.phone,
+    }));
+    return res.json({ success: true, attributes: saved });
   } catch (error) {
-    res.status(500).json({ error: 'Update failed' });
+    console.error('Mobile update demographics error:', error);
+    return res.status(error.status || 500).json({ error: error.status ? error.message : 'Update failed' });
   }
 };
 
@@ -312,16 +316,17 @@ const saveOnboarding = async (req, res) => {
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     if (address && address.length > 0) {
       const addr = address[0];
-      await prisma.vf_attributes.upsert({
-        where: { pd_id: patient.pd_id },
-        update: {},
-        create: { pd_id: patient.pd_id, first_name: '', last_name: '' },
+      await prisma.$transaction(async (tx) => {
+        const attr = await tx.vf_attributes.upsert({
+          where: { pd_id: patient.pd_id }, update: {},
+          create: { pd_id: patient.pd_id, first_name: '', last_name: '', dob: '', height: 0 },
+        });
+        if (addr.street || addr.city) {
+          await tx.vf_address.create({
+            data: { street: addr.street || '', city: addr.city || '', state: addr.state || '', zip: addr.zipcode || '', attributes_id: attr.id },
+          });
+        }
       });
-      if (addr.street || addr.city) {
-        await prisma.vf_address.create({
-          data: { street: addr.street || '', city: addr.city || '', state: addr.state || '', zip: addr.zipcode || '', attributes_id: patient.pd_id },
-        }).catch(() => { });
-      }
     }
     res.json({ success: true, onboarding_complete: true });
   } catch (error) {
@@ -472,61 +477,30 @@ const createPatient = async (req, res) => {
     // Prepare attributes data
     const dobValue = attrs?.dob || attrs?.date_of_birth || '';
     const genderValue = attrs?.gender || '';
-    const heightValue = attrs?.height ? parseFloat(attrs.height) : null;
-    const weightValue = attrs?.weight ? parseFloat(attrs.weight) : null;
+    const heightValue = parseMeasurement(attrs?.height, 'height') ?? null;
+    const weightValue = parseMeasurement(attrs?.weight, 'weight') ?? null;
 
-    // STEP 1: Create user with patient_details (FORCE ut_id_fk: 4)
+    // Atomic user + details + attributes: either all created or none.
     const user = await prisma.dc_users.create({
       data: {
-        f_name: first_name || '',
-        l_name: last_name || '',
-        email: userEmail,
-        phone: userPhone,
-        password: hashedPassword,
-        userName,
-        ut_id_fk: 4,  // ✅ FORCE PATIENT TYPE!
-        us_id_fk: 1,
-        is_availible: true,
-        patient_details: {
-          create: {
-            chart_no: chartNo,
-            invite_code: chartNo,
-            access_code: access_code || null,
-            assigned_clinician_id: clinician_id ? parseInt(clinician_id) : null,
-            status: 'active',
-            height: heightValue,
-            weight: weightValue,
-          },
-        },
+        f_name: first_name || '', l_name: last_name || '',
+        email: userEmail, phone: userPhone, password: hashedPassword,
+        userName, ut_id_fk: 4, us_id_fk: 1, is_availible: true,
+        patient_details: { create: {
+          chart_no: chartNo, invite_code: chartNo, access_code: access_code || null,
+          assigned_clinician_id: clinician_id ? parseInt(clinician_id, 10) : null,
+          status: 'active', height: heightValue, weight: weightValue,
+          attributes: { create: {
+            first_name: first_name || '', last_name: last_name || '',
+            phone: userPhone && userPhone.length <= 20 ? userPhone : null, dob: String(dobValue || ''),
+            height: heightValue ?? 0, weight: weightValue,
+            gender: String(genderValue || ''), chart_number: chartNo || null,
+            account_type: 'test', welcome_method: 'text',
+          } },
+        } },
       },
-      include: {
-        patient_details: true,
-      },
+      include: { patient_details: { include: { attributes: true } } },
     });
-
-    // STEP 2: Create attributes separately using pd_id
-    if (user.patient_details && user.patient_details.pd_id) {
-      try {
-        await prisma.vf_attributes.create({
-          data: {
-            pd_id: user.patient_details.pd_id,
-            first_name: first_name || '',
-            last_name: last_name || '',
-            phone: userPhone || null,
-            dob: String(dobValue || ''),
-            height: heightValue || 0,
-            weight: weightValue,
-            gender: String(genderValue || ''),
-            chart_number: chartNo || null,
-            account_type: 'test',
-            welcome_method: 'text',
-          },
-        });
-        console.log(`✅ vf_attributes created for pd_id: ${user.patient_details.pd_id}`);
-      } catch (attrError) {
-        console.error('❌ Failed to create vf_attributes:', attrError.message);
-      }
-    }
 
     // Return response (same as before)
     res.status(201).json({

@@ -41,13 +41,11 @@ function warnOnce(code, details = {}) {
  */
 function inspectDemographics({ attributes = {}, details = {},
   observationHeight, testDate, dateOfBirth } = {}) {
+  // Current patient demographics have one authority: vf_attributes.
+  // The observation's height is historical metadata; patient_details is a legacy mirror.
   const specs = [
-    { source: 'observation', raw: observationHeight,
-      unit: process.env.VITALFLO_OBSERVATION_HEIGHT_UNIT || 'auto' },
     { source: 'attributes', raw: attributes.height,
       unit: process.env.VITALFLO_ATTRIBUTES_HEIGHT_UNIT || 'auto' },
-    { source: 'patient_details', raw: details.height,
-      unit: process.env.VITALFLO_PATIENT_HEIGHT_UNIT || 'auto' },
   ];
   const candidates = specs.map(s => ({ ...s,
     heightCm: normalizeHeightCm(s.raw, s.unit) }));

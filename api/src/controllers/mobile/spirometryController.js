@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const { parseMeasurement, upsertAttributesAndMirror } = require('../../helpers/patientAttributes');
 const { randomUUID } = require('node:crypto');
 // Build answer choices helper
 const buildChoices = (opts) =>
@@ -138,36 +139,20 @@ const syncSpirometryPlus = async (req, res) => {
       if (!point.dbdate) point.dbdate = now;
     }
     if (attributes) {
-      const patient = await prisma.dc_patient_details.findFirst({
-        where: { user_id_fk: userId },
+      const patient = await prisma.dc_patient_details.findUnique({
+        where: { user_id_fk: userId }, include: { user: true },
       });
-      if (patient) {
-        await prisma.vf_attributes
-          .upsert({
-            where: { pd_id: patient.pd_id },
-            update: {
-              height: attributes.height || undefined,
-              weight: attributes.weight || undefined,
-            },
-            // FIX: vf_attributes.dob is a required (non-nullable) column with
-            // no default. The original create block omitted it entirely,
-            // which throws a Prisma "missing required field" error the
-            // first time a patient's attributes row doesn't exist yet
-            // (i.e. any patient who hasn't already got a vf_attributes row
-            // from the migration or elsewhere). Defaulting to "" keeps this
-            // endpoint from crashing; the app should prompt the patient to
-            // fill in a real DOB later if this placeholder is still present.
-            create: {
-              pd_id: patient.pd_id,
-              first_name: "",
-              last_name: "",
-              dob: attributes.dob || "",
-              height: attributes.height,
-              weight: attributes.weight,
-            },
-          })
-          .catch(() => {});
-      }
+      if (!patient) return res.status(404).json({ error: 'Patient not found' });
+      const demographicUpdates = {};
+      if (attributes.height !== undefined) demographicUpdates.height = parseMeasurement(attributes.height, 'height');
+      if (attributes.weight !== undefined) demographicUpdates.weight = parseMeasurement(attributes.weight, 'weight');
+      if (attributes.dob !== undefined) demographicUpdates.dob = attributes.dob;
+      if (attributes.gender !== undefined) demographicUpdates.gender = attributes.gender;
+      await prisma.$transaction(tx => upsertAttributesAndMirror(tx, patient, demographicUpdates, {
+        first_name: patient.user.f_name,
+        last_name: patient.user.l_name,
+        phone: patient.user.phone,
+      }));
     }
     const observation = await prisma.portal_observation.create({
       data: {
