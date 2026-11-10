@@ -85,6 +85,11 @@ async function findObservationsPage(userId, { startDate, endDate, skip, take, in
   return prisma.portal_observation.findMany({
     where: { user_id: userId, ...buildOptionalDateFilter('dbdate', startDate, endDate) },
     include: {
+      // Reverse linkage lets PRE rows be labelled without adding DB columns.
+      related_observations: {
+        where: { user_id: userId, is_post_bronchodilator: true },
+        select: { id: true, is_post_bronchodilator: true },
+      },
       spirometries: includeCurves
         ? { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }], include: { flows: true, volumes: true } }
         : { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }] },
@@ -98,7 +103,13 @@ async function findObservationsPage(userId, { startDate, endDate, skip, take, in
 async function findObservationsByIds(observationIds) {
   return prisma.portal_observation.findMany({
     where: { id: { in: observationIds } },
-    include: { spirometries: { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }], include: { flows: true, volumes: true } } },
+    include: {
+      related_observations: {
+        where: { is_post_bronchodilator: true },
+        select: { id: true, is_post_bronchodilator: true },
+      },
+      spirometries: { orderBy: [{ dbdate: 'desc' }, { id: 'desc' }], include: { flows: true, volumes: true } },
+    },
   });
 }
 

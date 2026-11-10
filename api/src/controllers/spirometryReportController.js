@@ -90,6 +90,15 @@ const getSpirometryReportPDF = async (req, res) => {
       if (paired.is_post_bronchodilator) postObservation = paired;
       else preObservation = paired;
     }
+    // The existing FK proves relationship, not a stored clinical audit trail.
+    const linkedPair = Boolean(preObservation && postObservation && paired &&
+      (postObservation.linked_pre_post_observation_id === preObservation.id ||
+       preObservation.linked_pre_post_observation_id === postObservation.id));
+    const phaseNote = linkedPair
+      ? 'Linked PRE / POST bronchodilator observations. Clinical pairing should be confirmed from the test record.'
+      : preObservation
+        ? 'Unpaired observation: PRE phase has not been confirmed. Results are displayed in the legacy PRE column for continuity.'
+        : 'Unpaired POST observation: no linked PRE test is available.';
 
     const userId = anchorObservation.user_id;
     // Authentication alone does not confer permission to read patient reports.
@@ -189,7 +198,7 @@ const getSpirometryReportPDF = async (req, res) => {
       height: heightCm ? `${heightCm.toFixed(1)} cm` : 'N/A',
       ethnicity: attrs.ethnic_group || attrs.lookup_table || 'N/A',
       weight: weightKg ? `${weightKg.toFixed(1)} kg` : 'N/A',
-      smoking: attrs.smoking ? 'Yes' : 'N/A',
+      smoking: attrs.smoking == null ? 'N/A' : (attrs.smoking ? 'Yes' : 'No'),
       bmi: bmi ?? 'N/A',
     };
 
@@ -199,6 +208,7 @@ const getSpirometryReportPDF = async (req, res) => {
         patient,
         pre,
         post,
+        phaseNote,
         preFlows: preSession.chartRaw?.flows,
         postFlows: postSession.chartRaw?.flows,
         preVolumes: preSession.chartRaw?.volumes,

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { spirometryAPI } from '../../../services/api';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import Pagination from '../../ui/pagination';
 import { Skeleton } from '../../ui/skeleton';
 import MiniLineChart from './MiniLineChart';
+import BronchodilatorPhase from './BronchodilatorPhase';
+import { downloadObservationPdf, getPdfErrorMessage } from './downloadObservationPdf';
 import { formatDate, formatNumber } from './format';
 
 const ROW_LABELS = [
@@ -28,48 +29,16 @@ export default function SpirometryTab({ data, onRefetch, loading }) {
   const [endDate, setEndDate] = useState(toDateInputValue(data?.endDate));
   const [downloadingObservationId, setDownloadingObservationId] = useState(null);
 
-  // Uses the existing authenticated observation-level PDF endpoint. The
-  // server owns the PDF layout and pre/post bronchodilator report content.
+  // Reuse the existing authenticated PDF endpoint; the backend resolves
+  // clinician-confirmed PRE/POST pairs for the chosen observation.
   const handleDownloadObservation = async (observationId) => {
     const id = Number(observationId);
     if (!Number.isSafeInteger(id) || id <= 0 || downloadingObservationId !== null) return;
-
     setDownloadingObservationId(id);
     try {
-      const response = await spirometryAPI.getReportPDF(id);
-      const pdf = response.data instanceof Blob
-        ? response.data
-        : new Blob([response.data], { type: 'application/pdf' });
-      const contentType = response.headers?.['content-type'] || pdf.type || '';
-      // Axios may return a JSON error as a Blob, even when responseType is blob.
-      if (!contentType.toLowerCase().includes('application/pdf')) {
-        let message = 'Unable to generate spirometry PDF';
-        try {
-          const errorBody = JSON.parse(await pdf.text());
-          message = errorBody.error || errorBody.message || message;
-        } catch { /* Non-JSON server response */ }
-        throw new Error(message);
-      }
-
-      const url = URL.createObjectURL(pdf);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `spirometry_report_${id}.pdf`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      // Give the browser time to begin downloading before freeing the Blob.
-      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      await downloadObservationPdf(id);
     } catch (error) {
-      let message = error?.message || 'Failed to download spirometry PDF';
-      const errorBody = error?.response?.data;
-      if (errorBody instanceof Blob) {
-        try {
-          const parsed = JSON.parse(await errorBody.text());
-          message = parsed.error || parsed.message || message;
-        } catch { /* Keep original error */ }
-      }
-      toast.error(message);
+      toast.error(await getPdfErrorMessage(error));
       console.error('[SpirometryTab] Observation PDF download failed:', error);
     } finally {
       setDownloadingObservationId(null);
@@ -156,8 +125,7 @@ export default function SpirometryTab({ data, onRefetch, loading }) {
 
       {!hasActiveFilter && (
         <p className="text-xs text-fg-muted">
-          Showing the patient's full spirometry history. Set a date range above
-          to filter.
+          Showing the patient's full spirometry history. PRE / POST labels reflect recorded phase information; unverified older tests must be confirmed in Session Comparison.
         </p>
       )}
 
@@ -199,6 +167,10 @@ export default function SpirometryTab({ data, onRefetch, loading }) {
                         {formatDate(row.date)}
                       </h3>
 
+                      <div className="flex flex-wrap items-center gap-2">
+                        <BronchodilatorPhase phase={row.phase || 'UNKNOWN'} linked={row.phaseLinked === true} />
+                        {row.linkedObservationId && <span className="text-xs text-fg-muted">Linked to observation #{row.linkedObservationId}</span>}
+                      </div>
                       {/* Test count */}
                       <p className="text-sm font-medium text-fg-muted">
                         {row.testsCount} test{row.testsCount === 1 ? '' : 's'}{' '}

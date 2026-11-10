@@ -1,3 +1,4 @@
+import BronchodilatorPhase from './BronchodilatorPhase';
 import { ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../ui/button';
@@ -143,6 +144,9 @@ export default function ReportsTab({ data, onRefetch, loading }) {
                         {formatDate(row.date)}
                       </h3>
 
+                      <div className="flex items-center gap-2">
+                        <BronchodilatorPhase phase={row.phase || 'UNKNOWN'} linked={row.phaseLinked === true} />
+                      </div>
                       {/* Test count */}
                       <p className="text-sm font-medium text-fg-muted">
                         {row.results.length} test

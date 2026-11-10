@@ -6,7 +6,7 @@ import { z } from 'zod';
 import Field from '../shared/Field';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import Modal from '../ui/modal';
+import Modal from '../ui/Modal';
 
 // ut_id_fk / us_id_fk dropdowns removed: createClinicianUser hardcodes
 // ut_id_fk: 3 server-side (ignores anything sent from the client), and

@@ -1,7 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { parseMeasurement, upsertAttributesAndMirror } = require('../../helpers/patientAttributes');
-const { randomUUID } = require('node:crypto');
+const { parsePhaseFlag } = require('../../helpers/bronchodilator');
 // Build answer choices helper
 const buildChoices = (opts) =>
   opts.map((o, i) => ({
@@ -118,14 +118,43 @@ const syncSpirometryPlus = async (req, res) => {
       attributes,
       sessionGrade,
     } = req.body;
-    const userId = req.user.user_id;
+    const userId = Number(req.user.user_id);
     const now = new Date();
+    const parsedPhase = parsePhaseFlag(isPostBronchodilator);
+    // With the original schema, sharedPrefsId cannot be persisted as a unique
+    // upload key. Keep returning it to the mobile client, but do NOT pretend
+    // retry idempotency is guaranteed without a durable key.
+    let parsedAttributes = null;
+    if (typeof attributes === 'string' && attributes.trim()) {
+      try {
+        const value = JSON.parse(attributes);
+        if (value && typeof value === 'object' && !Array.isArray(value)) parsedAttributes = value;
+      } catch {
+        // Old Flutter offline cache used user.attributes.toString(). This is
+        // not JSON; preserve the test and use current vf_attributes instead.
+        console.warn('[VitalFlo sync_plus] Unparseable legacy attributes; using existing patient attributes');
+      }
+    } else if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
+      parsedAttributes = attributes;
+    }
+    let parsedGrade = null;
+    if (typeof sessionGrade === 'string') {
+      try { parsedGrade = JSON.parse(sessionGrade); } catch { /* Ignore malformed optional grades */ }
+    } else if (sessionGrade && typeof sessionGrade === 'object') parsedGrade = sessionGrade;
+    const gradeInt = (value) => {
+      if (value == null || value === '') return null;
+      const n = Number(value);
+      return Number.isSafeInteger(n) && n >= 0 && n <= 10 ? n : null;
+    };
     let parsedResults;
     try {
       parsedResults =
         typeof results === "string" ? JSON.parse(results) : results;
     } catch {
       return res.status(400).json({ error: "Invalid results format" });
+    }
+    if (!parsedResults || typeof parsedResults !== 'object') {
+      return res.status(400).json({ error: 'Results object or array required' });
     }
     const dataPoints = Array.isArray(parsedResults)
       ? parsedResults
@@ -138,101 +167,117 @@ const syncSpirometryPlus = async (req, res) => {
       }
       if (!point.dbdate) point.dbdate = now;
     }
-    if (attributes) {
-      const patient = await prisma.dc_patient_details.findUnique({
-        where: { user_id_fk: userId }, include: { user: true },
-      });
-      if (!patient) return res.status(404).json({ error: 'Patient not found' });
-      const demographicUpdates = {};
-      if (attributes.height !== undefined) demographicUpdates.height = parseMeasurement(attributes.height, 'height');
-      if (attributes.weight !== undefined) demographicUpdates.weight = parseMeasurement(attributes.weight, 'weight');
-      if (attributes.dob !== undefined) demographicUpdates.dob = attributes.dob;
-      if (attributes.gender !== undefined) demographicUpdates.gender = attributes.gender;
-      await prisma.$transaction(tx => upsertAttributesAndMirror(tx, patient, demographicUpdates, {
-        first_name: patient.user.f_name,
-        last_name: patient.user.l_name,
-        phone: patient.user.phone,
-      }));
-    }
-    const observation = await prisma.portal_observation.create({
-      data: {
-        user_id: userId,
-        dbdate: now,
-        is_post_bronchodilator:
-          isPostBronchodilator === "true" || isPostBronchodilator === true,
-        height: attributes?.height,
-      },
+    // vf_attributes is canonical; only valid mobile measurements update it.
+    const patient = await prisma.dc_patient_details.findUnique({
+      where: { user_id_fk: userId }, include: { user: true, attributes: true },
     });
-    // First create a spirometry record to link flows to
-    let spirometryId = null;
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    // Validate incoming demographics before opening the write transaction.
+    const demographicUpdates = {};
+    if (parsedAttributes) {
+      if (parsedAttributes.height !== undefined) demographicUpdates.height = parseMeasurement(parsedAttributes.height, 'height');
+      if (parsedAttributes.weight !== undefined) demographicUpdates.weight = parseMeasurement(parsedAttributes.weight, 'weight');
+      if (parsedAttributes.dob !== undefined) demographicUpdates.dob = parsedAttributes.dob;
+      if (parsedAttributes.gender !== undefined) demographicUpdates.gender = parsedAttributes.gender;
+    }
     const resultsArr = Array.isArray(parsedResults)
       ? parsedResults
-      : parsedResults.values || [parsedResults];
-    for (const val of resultsArr) {
-      if (val.fvcL || val.fev1L || val.fvc || val.fev1) {
-        const sp = await prisma.portal_spirometry.create({
+      : (Array.isArray(parsedResults.values) ? parsedResults.values : [parsedResults]);
+    const maneuvers = resultsArr.filter(val => val && typeof val === 'object' &&
+      [val.fvcL, val.fev1L, val.fvc, val.fev1].some(v => Number(v) > 0));
+    if (!maneuvers.length) return res.status(400).json({ error: 'No valid spirometry maneuvers supplied' });
+
+    // Save demographics, their legacy mirror, the observation, maneuvers and
+    // chart points atomically. Invalid/incomplete tests must not mutate the
+    // patient profile before we know the upload can be committed.
+    const observation = await prisma.$transaction(async tx => {
+      let canonical = patient.attributes;
+      if (Object.keys(demographicUpdates).length) {
+        canonical = await upsertAttributesAndMirror(tx, patient, demographicUpdates, {
+          first_name: patient.user.f_name,
+          last_name: patient.user.l_name,
+          phone: patient.user.phone,
+        });
+      }
+      // Flutter converts metric/imperial input to cm/kg before upload.
+      // GLI uses canonical vf_attributes; observation height is a snapshot.
+      const heightCm = Number(canonical?.height);
+      const created = await tx.portal_observation.create({
+        data: {
+          user_id: userId,
+          dbdate: now,
+          is_post_bronchodilator: parsedPhase === true,
+          height: Number.isFinite(heightCm) && heightCm > 0 ? heightCm : null,
+          fev1_grade: gradeInt(parsedGrade?.fev1Grade),
+          fvc_grade: gradeInt(parsedGrade?.fvcGrade),
+        },
+      });
+      let latestSpirometryId = null;
+      for (const val of maneuvers) {
+        const num = (raw, fallback = 0) => {
+          const n = Number(raw);
+          return raw != null && Number.isFinite(n) ? n : fallback;
+        };
+        const message = num(val.qualityMessage, NaN);
+        const sp = await tx.portal_spirometry.create({
           data: {
-            observation_id: observation.id,
-            fvc: val.fvcL || val.fvc || 0,
-            fev1: val.fev1L || val.fev1 || 0,
-            pefr: val.pefLs || val.pefr || 0,
-            fef2575: val.fef2575Ls || val.fef2575 || 0,
-            fev6: val.fev6L || val.fev6 || 0,
-            fev1_perc: val.fev1Perc || val.fev1_perc || 0,
-            btps: val.btps || 0,
-            temp_celsius: val.tempCelsius || 0,
-            quality_message: val.qualityMessage
-              ? parseFloat(val.qualityMessage)
-              : null,
+            observation_id: created.id,
+            fvc: num(val.fvcL ?? val.fvc),
+            fev1: num(val.fev1L ?? val.fev1),
+            pefr: num(val.pefLs ?? val.pefr),
+            fef2575: num(val.fef2575Ls ?? val.fef2575),
+            fev6: num(val.fev6L ?? val.fev6),
+            fev1_perc: num(val.fev1Perc ?? val.fev1_perc),
+            btps: num(val.btps),
+            temp_celsius: num(val.tempCelsius),
+            quality_message: Number.isFinite(message) ? message : null,
           },
         });
-        spirometryId = sp.id;
+        latestSpirometryId = sp.id;
       }
-    }
-
-    // Now store flow/volume data properly linked to spirometry
-    const fvPoints = parsedResults.fvPoints || parsedResults[0]?.fvPoints || [];
-    const flowPoints =
-      fvPoints.length > 0
+      // Existing mobile payload associates fvPoints with the last maneuver.
+      // Preserve that contract until the mobile client can send point-to-blow IDs.
+      const fvPoints = parsedResults.fvPoints || parsedResults[0]?.fvPoints || [];
+      const flowPoints = Array.isArray(fvPoints) && fvPoints.length
         ? fvPoints
-        : dataPoints.filter(
-            (p) => p.flow !== undefined || p.volume !== undefined,
-          );
-    if (spirometryId && flowPoints.length > 0) {
-      // Calculate time values from MIR sample rate (53ms per step based on stepVolume:50)
-      const totalPoints = flowPoints.length;
-      const fetS =
-        parsedResults.fetS || parsedResults[0]?.fetS || totalPoints * 0.053;
-      const timeStep = fetS / totalPoints;
-
-      for (let i = 0; i < flowPoints.length; i++) {
-        const point = flowPoints[i];
-        const calculatedTime = parseFloat((i * timeStep).toFixed(4));
-        await prisma.portal_flow
-          .create({
-            data: {
-              spirometry_id: spirometryId,
-              time: point.time || calculatedTime || i * 0.053,
-              value: point.flow || 0,
-              volume: point.volume || 0,
-              dbdate: point.dbdate || now,
-            },
-          })
-          .catch(() => {});
+        : dataPoints.filter(p => p.flow !== undefined || p.volume !== undefined);
+      if (latestSpirometryId && flowPoints.length) {
+        const totalPoints = flowPoints.length;
+        const fetS = Number(parsedResults.fetS || parsedResults[0]?.fetS || totalPoints * 0.053);
+        const step = Number.isFinite(fetS) && fetS > 0 ? fetS / totalPoints : 0.053;
+        const points = flowPoints.map((point, i) => {
+          const finite = (v, fallback) => {
+            const n = Number(v);
+            return v != null && Number.isFinite(n) ? n : fallback;
+          };
+          const timestamp = point.dbdate ? new Date(point.dbdate) : now;
+          return {
+            spirometry_id: latestSpirometryId,
+            time: finite(point.time, Number((i * step).toFixed(4))),
+            value: finite(point.flow ?? point.value, 0),
+            volume: finite(point.volume, 0),
+            dbdate: Number.isFinite(timestamp.getTime()) ? timestamp : now,
+          };
+        });
+        for (let index = 0; index < points.length; index += 500) {
+          await tx.portal_flow.createMany({ data: points.slice(index, index + 500) });
+        }
       }
-    }
+      return created;
+    }, { maxWait: 10000, timeout: 60000 });
     res.json({
       response: {
         status: "success",
         message: "Spirometry records synchronized successfully.",
         sharedPrefsId: sharedPrefsId || "",
+        observation_id: observation.id,
       },
     });
   } catch (error) {
-    console.error("sync_plus DB error:", error.message);
-    res
-      .status(500)
-      .json({ error: "Failed to save spirometry", message: error.message });
+    console.error('sync_plus DB error:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.status ? error.message : 'Failed to save spirometry',
+    });
   }
 };
 

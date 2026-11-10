@@ -1,5 +1,6 @@
 const patientRepository = require('../repositories/patientRepository');
 const { normalizeSpirometryValue } = require('../helpers/spirometry');
+const { describePhase, linkedObservationId, buildBronchodilatorResponse } = require('../helpers/bronchodilator');
 const {
   inspectDemographics,
   bestObservedValues,
@@ -194,6 +195,8 @@ async function getSpirometryTab(userId, { startDate, endDate, page = 1, limit = 
       return {
         observationId: observation.id,
         date: observation.dbdate,
+        ...describePhase(observation),
+        linkedObservationId: linkedObservationId(observation),
         testsCount: spirometries.length,
         results: buildResultRows(best, demo),
         ...buildChartSeries(spirometries),
@@ -249,6 +252,8 @@ async function getSessionOptions(userId, { page = 1, limit = 100 } = {}) {
     rows: observations.filter(o => o.spirometries?.length).map(o => ({
       observationId: o.id,
       date: latestTestDate(o),
+      ...describePhase(o),
+      linkedObservationId: linkedObservationId(o),
       testsCount: o.spirometries.length,
     })),
     pagination: buildPagination(page, limit, total),
@@ -275,14 +280,26 @@ async function getSessionComparisonTab(userId, sessionId1, sessionId2) {
       observationId: observation.id,
       date: latestTestDate(observation),
       isPostBronchodilator: observation.is_post_bronchodilator,
+      ...describePhase(observation),
+      linkedObservationId: linkedObservationId(observation),
       results: buildResultRows(best, demo),
       ...buildChartSeries(observation.spirometries),
     };
   };
 
+  const a = await buildSessionSummary(session1);
+  const b = await buildSessionSummary(session2);
+  const pre = a.phase === 'PRE' ? a : (b.phase === 'PRE' ? b : null);
+  const post = a.phase === 'POST' ? a : (b.phase === 'POST' ? b : null);
+  // Existing FK establishes a persisted relationship, but stores no audit
+  // provenance. Call it LINKED rather than claiming formally verified status.
+  const isLinkedPair = Boolean(pre && post &&
+    (post.linkedObservationId === pre.observationId || pre.linkedObservationId === post.observationId));
   return {
-    session1: await buildSessionSummary(session1),
-    session2: await buildSessionSummary(session2),
+    session1: a,
+    session2: b,
+    isLinkedPair,
+    bronchodilatorResponse: isLinkedPair ? buildBronchodilatorResponse(pre.results, post.results) : null,
     timeBetweenSessionsHours:
       Math.abs(new Date(latestTestDate(session2)) - new Date(latestTestDate(session1))) / (1000 * 60 * 60),
   };
@@ -316,6 +333,8 @@ async function getReportsTab(userId, { startDate, endDate, page = 1, limit = 20 
       return {
         observationId: observation.id,
         date: observation.dbdate,
+        ...describePhase(observation),
+        linkedObservationId: linkedObservationId(observation),
         latestTestDate: latestTestDate(observation),
         testsCount: observation.spirometries.length,
         results: buildResultRows(best, demo),
