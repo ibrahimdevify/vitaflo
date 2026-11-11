@@ -2,6 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { parseMeasurement, upsertAttributesAndMirror } = require('../../helpers/patientAttributes');
 const { parsePhaseFlag } = require('../../helpers/bronchodilator');
+const { randomUUID } = require("node:crypto");
 // Build answer choices helper
 const buildChoices = (opts) =>
   opts.map((o, i) => ({
